@@ -1,0 +1,25 @@
+[build-system]
+requires = ["setuptools>=61"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "autonomous-agent"
+version = "0.1.0"
+description = "Small open-source autonomous agent with tools, memory, skills and user-tunable permissions."
+readme = "README.md"
+license = { text = "MIT" }
+requires-python = ">=3.10"
+dependencies = []
+
+[project.optional-dependencies]
+yaml = ["pyyaml>=6"]
+dev = ["pytest>=7", "pyyaml>=6"]
+
+[project.scripts]
+autonomous-agent = "agent.cli:main"
+
+[tool.setuptools]
+packages = ["agent", "agent.tools"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
