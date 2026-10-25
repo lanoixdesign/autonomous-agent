@@ -1,0 +1,68 @@
+# permissions.yaml — YOU decide what the agent may do.
+# Modes: allow (runs), ask (asks you in the terminal), deny (refused).
+# Without a terminal, "ask" means refused.
+# --yolo turns "ask" into "allow" EXCEPT for send and spend: for those, only what
+# you write here counts.
+
+defaults:
+  read: allow       # read files in the workspace, recall memory, load skills
+  write: ask        # create / edit files
+  execute: ask      # shell commands
+  network: ask      # web fetch / search, GitHub reads
+  send: ask         # actions visible to others (GitHub issues, comments, PRs...)
+  spend: deny       # anything that costs money
+
+# Per-tool overrides (take precedence over the category)
+tools:
+  memory_write: allow
+  memory_forget: ask
+  # shell: deny
+  # github_write: deny
+
+# Paths are relative to the workspace. deny always wins.
+# If paths.allow is non-empty, every other path is refused.
+paths:
+  allow: []
+  deny:
+    - ".env"
+    - "**/.env"
+    - ".env.*"
+    - "**/*.pem"
+    - "**/*.key"
+    - "**/id_rsa*"
+    - "**/id_ed25519*"
+    - ".git/**"
+    - ".agent/**"     # memory + audit: only through the memory tools
+
+# Shell commands (fnmatch patterns on the whole command line).
+# allow: commands that skip the confirmation (when execute is "ask").
+# deny: always refused. This list is a seatbelt, NOT a sandbox.
+commands:
+  allow:
+    - "ls*"
+    - "pwd"
+    - "git status*"
+    - "git diff*"
+    - "git log*"
+    - "python -m pytest*"
+  deny:
+    - "sudo *"
+    - "su *"
+    - "*rm -rf /*"
+    - "*rm -rf ~*"
+    - "*mkfs*"
+    - "*dd if=*"
+    - "*:(){*"
+    - "*curl *|*sh*"
+    - "*wget *|*sh*"
+    - "*chmod -R 777 /*"
+    - "*shutdown*"
+    - "*reboot*"
+    - "*git push*--force*"
+
+# Domains for web_fetch / web_search / GitHub tools.
+# allow: skip the confirmation (when network is "ask"). deny: always refused.
+domains:
+  allow:
+    - "api.github.com"
+  deny: []
