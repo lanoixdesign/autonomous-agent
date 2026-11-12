@@ -10,7 +10,8 @@ REPO_PERMS = __import__("pathlib").Path(__file__).resolve().parent.parent / "per
 
 def test_safe_defaults():
     assert SAFE_DEFAULTS == {"read": "allow", "write": "ask", "execute": "ask",
-                             "network": "ask", "send": "ask", "spend": "deny"}
+                             "network": "ask", "send": "ask", "spend": "deny",
+                             "delegate": "ask"}
     p = Permissions()
     assert p.decide("read_file", "read").mode == "allow"
     assert p.decide("write_file", "write").mode == "ask"

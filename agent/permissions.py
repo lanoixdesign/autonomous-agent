@@ -19,7 +19,7 @@ from typing import Any
 from urllib.parse import urlparse
 
 MODES = ("allow", "ask", "deny")
-CATEGORIES = ("read", "write", "execute", "network", "send", "spend")
+CATEGORIES = ("read", "write", "execute", "network", "send", "spend", "delegate")
 SAFE_DEFAULTS = {
     "read": "allow",
     "write": "ask",
@@ -27,6 +27,7 @@ SAFE_DEFAULTS = {
     "network": "ask",
     "send": "ask",
     "spend": "deny",
+    "delegate": "ask",   # launch sub-agents (multi-agent mode)
 }
 YOLO_PROTECTED = ("send", "spend")
 

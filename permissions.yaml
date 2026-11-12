@@ -11,6 +11,7 @@ defaults:
   network: ask      # web fetch / search, GitHub reads
   send: ask         # actions visible to others (GitHub issues, comments, PRs...)
   spend: deny       # anything that costs money
+  delegate: ask     # launch sub-agents (spawn_agent); they never get more rights than this file
 
 # Per-tool overrides (take precedence over the category)
 tools:

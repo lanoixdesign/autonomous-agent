@@ -7,6 +7,7 @@ from __future__ import annotations
 
 import json
 import re
+import threading
 import time
 import uuid
 from pathlib import Path
@@ -29,12 +30,17 @@ class Memory:
         if not self.profile.exists():
             self.profile.write_text("# Profile\n\n", encoding="utf-8")
         self.journal.touch(exist_ok=True)
+        self._lock = threading.RLock()   # harness: several agents may share one memory
 
     # ----- write -----
     def write(self, text: str, kind: str = "note", tags: list[str] | None = None) -> dict:
         text = redact(text.strip())
         if not text:
             raise ValueError("empty memory")
+        with self._lock:
+            return self._write(text, kind, tags)
+
+    def _write(self, text: str, kind: str, tags: list[str] | None) -> dict:
         if kind == "profile":
             with self.profile.open("a", encoding="utf-8") as f:
                 f.write(f"- {text}\n")
@@ -89,6 +95,10 @@ class Memory:
         ql = query.lower().strip()
         if not ql:
             return 0
+        with self._lock:
+            return self._forget(query, ql)
+
+    def _forget(self, query: str, ql: str) -> int:
         kept, removed = [], 0
         for e in self.entries():
             if e.get("id") == query or ql in e.get("text", "").lower():
