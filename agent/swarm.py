@@ -12,20 +12,27 @@ skills, audit log, confirmation callback and cancel event. It can never do more 
 Launching is its own risk category, `delegate` (default: ask). Every audit line carries `agent`
 (e.g. "root", "root.1", "root.1.2") and `depth`; spawns add `event: spawn` / `event: child_done` lines.
 
-Parallel mode (`spawn_agents`, `max_parallel` > 1): children run concurrently in a thread pool ONLY
-if they are read-only, i.e. `allowed_tools` is given and every one of those tools is in the `read`
-or `network` category AND is already decided `allow` or `deny` by the policy (never `ask`). Such a
-child cannot write, execute, spend, send, delegate, or wait for an approval. Any other batch runs
-sequentially, exactly as before. (We chose this over isolated workspace copies + merge: simpler,
-and nothing to merge since parallel children cannot write.)
+Parallel mode (`spawn_agents`, `max_parallel` > 1), decided per batch:
+  1. read-only children (`allowed_tools` given, only `read`/`network` tools already decided
+     allow/deny, never `ask`) -> concurrent, in the shared workspace (they cannot change it);
+  2. otherwise, if no child tool can need an approval, or the confirm callback can take concurrent
+     approvals (the harness queue: `confirm.concurrent = True`) -> concurrent, each child in its own
+     ISOLATED COPY of the parent workspace, merged back at the end (see isolation.py: files changed by
+     one child are applied, conflicts are written as `<file>.conflict-<agent id>`, never overwritten);
+  3. otherwise (terminal prompts) -> sequential in the shared workspace, so prompts never mix.
+If the workspace is too large to copy, case 2 falls back to case 3.
 """
 from __future__ import annotations
 
+import dataclasses
+import shutil
 import threading
 from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass, field
+from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
+from . import isolation
 from .permissions import Decision
 from .tools import Registry, Tool, ToolContext, ToolError, params, s
 
@@ -41,7 +48,9 @@ class SwarmConfig:
     max_depth: int = 2           # 0 disables sub-agents
     max_children: int = 5        # total sub-agents per root run (whole tree)
     child_max_steps: int = 6     # default step budget of one sub-agent (always capped by the parent)
-    max_parallel: int = 3        # spawn_agents: read-only children run concurrently up to this many
+    max_parallel: int = 3        # spawn_agents: children run concurrently up to this many
+    isolate: bool = True         # allow parallel writing children in isolated workspace copies
+    copy_limits: isolation.Limits = field(default_factory=isolation.Limits)
 
 
 @dataclass
@@ -120,6 +129,20 @@ def parallel_safe(parent: "Agent", allowed_tools: list[str] | None) -> bool:
     return True
 
 
+def child_tools(parent: "Agent", allowed_tools: list[str] | None) -> set[str]:
+    names = set(parent.registry.tools)
+    return names if allowed_tools is None else names & set(allowed_tools)
+
+
+def may_ask(parent: "Agent", allowed_tools: list[str] | None) -> bool:
+    """True if a child with these tools could hit an `ask` decision (subject rules never create one)."""
+    for n in child_tools(parent, allowed_tools):
+        tool = parent.registry.get(n)
+        if parent.permissions.decide(tool.name, tool.category).mode == "ask":
+            return True
+    return False
+
+
 def _left(parent: "Agent") -> tuple[int, int, int]:
     """What the parent has left, minus what running children already reserved (call under lock)."""
     b, st = parent.budget, parent.state
@@ -130,9 +153,17 @@ def _left(parent: "Agent") -> tuple[int, int, int]:
 
 def spawn(parent: "Agent", task: str, max_steps: int | None = None,
           allowed_tools: list[str] | None = None, share: int = 1) -> str:
-    """Run one sub-agent to completion and return its observation for the parent.
+    """Run one sub-agent to completion and return its observation for the parent."""
+    return run_child(parent, task, max_steps, allowed_tools, share)[1]
 
-    `share` > 1 (parallel batch): the child may reserve at most 1/share of what is left."""
+
+def run_child(parent: "Agent", task: str, max_steps: int | None = None,
+              allowed_tools: list[str] | None = None, share: int = 1,
+              workspace: Path | None = None) -> tuple[str, str]:
+    """Run one sub-agent to completion; returns (child id, observation for the parent).
+
+    `share` > 1 (parallel batch): the child may reserve at most 1/share of what is left.
+    `workspace`: run the child in this directory (an isolated copy) instead of the parent's."""
     from .loop import Agent, Budget
 
     cfg, shared, st = parent.swarm, parent.swarm_state, parent.state
@@ -171,12 +202,14 @@ def spawn(parent: "Agent", task: str, max_steps: int | None = None,
     base = Registry({n: t for n, t in parent.base_registry.tools.items() if n in allowed})
 
     child_id = f"{parent.agent_id}.{num}"
+    ctx = parent.ctx if workspace is None else dataclasses.replace(parent.ctx, workspace=Path(workspace))
     parent.audit.record(event="spawn", agent=parent.agent_id, depth=parent.depth, child=child_id,
                         child_depth=depth, task=task, tools=sorted(allowed),
+                        isolated=workspace is not None,
                         budget={"max_steps": budget.max_steps, "max_tool_calls": budget.max_tool_calls,
                                 "max_tokens": budget.max_tokens})
     on_event = parent.on_event
-    child = Agent(parent.llm, base, perms, parent.audit, parent.ctx, budget, confirm=parent.confirm,
+    child = Agent(parent.llm, base, perms, parent.audit, ctx, budget, confirm=parent.confirm,
                   on_event=lambda kind, data: on_event(kind, {**data, "agent": child_id}),
                   stop_rule=parent.stop_rule, swarm=cfg, depth=depth, agent_id=child_id,
                   swarm_state=shared, allow_spawn=bool(allowed & set(SPAWN_TOOLS)), cancel=parent.cancel)
@@ -196,25 +229,73 @@ def spawn(parent: "Agent", task: str, max_steps: int | None = None,
     parent.audit.record(event="child_done", agent=child_id, depth=depth, parent=parent.agent_id,
                         stop_reason=res.stop_reason, steps=res.steps, tool_calls=res.tool_calls,
                         tokens=res.tokens, result=res.answer)
-    return (f"[sub-agent {child_id}] stop={res.stop_reason} steps={res.steps} "
-            f"tool_calls={res.tool_calls} tokens={res.tokens}\n{res.answer}")
+    return child_id, (f"[sub-agent {child_id}] stop={res.stop_reason} steps={res.steps} "
+                      f"tool_calls={res.tool_calls} tokens={res.tokens}\n{res.answer}")
+
+
+def plan_batch(parent: "Agent", n: int, allowed_tools: list[str] | None) -> str:
+    """'sequential' | 'parallel' (shared workspace, read-only) | 'isolated' (parallel, one copy each)."""
+    cfg = parent.swarm
+    if cfg is None or n < 2 or min(cfg.max_parallel, n) < 2:
+        return "sequential"
+    if parallel_safe(parent, allowed_tools):
+        return "parallel"
+    if not cfg.isolate:
+        return "sequential"
+    if may_ask(parent, allowed_tools) and not getattr(parent.confirm, "concurrent", False):
+        return "sequential"   # terminal prompts must not interleave
+    return "isolated"
 
 
 def spawn_many(parent: "Agent", tasks: list[str], max_steps: int | None = None,
                allowed_tools: list[str] | None = None) -> list[str]:
-    """Run several children; concurrently (up to max_parallel) only if they are read-only."""
-    def one(task: str, share: int) -> str:
-        try:
-            return spawn(parent, str(task), max_steps, allowed_tools, share)
-        except ToolError as e:
-            return f"[sub-agent not started] {e}"
+    """Run several children (see the module docstring for when they run concurrently)."""
+    mode = plan_batch(parent, len(tasks), allowed_tools)
+    workers = min(parent.swarm.max_parallel, len(tasks)) if parent.swarm else 1
 
-    workers = min(parent.swarm.max_parallel if parent.swarm else 1, len(tasks))
-    if workers > 1 and parallel_safe(parent, allowed_tools):
+    def one(task: str, share: int, workspace: Path | None = None) -> tuple[str | None, str]:
+        try:
+            return run_child(parent, str(task), max_steps, allowed_tools, share, workspace)
+        except ToolError as e:
+            return None, f"[sub-agent not started] {e}"
+
+    note = ""
+    if mode == "isolated":
+        cfg, src = parent.swarm, parent.ctx.workspace
+        copies: list[Path] = []
+        try:
+            base = isolation.scan(src, cfg.copy_limits)
+            for _ in tasks:
+                copies.append(isolation.make_copy(src, base, cfg.copy_limits, prefix="agent-child-"))
+        except (isolation.WorkspaceTooLarge, OSError) as e:
+            for c in copies:
+                shutil.rmtree(c, ignore_errors=True)
+            mode, note = "sequential", f"[swarm] isolated copies not possible ({e}); ran sequentially\n\n"
+        else:
+            try:
+                with ThreadPoolExecutor(max_workers=workers, thread_name_prefix=f"agent-{parent.agent_id}") as ex:
+                    results = list(ex.map(lambda tc: one(tc[0], workers, tc[1]), zip(tasks, copies)))
+                done = [(cid, c) for (cid, _), c in zip(results, copies) if cid is not None]
+                if parent.cancel is not None and parent.cancel.is_set():
+                    parent.audit.record(event="merge", agent=parent.agent_id, depth=parent.depth,
+                                        children=[cid for cid, _ in done], skipped="cancelled")
+                    return [obs for _, obs in results] + ["[merge] skipped: task cancelled, no change applied"]
+                report = isolation.merge(src, base, done, cfg.copy_limits)
+                parent.audit.record(event="merge", agent=parent.agent_id, depth=parent.depth,
+                                    children=[cid for cid, _ in done], applied=report.applied,
+                                    conflicts=report.conflicts)
+                return [obs for _, obs in results] + [report.text()]
+            finally:
+                for c in copies:
+                    shutil.rmtree(c, ignore_errors=True)
+    if mode == "parallel":
         with ThreadPoolExecutor(max_workers=workers, thread_name_prefix=f"agent-{parent.agent_id}") as ex:
             # at most `workers` children run at once: each may reserve 1/workers of what is left
-            return list(ex.map(lambda t: one(t, workers), tasks))
-    return [one(t, 1) for t in tasks]
+            return [obs for _, obs in ex.map(lambda t: one(t, workers), tasks)]
+    out = [obs for _, obs in (one(t, 1) for t in tasks)]
+    if note:
+        out[0] = note + out[0]
+    return out
 
 
 def make_tools(agent: "Agent") -> list[Tool]:
@@ -241,7 +322,8 @@ def make_tools(agent: "Agent") -> list[Tool]:
              params(["task"], task=s("complete, self-contained instructions"), max_steps=steps_prop,
                     allowed_tools=tools_prop), _one),
         Tool("spawn_agents", "Launch several sub-agents (one per task); returns their answers in order. "
-             "They run in parallel only if allowed_tools is limited to read-only tools.", "delegate",
+             "They may run in parallel (writers each in an isolated copy of the workspace, merged at the end; "
+             "conflicting files are written as <file>.conflict-<agent id>).", "delegate",
              params(["tasks"], tasks={"type": "array", "items": {"type": "string"}}, max_steps=steps_prop,
                     allowed_tools=tools_prop), _many),
     ]

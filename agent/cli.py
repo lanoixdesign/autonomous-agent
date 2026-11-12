@@ -120,18 +120,26 @@ def serve(args) -> int:
     def factory(task, audit, confirm, cancel, on_event):
         return new_agent(args, perms, ctx, audit, confirm, on_event, cancel)
 
-    h = Harness(factory, state / "audit.jsonl", approval_timeout=args.approval_timeout)
+    h = Harness(factory, state / "audit.jsonl", approval_timeout=args.approval_timeout, max_tasks=args.max_tasks)
     srv = make_server(h, args.host, args.port, os.environ.get("AGENT_HARNESS_TOKEN"))
     host, port = srv.server_address[:2]
     print(f"harness on http://{'127.0.0.1' if host == '127.0.0.1' else host}:{port}/  "
           f"(workspace {ctx.workspace}, {perms.source}"
           f"{', token required' if os.environ.get('AGENT_HARNESS_TOKEN') else ''}) — Ctrl+C to stop", file=sys.stderr)
+    import signal
+
+    def _stop(signum, frame):
+        raise KeyboardInterrupt
+    try:
+        signal.signal(signal.SIGTERM, _stop)
+    except ValueError:  # not in the main thread
+        pass
     try:
         srv.serve_forever()
     except KeyboardInterrupt:
         pass
     finally:
-        h.cancel_all()
+        h.shutdown()
         srv.server_close()
     return 0
 
@@ -176,6 +184,7 @@ def main(argv: list[str] | None = None) -> int:
     p_srv.add_argument("--port", type=int, default=8765)
     p_srv.add_argument("--approval-timeout", type=float, default=300.0,
                        help="seconds to wait for an approval; no answer = deny (default 300)")
+    p_srv.add_argument("--max-tasks", type=int, default=4, help="conversations/tasks running at once (default 4)")
     for p in (p_chat, p_run, p_mem, p_sk, p_perm, p_aud, p_srv):
         common(p)
     args = ap.parse_args(argv)

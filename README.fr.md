@@ -164,34 +164,57 @@ python -m agent run "Relis src/ et docs/ : un sous-agent par dossier, puis fais 
 
 Les sous-agents partagent la mémoire du parent et héritent de ses confirmations `ask`.
 
-**Sous-agents en parallèle** (`--max-parallel`, 3 par défaut) : `spawn_agents` lance les enfants en
-même temps dans un pool de threads **seulement s'ils sont en lecture seule**, c'est-à-dire si
-`allowed_tools` est donné et que chaque outil listé est de catégorie `read` ou `network` et déjà décidé
-`allow` (ou `deny`) par votre politique, jamais `ask`. Un enfant qui peut écrire, exécuter, déléguer ou
-attendre une validation s'exécute à la suite des autres. (Plus simple et plus sûr que des copies isolées
-de l'espace de travail avec fusion : les enfants en parallèle ne peuvent pas écrire, il n'y a rien à
-fusionner.) Les réservations de budget, le compteur d'enfants et l'écriture de l'audit sont
-thread-safe. Dans l'exemple ci-dessus, les deux enfants tournent en parallèle car ils n'ont que
-`read_file` et `list_files`.
+**Sous-agents en parallèle** (`--max-parallel`, 3 par défaut). `spawn_agents` choisit un mode par lot :
 
-## Harness (serveur local, page web, validations)
+| enfants | mode |
+|---|---|
+| lecture seule (`allowed_tools` donné, seulement des outils `read`/`network` déjà `allow`/`deny`) | parallèle, espace de travail partagé |
+| peuvent écrire / exécuter sans jamais demander de validation — ou sous le harness | parallèle, **une copie isolée de l'espace de travail par enfant**, fusionnée à la fin |
+| peuvent demander une validation dans le terminal (`run`, `chat`) | à la suite, espace partagé (les questions ne se mélangent jamais) |
 
-`python -m agent serve` lance un harness local : les tâches tournent en arrière-plan dans des threads,
-sous-agents compris, et chaque `ask` part dans une **file de validation** au lieu du terminal.
+**Copies isolées** : chaque enfant travaille dans un dossier temporaire privé (droits 0700) contenant une
+copie de l'espace de travail du parent, sans `.git`, environnements virtuels, `node_modules`, caches,
+`build`/`dist`, liens symboliques ni fichiers de plus de 20 Mo (copie totale plafonnée à 200 Mo ;
+au-delà, le lot s'exécute à la suite). À la fin du lot, les changements sont fusionnés :
+- un fichier créé / modifié / supprimé par **un seul** enfant (ou de façon identique par plusieurs) → appliqué ;
+- un fichier modifié différemment par **plusieurs** enfants, ou modifié entre-temps dans le parent →
+  **conflit** : le fichier du parent n'est **pas** touché, la version de chaque enfant est écrite en
+  `<fichier>.conflict-<id agent>` (ex. `notes.md.conflict-root.2`) ; une suppression est seulement signalée ;
+- l'observation du parent liste ce qui a été appliqué et les conflits, et le journal d'audit reçoit une
+  ligne `event: merge`. Une tâche annulée ne fusionne rien. Les copies temporaires sont toujours supprimées.
+
+Les réservations de budget, le compteur d'enfants, les écritures mémoire et l'écriture de l'audit sont
+thread-safe. Dans l'exemple ci-dessus, les deux enfants tournent en parallèle dans l'espace partagé
+(outils en lecture seule).
+
+## Harness (serveur local, chat, validations)
+
+`python -m agent serve` lance un harness local : les conversations tournent en arrière-plan dans des
+threads, sous-agents compris, et chaque `ask` part dans une **file de validation** au lieu du terminal.
 Bibliothèque standard uniquement (`http.server` + `threading`).
 
 ```bash
 python -m agent serve --workspace ~/projet --port 8765          # puis ouvrir http://127.0.0.1:8765/
-AGENT_HARNESS_TOKEN=a-changer python -m agent serve --approval-timeout 120 --max-parallel 3
+AGENT_HARNESS_TOKEN=a-changer python -m agent serve --approval-timeout 120 --max-parallel 3 --max-tasks 4
 ```
 
-La page `/` permet de lancer une tâche, de suivre l'arbre des agents en direct (`root`, `root.1`,
-`root.1.2`…), de lire le journal des événements, d'annuler une tâche et d'approuver ou refuser les
-demandes en attente ; chaque demande affiche l'identifiant de l'agent qui l'a faite. API JSON :
+**Chat** (`/` ou `/chat`) : tapez un message pour lancer une conversation, ou pour continuer celle qui
+est sélectionnée (même agent, historique conservé). Les messages des agents, les étapes d'outils, les
+lancements de sous-agents, les fusions et les conflits s'affichent en bulles marquées de l'identifiant
+de l'agent (`root`, `root.1`, `root.1.2`…). Les validations en attente apparaissent en cartes (en haut à
+droite) avec l'agent, l'outil, la catégorie de risque et les arguments (secrets masqués) ; plusieurs
+peuvent attendre en même temps et chacune se traite séparément. La barre latérale liste les
+conversations, qui peuvent tourner en même temps (au plus `--max-tasks`, 4 par défaut ; les autres
+attendent en `queued`). `/dashboard` garde la vue compacte (arbre des agents + journal). Les pages
+interrogent le serveur chaque seconde.
+
+Comme le harness accepte plusieurs validations à la fois, **les sous-agents qui écrivent tournent en
+parallèle** avec lui, chacun dans sa copie isolée (voir plus haut).
 
 | | |
 |---|---|
-| `POST /tasks` `{"task": "..."}` | lance une tâche → `{"id": ...}` |
+| `POST /tasks` `{"task": "..."}` | lance une conversation → `{"id": ...}` |
+| `POST /tasks/{id}/messages` `{"text": "..."}` | la continue (409 pendant qu'un tour est en cours) |
 | `GET /tasks` · `GET /tasks/{id}` | liste · une tâche : statut, résultat, consommation, arbre des agents |
 | `GET /tasks/{id}/events?since=N` | événements (lignes d'audit, messages, validations) depuis N, à interroger régulièrement |
 | `POST /tasks/{id}/cancel` | arrêt au pas suivant ; ses validations en attente sont refusées |
@@ -210,8 +233,9 @@ curl -s -X POST localhost:8765/approvals/<id> -H 'Content-Type: application/json
   `Host` est vérifié en local.
 - Mêmes `permissions.yaml`, mémoire et `audit.jsonl` que la CLI (les lignes du harness portent un
   `task_id`). Le mode terminal (`run`, `chat`) ne change pas.
-- Ce n'est pas un serveur multi-utilisateur : pas de comptes, pas de TLS. Les tâches sont gardées en
-  mémoire et perdues à l'arrêt.
+- Ce n'est pas un serveur multi-utilisateur : pas de comptes, pas de TLS. Les conversations sont
+  gardées en mémoire et perdues à l'arrêt (Ctrl+C / SIGTERM annulent les tours en cours et suppriment
+  les copies temporaires).
 
 ## Tests
 

@@ -29,12 +29,12 @@ def server(ctx, tmp_path):
     """start(llm_factory, perms=None, timeout=5, token=None) -> (base_url, harness)."""
     started = []
 
-    def start(llm_factory, perms=None, timeout=5.0, token=None, budget=None):
+    def start(llm_factory, perms=None, timeout=5.0, token=None, budget=None, swarm=None, max_tasks=4):
         def factory(task, audit, confirm, cancel, on_event):
             return Agent(llm_factory(), default_registry(enable_web=False, enable_github=False),
                          perms or Permissions(), audit, ctx, budget or Budget(), confirm=confirm,
-                         on_event=on_event, swarm=SwarmConfig(), cancel=cancel)
-        h = Harness(factory, tmp_path / "state" / "audit.jsonl", approval_timeout=timeout)
+                         on_event=on_event, swarm=swarm or SwarmConfig(), cancel=cancel)
+        h = Harness(factory, tmp_path / "state" / "audit.jsonl", approval_timeout=timeout, max_tasks=max_tasks)
         srv = make_server(h, "127.0.0.1", 0, token, warn=lambda m: None)
         threading.Thread(target=srv.serve_forever, daemon=True).start()
         started.append((srv, h))
@@ -42,7 +42,7 @@ def server(ctx, tmp_path):
 
     yield start
     for srv, h in started:
-        h.cancel_all()
+        h.shutdown()
         srv.shutdown()
         srv.server_close()
 
@@ -90,7 +90,7 @@ def test_api_lifecycle_create_poll_result(server):
 
 def test_page_and_guards(server):
     base, _ = server(lambda: MockLLM(), token="s3cret")
-    with urllib.request.urlopen(base + "/") as r:
+    with urllib.request.urlopen(base + "/dashboard") as r:
         assert r.status == 200 and b"Pending approvals" in r.read()
     assert call(base, "GET", "/tasks")[0] == 401
     assert call(base, "GET", "/tasks", headers={"Authorization": "Bearer s3cret"})[0] == 200
@@ -187,3 +187,84 @@ def test_cancel_while_waiting_for_approval(server, ws):
     done = finished(base, tid)
     assert time.monotonic() - t0 < 5 and done["status"] == "cancelled" and not (ws / "c.txt").exists()
     assert [a["status"] for a in call(base, "GET", "/approvals?all=1")[1]["approvals"]] == ["cancelled"]
+
+
+# ---------------------------------------------------------------- chat page, parallel writers, limits
+
+def test_chat_page_and_approval_popup_roundtrip(server, ws):
+    base, _ = server(lambda: MockLLM([{"tool": "write_file", "args": {"path": "p.txt",
+                                                                       "content": "token ghp_abcdefghijklmnopqrstuvwx1234"}},
+                                      {"content": "first turn done"}, {"content": "second turn done"}]))
+    for path in ("/", "/chat"):
+        with urllib.request.urlopen(base + path) as r:
+            page = r.read()
+        assert b"New conversation" in page and b"popups" in page and b"Approve" in page
+    tid = call(base, "POST", "/tasks", {"task": "write p"})[1]["id"]
+    card = pending(base)[0]
+    assert (card["agent"], card["tool"], card["category"], card["task"]) == ("root", "write_file", "write", tid)
+    assert "ghp_abc" not in json.dumps(card["args"]) and "REDACTED" in json.dumps(card["args"])
+    assert call(base, "POST", f"/tasks/{tid}/messages", {"text": "too early"})[0] == 409   # busy
+    assert call(base, "POST", f"/approvals/{card['id']}", {"decision": "approve"})[1]["status"] == "approved"
+    assert finished(base, tid)["result"] == "first turn done" and (ws / "p.txt").exists()
+    # continue the same conversation: same agent, history kept
+    assert call(base, "POST", f"/tasks/{tid}/messages", {"text": "and now?"})[0] == 202
+    done = wait_for(lambda: (lambda t: t if t["result"] == "second turn done" else None)(call(base, "GET", f"/tasks/{tid}")[1]))
+    assert done["turns"] == 2 and done["status"] == "done"
+    users = [e["text"] for e in call(base, "GET", f"/tasks/{tid}/events")[1]["events"] if e["kind"] == "user"]
+    assert users == ["write p", "and now?"]
+
+
+def test_parallel_writing_children_under_harness_with_per_agent_approvals(server, ws, tmp_path):
+    from test_isolation import WriterLLM
+    llm = WriterLLM(3, conflict=False, delay=0.05)
+    base, _ = server(lambda: llm, budget=Budget(max_steps=60, max_tool_calls=60, max_tokens=10 ** 7),
+                     swarm=SwarmConfig(max_parallel=3))
+    tid = call(base, "POST", "/tasks", {"task": "root"})[1]["id"]
+    ap = pending(base)[0]
+    assert (ap["agent"], ap["tool"]) == ("root", "spawn_agents")
+    call(base, "POST", f"/approvals/{ap['id']}", {"decision": "approve"})
+    # the three writers wait for approval AT THE SAME TIME, each card labelled with its own agent id
+    cards = wait_for(lambda: (lambda a: a if len(a) == 3 else None)(call(base, "GET", "/approvals")[1]["approvals"]))
+    assert sorted(c["agent"] for c in cards) == ["root.1", "root.2", "root.3"]
+    assert all(c["tool"] == "write_file" for c in cards)
+    for c in cards:   # answered independently: deny the one writing w1.txt
+        call(base, "POST", f"/approvals/{c['id']}", {"decision": "deny" if c["args"]["path"] == "w1.txt" else "approve"})
+    done = finished(base, tid)
+    assert done["status"] == "done" and llm.peak == 3
+    assert (ws / "w0.txt").read_text() == "w0" and (ws / "w2.txt").read_text() == "w2" and not (ws / "w1.txt").exists()
+    assert sorted(a["id"] for a in done["agents"]) == ["root", "root.1", "root.2", "root.3"]
+    events = call(base, "GET", f"/tasks/{tid}/events")[1]["events"]
+    merge = [e for e in events if e.get("event") == "merge"][0]
+    assert sorted(a["path"] for a in merge["applied"]) == ["w0.txt", "w2.txt"] and merge["conflicts"] == []
+
+
+class GateLLM:
+    """Every call blocks until `gate` is set, then answers. Counts concurrent callers."""
+    def __init__(self, gate, stats):
+        self.gate, self.stats = gate, stats
+
+    def chat(self, messages, tools=None):
+        with self.stats["lock"]:
+            self.stats["now"] += 1
+            self.stats["peak"] = max(self.stats["peak"], self.stats["now"])
+        self.gate.wait(10)
+        with self.stats["lock"]:
+            self.stats["now"] -= 1
+        return LLMReply({"role": "assistant", "content": "ok"}, 1, 1)
+
+
+def test_max_concurrent_tasks(server):
+    gate, stats = threading.Event(), {"lock": threading.Lock(), "now": 0, "peak": 0}
+    base, h = server(lambda: GateLLM(gate, stats), max_tasks=2)
+    ids = [call(base, "POST", "/tasks", {"task": f"t{i}"})[1]["id"] for i in range(4)]
+    wait_for(lambda: stats["now"] == 2)
+    time.sleep(0.3)
+    statuses = sorted(call(base, "GET", f"/tasks/{i}")[1]["status"] for i in ids)
+    assert statuses == ["queued", "queued", "running", "running"] and h.running() == 2
+    # a queued task can be cancelled before it starts
+    queued = [i for i in ids if call(base, "GET", f"/tasks/{i}")[1]["status"] == "queued"]
+    call(base, "POST", f"/tasks/{queued[0]}/cancel", {})
+    assert finished(base, queued[0])["status"] == "cancelled"
+    gate.set()
+    assert sorted(finished(base, i)["status"] for i in ids) == ["cancelled", "done", "done", "done"]
+    assert stats["peak"] == 2

@@ -159,32 +159,54 @@ python -m agent run "Review src/ and docs/ in parallel: one sub-agent per folder
 
 Sub-agents share the parent's memory and inherit its `ask` confirmations.
 
-**Parallel children** (`--max-parallel`, default 3): `spawn_agents` runs children concurrently in a
-thread pool **only if they are read-only**, i.e. `allowed_tools` is given and every listed tool is in
-the `read` or `network` category and already decided `allow` (or `deny`) by your policy, never `ask`.
-A child that may write, execute, delegate or need an approval runs sequentially. (Simpler and safer
-than isolated workspace copies with merging: parallel children cannot write, so there is nothing to
-merge.) Budget reservations, the child counter and the audit writer are thread-safe. In the example
-above the two children run in parallel because they only have `read_file` and `list_files`.
+**Parallel children** (`--max-parallel`, default 3). `spawn_agents` picks one mode per batch:
 
-## Harness (local server, web page, approvals)
+| children | mode |
+|---|---|
+| read-only (`allowed_tools` given, only `read`/`network` tools already `allow`/`deny`) | parallel, shared workspace |
+| may write / execute, and no approval can be needed — or running under the harness | parallel, **one isolated copy of the workspace per child**, merged at the end |
+| may need an approval in the terminal (`run`, `chat`) | sequential, shared workspace (prompts never mix) |
 
-`python -m agent serve` starts a local harness: tasks run in background threads, sub-agents included,
-and every `ask` goes to an **approval queue** instead of the terminal. Standard library only
+**Isolated copies**: each child works in a private temp dir (mode 0700) holding a copy of the parent
+workspace, without `.git`, virtualenvs, `node_modules`, caches, `build`/`dist`, symlinks and files over
+20 MB (the whole copy is capped at 200 MB; above that the batch runs sequentially). When the batch
+ends, the changes are merged back:
+- a file created / modified / deleted by **one** child (or identically by several) → applied;
+- a file changed differently by **several** children, or changed in the parent meanwhile →
+  **conflict**: the parent file is **not** touched, each child's version is written as
+  `<file>.conflict-<agent id>` (e.g. `notes.md.conflict-root.2`); a deletion is only reported;
+- the parent's observation lists what was applied and the conflicts, and the audit log gets an
+  `event: merge` line. A cancelled task merges nothing. Temp copies are always removed.
+
+Budget reservations, the child counter, memory writes and the audit writer are thread-safe. In the
+example above the two children run in parallel in the shared workspace (read-only tools).
+
+## Harness (local server, chat, approvals)
+
+`python -m agent serve` starts a local harness: conversations run in background threads, sub-agents
+included, and every `ask` goes to an **approval queue** instead of the terminal. Standard library only
 (`http.server` + `threading`).
 
 ```bash
 python -m agent serve --workspace ~/project --port 8765          # then open http://127.0.0.1:8765/
-AGENT_HARNESS_TOKEN=change-me python -m agent serve --approval-timeout 120 --max-parallel 3
+AGENT_HARNESS_TOKEN=change-me python -m agent serve --approval-timeout 120 --max-parallel 3 --max-tasks 4
 ```
 
-The page at `/` lets you launch a task, follow the live agent tree (`root`, `root.1`, `root.1.2`…),
-read the event log, cancel a task, and approve or deny pending requests; each request shows the agent id
-that asked. JSON API:
+**Chat** (`/` or `/chat`): type a message to start a conversation, or to continue the selected one
+(same agent, history kept). Agent messages, tool steps, sub-agent launches, merges and conflicts appear
+as chat bubbles labelled with the agent id (`root`, `root.1`, `root.1.2`…). Pending approvals pop up as
+cards (top right) showing the agent id, the tool, the risk category and the arguments (secrets
+redacted); several can be pending at once and each is answered on its own. The sidebar lists the
+conversations, which can run at the same time (at most `--max-tasks`, default 4; the others wait as
+`queued`). `/dashboard` keeps the compact view (agent tree + event log). The pages poll every second.
+
+Because the harness can take several approvals at once, **writing sub-agents run in parallel** there,
+each in its isolated copy (see above).
 
 | | |
 |---|---|
-| `POST /tasks` `{"task": "..."}` | start a task → `{"id": ...}` |
+| `POST /tasks` `{"task": "..."}` | start a conversation → `{"id": ...}` |
+| `POST /tasks/{id}/messages` `{"text": "..."}` | continue it (409 while a turn is running) |
 | `GET /tasks` · `GET /tasks/{id}` | list · one task: status, result, usage, agent tree |
 | `GET /tasks/{id}/events?since=N` | events (audit lines, messages, approvals) from N, for polling |
 | `POST /tasks/{id}/cancel` | stop at the next step; its pending approvals are denied |
@@ -202,7 +224,8 @@ curl -s -X POST localhost:8765/approvals/<id> -H 'Content-Type: application/json
   warning. POSTs must be JSON and same-origin, and the `Host` header is checked on localhost.
 - Same `permissions.yaml`, memory and `audit.jsonl` as the CLI (harness lines carry a `task_id`).
   Terminal mode (`run`, `chat`) is unchanged.
-- Not a multi-user server: no accounts, no TLS. Tasks live in memory and are lost when it stops.
+- Not a multi-user server: no accounts, no TLS. Conversations live in memory and are lost when it
+  stops (Ctrl+C / SIGTERM cancel running turns and remove temp copies).
 
 ## Tests
 

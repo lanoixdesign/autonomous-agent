@@ -62,14 +62,27 @@ def test_parallel_children_overlap_and_respect_cap(make_agent):
     assert llm.peak == 2
 
 
-def test_writing_or_asking_children_stay_sequential(make_agent):
-    # may write -> sequential
-    perms = Permissions.from_dict({"defaults": {"delegate": "allow", "write": "allow"}})
-    assert run_fanout(make_agent, 3, ["read_file", "write_file"], 3, perms=perms)[0].peak == 1
-    # no allowed_tools = all the parent's tools -> sequential
+def test_terminal_mode_keeps_approval_needing_children_sequential(make_agent):
+    # write is "ask" and the confirm callback is a terminal-style function -> sequential
+    assert run_fanout(make_agent, 3, ["read_file", "write_file"], 3, confirm=lambda *a: False)[0].peak == 1
+    # no allowed_tools = all the parent's tools (some are "ask") -> sequential
     assert run_fanout(make_agent, 3, None, 3)[0].peak == 1
     # max_parallel=1 -> sequential
     assert run_fanout(make_agent, 3, ["read_file"], 1)[0].peak == 1
+
+
+def test_writing_children_run_in_parallel_when_no_prompt_can_mix(make_agent):
+    # writers that never need an approval: parallel, each in an isolated copy
+    perms = Permissions.from_dict({"defaults": {"delegate": "allow", "write": "allow"}})
+    assert run_fanout(make_agent, 3, ["read_file", "write_file"], 3, perms=perms)[0].peak == 3
+
+    # writers that need approval, with a confirm that accepts concurrent approvals (like the harness)
+    class Concurrent:
+        concurrent = True
+
+        def __call__(self, *a):
+            return True
+    assert run_fanout(make_agent, 3, ["read_file", "write_file"], 3, confirm=Concurrent())[0].peak == 3
 
 
 def test_parallel_safe_rules(make_agent):

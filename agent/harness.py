@@ -2,14 +2,18 @@
 JSON API (stdlib http.server) and a one-page UI, with an approval queue instead of terminal prompts.
 
 API (JSON):
-  POST /tasks                 {"task": "..."}            -> 201 {"id": ...}
+  POST /tasks                 {"task": "..."}            -> 201 {"id": ...}   (a task is a conversation)
+  POST /tasks/{id}/messages   {"text": "..."}            -> continue the conversation (409 if busy)
   GET  /tasks                                            -> {"tasks": [...]}
   GET  /tasks/{id}            task + agent tree (root, root.1, ...) + status + result
   GET  /tasks/{id}/events?since=N                        -> {"events": [...], "next": M}  (polling)
   POST /tasks/{id}/cancel
   GET  /approvals[?all=1]     pending (or all) approval requests, each with the requesting agent id
   POST /approvals/{id}        {"decision": "approve" | "deny"}
-  GET  /                      the HTML page
+  GET  /                      chat page (approvals pop up as cards)
+  GET  /dashboard             compact dashboard page
+
+At most `max_tasks` turns run at once (default 4); the others wait in status "queued".
 
 Approvals: each `ask` decision becomes a pending approval; the agent thread waits until someone
 approves/denies it, the task is cancelled, or `approval_timeout` seconds pass. No answer = deny.
@@ -33,8 +37,10 @@ from pathlib import Path
 from typing import Any, Callable
 from urllib.parse import parse_qs, urlparse
 
-from .audit import AuditLog
+from .audit import AuditLog, _short
 from .harness_page import PAGE
+from .harness_chat import CHAT_PAGE
+from .redact import redact
 
 LOCAL_HOSTS = ("127.0.0.1", "localhost", "::1")
 MAX_BODY = 1_000_000
@@ -50,7 +56,7 @@ def _now() -> str:
 class Approval:
     def __init__(self, id: str, task_id: str, agent: str, tool: str, category: str, args: Any, reason: str):
         self.id, self.task_id, self.agent, self.tool, self.category = id, task_id, agent, tool, category
-        self.args, self.reason = args, reason
+        self.args, self.reason = _short(redact(args), 400), reason   # shown in the UI: redacted, short
         self.created, self.decided = _now(), None
         self.status = "pending"   # pending | approved | denied | expired | cancelled
         self.event = threading.Event()
@@ -108,7 +114,10 @@ class ApprovalQueue:
 
 
 class HarnessConfirm:
-    """`confirm` callback for agents run by the harness; `with_agent` receives the asking agent id."""
+    """`confirm` callback for agents run by the harness; `with_agent` receives the asking agent id.
+    `concurrent = True`: several agents may wait for approval at once (parallel sub-agents)."""
+
+    concurrent = True
 
     def __init__(self, queue: ApprovalQueue, task: "Task"):
         self.queue, self.task = queue, task
@@ -136,7 +145,21 @@ class Task:
         self.agents: dict[str, dict] = {"root": {"id": "root", "parent": None, "depth": 0, "task": text,
                                                  "status": "queued", "answer": None}}
         self.events: list[dict] = []
+        self.turns = 0
+        self.agent: Any = None          # created on the first turn, kept for the conversation
         self._lock = threading.Lock()
+
+    def new_turn(self, text: str) -> None:
+        with self._lock:
+            self.turns += 1
+            self.status = "queued"
+            self.finished = None
+            self.result = self.stop_reason = None
+            self.agents = {"root": {"id": "root", "parent": None, "depth": 0, "task": text,
+                                    "status": "queued", "answer": None}}
+        self.cancel.clear()
+        self.add_event("user", text=text, turn=self.turns)
+        self.add_event("status", status="queued")
 
     def add_event(self, kind: str, **data: Any) -> None:
         with self._lock:
@@ -165,7 +188,8 @@ class Task:
     def snapshot(self, full: bool = True) -> dict:
         with self._lock:
             d = {"id": self.id, "task": self.text, "status": self.status, "created": self.created,
-                 "finished": self.finished, "stop_reason": self.stop_reason, "result": self.result}
+                 "finished": self.finished, "stop_reason": self.stop_reason, "result": self.result,
+                 "turns": self.turns}
             if full:
                 d["usage"] = dict(self.usage)
                 d["agents"] = [dict(a) for a in self.agents.values()]
@@ -194,11 +218,18 @@ class TaskAudit(AuditLog):
 AgentFactory = Callable[[Task, AuditLog, Any, threading.Event, Callable[[str, dict], None]], Any]
 
 
+class Busy(Exception):
+    pass
+
+
 class Harness:
-    def __init__(self, agent_factory: AgentFactory, audit_path: str | Path, approval_timeout: float = 300.0):
+    def __init__(self, agent_factory: AgentFactory, audit_path: str | Path, approval_timeout: float = 300.0,
+                 max_tasks: int = 4):
         self.factory = agent_factory
         self.audit_path = Path(audit_path)
         self.approvals = ApprovalQueue(approval_timeout)
+        self.max_tasks = max(1, int(max_tasks))
+        self._slots = threading.BoundedSemaphore(self.max_tasks)   # concurrent running turns
         self._tasks: dict[str, Task] = {}
         self._lock = threading.Lock()
 
@@ -206,11 +237,30 @@ class Harness:
         task = Task(text)
         with self._lock:
             self._tasks[task.id] = task
-        task.add_event("status", status="queued")
-        threading.Thread(target=self._run, args=(task,), name=f"task-{task.id}", daemon=True).start()
+        self._start(task, text)
         return task
 
-    def _run(self, task: Task) -> None:
+    def send(self, task_id: str, text: str) -> Task:
+        """Continue a conversation with a new user message (same agent, history kept)."""
+        task = self.get(task_id)
+        if task is None:
+            raise KeyError(task_id)
+        with task._lock:
+            if task.status not in TERMINAL:
+                raise Busy(f"task is {task.status}")
+            task.status = "queued"   # reserve: a concurrent send now gets Busy
+        self._start(task, text)
+        return task
+
+    def _start(self, task: Task, text: str) -> None:
+        task.new_turn(text)
+        threading.Thread(target=self._run, args=(task, text), name=f"task-{task.id}", daemon=True).start()
+
+    def running(self) -> int:
+        with self._lock:
+            return sum(1 for t in self._tasks.values() if t.status == "running")
+
+    def _run(self, task: Task, text: str) -> None:
         def on_event(kind: str, data: dict) -> None:
             if kind == "assistant":
                 task.add_event("message", agent=data.get("agent", "root"), content=data.get("content"),
@@ -218,21 +268,32 @@ class Harness:
             elif kind == "stop":
                 task.add_event("stop", agent=data.get("agent", "root"), reason=data.get("reason"))
 
-        task.set_status("running")
-        task.add_event("status", status="running")
+        # wait for a free slot (max_tasks), unless cancelled while queued
+        while not self._slots.acquire(timeout=0.1):
+            if task.cancel.is_set():
+                task.result, task.stop_reason = "Cancelled while queued.", "cancelled"
+                task.set_status("cancelled")
+                task.add_event("status", status="cancelled")
+                return
         try:
-            agent = self.factory(task, TaskAudit(self.audit_path, task), HarnessConfirm(self.approvals, task),
-                                 task.cancel, on_event)
-            res = agent.run(task.text)
-            task.result, task.stop_reason = res.answer, res.stop_reason
-            task.usage = {"steps": res.steps, "tool_calls": res.tool_calls, "tokens": res.tokens}
-            status = {"final": "done", "cancelled": "cancelled"}.get(res.stop_reason, "stopped")
-        except Exception as e:  # noqa: BLE001 - a task failure must not kill the server
-            task.result, task.stop_reason, status = f"{type(e).__name__}: {e}", "error", "error"
-        with task._lock:
-            task.agents["root"]["answer"] = task.result
-        task.set_status(status)
-        task.add_event("status", status=status)
+            task.set_status("running")
+            task.add_event("status", status="running")
+            try:
+                if task.agent is None:
+                    task.agent = self.factory(task, TaskAudit(self.audit_path, task),
+                                              HarnessConfirm(self.approvals, task), task.cancel, on_event)
+                res = task.agent.run(text)
+                task.result, task.stop_reason = res.answer, res.stop_reason
+                task.usage = {"steps": res.steps, "tool_calls": res.tool_calls, "tokens": res.tokens}
+                status = {"final": "done", "cancelled": "cancelled"}.get(res.stop_reason, "stopped")
+            except Exception as e:  # noqa: BLE001 - a task failure must not kill the server
+                task.result, task.stop_reason, status = f"{type(e).__name__}: {e}", "error", "error"
+            with task._lock:
+                task.agents["root"]["answer"] = task.result
+            task.set_status(status)
+            task.add_event("status", status=status)
+        finally:
+            self._slots.release()
 
     def get(self, task_id: str) -> Task | None:
         with self._lock:
@@ -256,9 +317,20 @@ class Harness:
         for t in tasks:
             t.cancel.set()
 
+    def shutdown(self, wait: float = 10.0) -> None:
+        """Cancel everything and give running turns a moment to stop (temp workspace copies are removed)."""
+        self.cancel_all()
+        end = time.monotonic() + wait
+        while time.monotonic() < end:
+            with self._lock:
+                busy = any(t.status in ("running", "cancelling") for t in self._tasks.values())
+            if not busy:
+                return
+            time.sleep(0.05)
+
 
 # ---------------------------------------------------------------------------- HTTP
-TASK_RE = re.compile(r"^/tasks/([0-9a-f]+)(/events|/cancel)?$")
+TASK_RE = re.compile(r"^/tasks/([0-9a-f]+)(/events|/cancel|/messages)?$")
 APPROVAL_RE = re.compile(r"^/approvals/([0-9a-f]+)$")
 
 
@@ -328,9 +400,10 @@ def make_handler(h: Harness, token: str | None, local_only: bool):
         def do_GET(self) -> None:  # noqa: N802
             u = urlparse(self.path)
             path, q = u.path.rstrip("/") or "/", parse_qs(u.query)
-            if path == "/":
+            if path in ("/", "/chat", "/dashboard"):
+                page = PAGE if path == "/dashboard" else CHAT_PAGE
                 if self._host_ok():
-                    self._send(200, body=PAGE.encode("utf-8"), ctype="text/html; charset=utf-8")
+                    self._send(200, body=page.encode("utf-8"), ctype="text/html; charset=utf-8")
                 else:
                     self._send(403, {"error": "bad Host header"})
                 return
@@ -341,7 +414,7 @@ def make_handler(h: Harness, token: str | None, local_only: bool):
             if path == "/approvals":
                 return self._send(200, {"approvals": h.approvals.list(pending_only="all" not in q)})
             m = TASK_RE.match(path)
-            if m and m.group(2) != "/cancel":
+            if m and m.group(2) in (None, "/events"):
                 task = h.get(m.group(1))
                 if task is None:
                     return self._send(404, {"error": "unknown task"})
@@ -370,6 +443,18 @@ def make_handler(h: Harness, token: str | None, local_only: bool):
                     return self._send(400, {"error": "task too long"})
                 return self._send(201, h.submit(text.strip()).snapshot())
             m = TASK_RE.match(path)
+            if m and m.group(2) == "/messages":
+                text = data.get("text")
+                if not isinstance(text, str) or not text.strip():
+                    return self._send(400, {"error": "'text' (non-empty string) is required"})
+                if len(text) > MAX_TASK_CHARS:
+                    return self._send(400, {"error": "message too long"})
+                try:
+                    return self._send(202, h.send(m.group(1), text.strip()).snapshot(full=False))
+                except KeyError:
+                    return self._send(404, {"error": "unknown task"})
+                except Busy as e:
+                    return self._send(409, {"error": str(e)})
             if m and m.group(2) == "/cancel":
                 task = h.cancel(m.group(1))
                 if task is None:

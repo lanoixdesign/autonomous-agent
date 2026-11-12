@@ -1,4 +1,4 @@
-"""The harness single-page UI (served at /). Plain HTML + JS, no external resources."""
+"""The harness compact dashboard (served at /dashboard; the chat page is harness_chat.py). Plain HTML + JS, no external resources."""
 
 PAGE = r"""<!doctype html>
 <html lang="en"><head><meta charset="utf-8">
@@ -24,7 +24,7 @@ PAGE = r"""<!doctype html>
  .ap{border:1px solid #f0c36d;background:#fffaf0;border-radius:6px;padding:6px;margin-bottom:8px}
  .ap .who{font-weight:600} .muted{color:#8a919c}
 </style></head><body>
-<header><h1>autonomous-agent · harness</h1>
+<header><h1>autonomous-agent · harness <a href="/" style="color:#9fb4ff;font-size:12px">chat</a></h1>
  <label>token <input id="token" type="password" placeholder="AGENT_HARNESS_TOKEN (if set)"></label></header>
 <main>
  <section><h2>New task</h2>
