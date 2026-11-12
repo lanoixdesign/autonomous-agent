@@ -209,13 +209,18 @@ def run_child(parent: "Agent", task: str, max_steps: int | None = None,
                         budget={"max_steps": budget.max_steps, "max_tool_calls": budget.max_tool_calls,
                                 "max_tokens": budget.max_tokens})
     on_event = parent.on_event
+    kid_idc, idc_slice = (parent.idc.child(child_id, share) if getattr(parent, "idc", None) is not None
+                          else (None, 0.0))
     child = Agent(parent.llm, base, perms, parent.audit, ctx, budget, confirm=parent.confirm,
                   on_event=lambda kind, data: on_event(kind, {**data, "agent": child_id}),
                   stop_rule=parent.stop_rule, swarm=cfg, depth=depth, agent_id=child_id,
-                  swarm_state=shared, allow_spawn=bool(allowed & set(SPAWN_TOOLS)), cancel=parent.cancel)
+                  swarm_state=shared, allow_spawn=bool(allowed & set(SPAWN_TOOLS)), cancel=parent.cancel,
+                  idc=kid_idc)
     try:
         res = child.run(task)
     finally:
+        if kid_idc is not None:
+            parent.idc.settle_child(kid_idc, idc_slice)
         # Release the reservation and deduct the child's real usage from the parent's budget.
         cs = child.state
         with parent.lock:

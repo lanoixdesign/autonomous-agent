@@ -57,6 +57,10 @@ ENV_TEMPLATE = """# autonomous-agent — API keys / clés d'API
 # Several keys with limits: copy providers.example.yaml to providers.yaml in this folder.
 # Plusieurs clés avec limites : copiez providers.example.yaml en providers.yaml dans ce dossier.
 
+# IDC mode (finite deliberation, append-only commitments) on by default for new conversations
+# Mode IDC (délibération finie, engagements en ajout seul) activé par défaut pour les nouvelles conversations
+# AGENT_IDC=1
+
 # Language of this console (en | fr) / langue de cette console
 # AGENT_LANG=fr
 """

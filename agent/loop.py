@@ -12,6 +12,13 @@ ONE of these is true, and never resumes on its own:
   - the `cancel` event is set (harness)                  -> "cancelled"
 Sub-agents (see swarm.py) run inside this budget: their usage is deducted from the parent's.
 You can pass your own `stop_rule(state) -> str | None` to add a criterion.
+
+IDC mode (agent/idc.py, optional, off unless an `idc` controller is given) adds a vitality budget,
+append-only commitments (the `idc_commit` tool) and a forced collapse:
+  - vitality at/below the threshold, or N tool calls without new information -> one last model call
+    WITHOUT tools, whose answer is final                                       -> "idc_collapse"
+  - vitality at 0 (or the collapse call fails) -> last supported committed answer, else an explicit
+    "I don't know" with what is known                                          -> "idc_exhausted"
 """
 from __future__ import annotations
 
@@ -21,6 +28,7 @@ import time
 from dataclasses import dataclass, field
 from typing import Any, Callable
 
+from . import idc as idc_mod
 from .audit import AuditLog
 from .llm import LLMError
 from .permissions import Permissions
@@ -88,7 +96,7 @@ class Agent:
                  stop_rule: Callable[[RunState], str | None] | None = None,
                  swarm: SwarmConfig | None = None, depth: int = 0, agent_id: str = "root",
                  swarm_state: SwarmState | None = None, allow_spawn: bool = True,
-                 cancel: threading.Event | None = None):
+                 cancel: threading.Event | None = None, idc: "idc_mod.IDC | None" = None):
         self.llm, self.registry, self.permissions, self.audit = llm, registry, permissions, audit
         self.ctx, self.budget, self.confirm = ctx, budget or Budget(), confirm
         self.on_event = on_event or (lambda kind, data: None)
@@ -100,6 +108,9 @@ class Agent:
         self.state: RunState | None = None
         self.lock = threading.Lock()      # guards self.state when sub-agents run in threads
         self.cancel = cancel
+        self.idc = idc
+        if idc is not None:
+            idc.on_change = lambda data: self.on_event("idc", data)
         if swarm and allow_spawn and depth < swarm.max_depth:
             from . import swarm as swarm_mod
             self.registry = Registry(dict(registry.tools))
@@ -117,7 +128,20 @@ class Agent:
         return SYSTEM_PROMPT.format(
             swarm=swarm,
             skills=f"\nAvailable skills (load_skill to read one):\n{idx}\n" if idx else "",
-            memory=f"\nWhat you remember (memory):\n{mem}\n" if mem else "")
+            memory=f"\nWhat you remember (memory):\n{mem}\n" if mem else "") + (
+            idc_mod.system_rules(self.idc) if self.idc is not None else "")
+
+    def set_idc(self, ctrl: "idc_mod.IDC | None") -> None:
+        """Turn IDC on (a controller) or off (None) between turns; the system prompt follows."""
+        self.idc = ctrl
+        if ctrl is not None:
+            ctrl.on_change = lambda data: self.on_event("idc", data)
+        if self.messages and self.messages[0].get("role") == "system":
+            self.messages[0] = {"role": "system", "content": self.system_prompt()}
+
+    def tool_schemas(self) -> list[dict]:
+        schemas = self.registry.schemas()
+        return schemas + [idc_mod.tool_schema()] if self.idc is not None else schemas
 
     # ------------------------------------------------------------------
     def run(self, task: str) -> RunResult:
@@ -127,6 +151,9 @@ class Agent:
         self.state = st
         if self.depth == 0 and self.swarm_state is not None:
             self.swarm_state.reset()   # max_children counts per root run
+        ctrl = self.idc
+        if ctrl is not None and self.depth == 0:
+            ctrl.start_turn(task)      # sub-agents get their slice (and evidence) from the parent instead
         b = self.budget
         while True:
             reason = None
@@ -142,29 +169,87 @@ class Agent:
                 reason = self.stop_rule(st)
             if reason:
                 return self._stop(st, reason, f"Stopped: {reason} reached before a final answer.")
+            if ctrl is not None:
+                why = ctrl.should_collapse()
+                if why:
+                    return self._collapse(st, why)
             try:
-                reply = self.llm.chat(self.messages, self.registry.schemas())
+                reply = self.llm.chat(self.messages, self.tool_schemas())
             except LLMError as e:
                 return self._stop(st, "llm_error", f"LLM error: {e}")
             st.steps += 1
             st.tokens += reply.total_tokens
             st.cost += getattr(reply, "cost", 0.0) or 0.0
+            if ctrl is not None:
+                ctrl.on_step(reply.total_tokens)
             msg = reply.message
             self.messages.append(msg)
             if msg.get("content"):
                 self.on_event("assistant", {"content": msg["content"], "final": not msg.get("tool_calls")})
             calls = msg.get("tool_calls") or []
             if not calls:
+                if ctrl is not None:
+                    ctrl.record_final(msg.get("content") or "")
                 return RunResult(msg.get("content") or "", "final", st.steps, st.tool_calls, st.tokens, self.messages,
                                  round(st.cost, 8))
             for call in calls:
                 sig = call["function"]["name"] + call["function"]["arguments"]
                 st.last_calls = (st.last_calls + [sig])[-b.max_repeats:]
-                observation = self._execute(call)
+                if ctrl is not None and call["function"]["name"] == idc_mod.TOOL_NAME:
+                    observation = self._commit(call)
+                else:
+                    observation = self._execute(call)
+                    if ctrl is not None:
+                        ctrl.on_tool(observation)
                 st.tool_calls += 1
                 self.messages.append({"role": "tool", "tool_call_id": call["id"], "content": observation})
             if len(st.last_calls) == b.max_repeats and len(set(st.last_calls)) == 1:
                 return self._stop(st, "no_progress", "Stopped: the same tool call was repeated without progress.")
+
+    def _collapse(self, st: RunState, why: str) -> RunResult:
+        """IDC stopping rule: one last call WITHOUT tools (unless vitality is gone), else the fallback."""
+        ctrl = self.idc
+        ctrl.mark_collapse(why)
+        self._audit(event="idc_collapse", why=why, vitality=ctrl.vitality)
+        if why != "exhausted":
+            self.messages.append({"role": "user", "content": idc_mod.collapse_message(ctrl, why)})
+            try:
+                reply = self.llm.chat(self.messages, [])
+            except LLMError:
+                reply = None
+            if reply is not None:
+                st.steps += 1
+                st.tokens += reply.total_tokens
+                st.cost += getattr(reply, "cost", 0.0) or 0.0
+                ctrl.on_step(reply.total_tokens)
+                msg = reply.message
+                text = (msg.get("content") or "").strip()
+                if text and not msg.get("tool_calls"):
+                    self.messages.append({"role": "assistant", "content": text})
+                    self.on_event("assistant", {"content": text, "final": True})
+                    ctrl.record_final(text)
+                    self.on_event("stop", {"reason": "idc_collapse"})
+                    return RunResult(text, "idc_collapse", st.steps, st.tool_calls, st.tokens, self.messages,
+                                     round(st.cost, 8))
+        text = ctrl.fallback_answer()
+        self.on_event("assistant", {"content": text, "final": True})
+        ctrl.record_final(text)
+        return self._stop(st, "idc_exhausted", text)
+
+    def _commit(self, call: dict) -> str:
+        """idc_commit: handled by the controller (append-only log), audited, never a world action."""
+        raw = call["function"].get("arguments") or "{}"
+        try:
+            args = json.loads(raw) if isinstance(raw, str) else dict(raw)
+            if not isinstance(args, dict):
+                raise ValueError("arguments must be a JSON object")
+            entry = self.idc.commit(args)
+        except (ValueError, TypeError, idc_mod.CommitError) as e:
+            self._audit(tool=idc_mod.TOOL_NAME, category="idc", args=raw, decision="invalid", ok=False, error=str(e))
+            return f"ERROR: {e}"
+        self._audit(event="idc_commit", commitment={k: v for k, v in entry.items() if k != "agent"})
+        return (f"committed {entry['id']} ({entry['kind']}, {'supported' if entry['supported'] else 'UNSUPPORTED'}, "
+                f"cost {entry['cost']:g}, vitality left {self.idc.vitality:g}). This entry can never be edited.")
 
     def _stop(self, st: RunState, reason: str, text: str) -> RunResult:
         self.on_event("stop", {"reason": reason})

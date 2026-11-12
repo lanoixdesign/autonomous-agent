@@ -74,6 +74,12 @@ def printer(kind: str, data: dict) -> None:
         print(f"  {who}<- {data['content'][:300]}", file=sys.stderr)
     elif kind == "stop":
         print(f"  {who}[stop: {data['reason']}]", file=sys.stderr)
+    elif kind == "idc" and data.get("commit"):
+        c = data["commit"]
+        print(f"  {who}[idc] {c['id']} {c['kind']} (-{c['cost']:g}, vitality {data['vitality']:g}): {c['text'][:200]}",
+              file=sys.stderr)
+    elif kind == "idc" and data.get("collapse"):
+        print(f"  {who}[idc] collapse: {data['collapse']} (vitality {data['vitality']:g})", file=sys.stderr)
 
 
 def parts(args) -> tuple[Permissions, ToolContext, Path]:
@@ -120,7 +126,9 @@ def make_router(args, ws: Path, state: Path):
     return KeyRouter.from_file(path, state / "usage.json", AuditLog(state / "audit.jsonl"))
 
 
-def new_agent(args, perms: Permissions, ctx: ToolContext, audit: AuditLog, confirm, on_event, cancel=None) -> Agent:
+def new_agent(args, perms: Permissions, ctx: ToolContext, audit: AuditLog, confirm, on_event, cancel=None,
+              idc: bool | None = None) -> Agent:
+    """`idc`: None = follow the configuration (env, file, CLI); True/False = force (harness, per conversation)."""
     router = getattr(args, "_router", None)
     if router is not None:
         from .llm import RoutedLLM
@@ -131,8 +139,23 @@ def new_agent(args, perms: Permissions, ctx: ToolContext, audit: AuditLog, confi
     budget = Budget(max_steps=args.max_steps, max_tool_calls=args.max_tool_calls, max_tokens=args.max_tokens)
     swarm = (SwarmConfig(max_depth=args.max_depth, max_children=args.max_children,
                          max_parallel=max(1, args.max_parallel)) if args.max_depth > 0 else None)
+    ctrl = None
+    cfg = idc_config(args, perms)
+    if cfg.enabled if idc is None else idc:
+        from .idc import IDC
+        ctrl = IDC(cfg, lang=args.lang)
     return Agent(llm, registry, perms, audit, ctx, budget, confirm=confirm, on_event=on_event,
-                 swarm=swarm, cancel=cancel)
+                 swarm=swarm, cancel=cancel, idc=ctrl)
+
+
+def idc_config(args, perms: Permissions):
+    """IDC settings: defaults < `idc:` in the permissions file < AGENT_IDC* env < --idc/--no-idc, --idc-vitality."""
+    from .idc import IDCConfig
+    cfg = IDCConfig.from_sources(perms.idc, enabled=getattr(args, "idc", None))
+    if getattr(args, "idc_vitality", None) is not None:
+        cfg.vitality = args.idc_vitality
+        cfg.validate()
+    return cfg
 
 
 def build(args) -> tuple[Agent, Permissions]:
@@ -150,7 +173,9 @@ def serve(args) -> int:
         make_llm(args.provider, args.model)   # fail fast on a missing key
 
     def factory(task, audit, confirm, cancel, on_event):
-        return new_agent(args, perms, ctx, audit, confirm, on_event, cancel)
+        return new_agent(args, perms, ctx, audit, confirm, on_event, cancel, idc=False)   # the harness sets IDC
+
+    idc_cfg = idc_config(args, perms)
 
     store = None
     if not args.no_persist:
@@ -158,7 +183,8 @@ def serve(args) -> int:
         store = Store(Path(args.db).resolve() if args.db else state / "harness.sqlite3")
     h = Harness(factory, state / "audit.jsonl", approval_timeout=args.approval_timeout, max_tasks=args.max_tasks,
                 workspace=ctx.workspace, max_upload_mb=args.max_upload_mb, max_message_mb=args.max_message_mb,
-                key_router=args._router, store=store, backend=backend_info(args))
+                key_router=args._router, store=store, backend=backend_info(args), idc_config=idc_cfg,
+                lang=args.lang)
     srv = make_server(h, args.host, args.port, os.environ.get("AGENT_HARNESS_TOKEN"))
     host, port = srv.server_address[:2]
     print(f"harness on http://{'127.0.0.1' if host == '127.0.0.1' else host}:{port}/  "
@@ -217,6 +243,11 @@ def common(p: argparse.ArgumentParser) -> None:
     p.add_argument("--yolo", action="store_true", help="turn 'ask' into 'allow' EXCEPT for send and spend")
     p.add_argument("--offline", action="store_true", help="do not register network tools (web, GitHub)")
     p.add_argument("--quiet", "-q", action="store_true")
+    g = p.add_mutually_exclusive_group()
+    g.add_argument("--idc", dest="idc", action="store_true", default=None,
+                   help="IDC mode: vitality budget, append-only commitments, forced collapse (default: AGENT_IDC or off)")
+    g.add_argument("--no-idc", dest="idc", action="store_false", help="turn IDC mode off")
+    p.add_argument("--idc-vitality", type=float, default=None, help="IDC: initial vitality per user message")
     p.add_argument("--lang", default=None, choices=i18n.LANGS,
                    help="language of terminal prompts/messages: en|fr (default: AGENT_LANG, else en)")
 
@@ -294,7 +325,10 @@ def main(argv: list[str] | None = None) -> int:
         res = agent.run(args.task)
         print(res.answer)
         print(f"[{res.stop_reason}] steps={res.steps} tool_calls={res.tool_calls} tokens={res.tokens}", file=sys.stderr)
-        return 0 if res.stop_reason == "final" else 1
+        if agent.idc is not None:
+            v = agent.idc.snapshot()
+            print(f"[idc] vitality {v['vitality']:g}/{v['max']:g}, commitments {v['commitments']}", file=sys.stderr)
+        return 0 if res.stop_reason in ("final", "idc_collapse") else 1
     if args.cmd == "chat":
         print(f"autonomous-agent {__version__} — model: {getattr(agent.llm, 'model', '?')} — /exit to quit, /perms, /memory", file=sys.stderr)
         print(perms.summary(), file=sys.stderr)

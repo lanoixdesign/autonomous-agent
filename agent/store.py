@@ -11,12 +11,13 @@ import threading
 from pathlib import Path
 from typing import Any
 
-TABLES = ("tasks", "schedules", "rules")
+TABLES = ("tasks", "schedules", "rules", "settings")
 
 SCHEMA = """
 CREATE TABLE IF NOT EXISTS tasks     (id TEXT PRIMARY KEY, data TEXT NOT NULL);
 CREATE TABLE IF NOT EXISTS schedules (id TEXT PRIMARY KEY, data TEXT NOT NULL);
 CREATE TABLE IF NOT EXISTS rules     (id TEXT PRIMARY KEY, data TEXT NOT NULL);
+CREATE TABLE IF NOT EXISTS settings  (id TEXT PRIMARY KEY, data TEXT NOT NULL);
 CREATE TABLE IF NOT EXISTS events    (task_id TEXT NOT NULL, seq INTEGER NOT NULL, data TEXT NOT NULL,
                                       PRIMARY KEY (task_id, seq));
 """

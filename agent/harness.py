@@ -56,6 +56,7 @@ from .harness_page import PAGE
 from .harness_chat import CHAT_PAGE
 from .redact import redact
 from . import __version__, export, i18n, schedule, uploads
+from .idc import IDC, IDCConfig
 
 LOCAL_HOSTS = ("127.0.0.1", "localhost", "::1")
 _I18N_DATA = json.dumps(i18n.ui_strings(), ensure_ascii=False).replace("</", "<\\/")
@@ -218,6 +219,9 @@ class Task:
         self.turns = 0
         self.agent: Any = None          # created on the first turn, kept for the conversation
         self.history: list[dict] | None = None   # restored messages (after a restart), given to the new agent
+        self.idc = False                # IDC mode for this conversation (set at creation, can be toggled)
+        self.idc_ctrl: Any = None       # idc.IDC controller, kept while the conversation lives
+        self.idc_saved: list[dict] = []  # commitments restored from the store (after a restart)
         self.store = store
         self._lock = threading.Condition(threading.RLock())   # also wakes SSE streams on new events
 
@@ -229,7 +233,11 @@ class Task:
                            "created": self.created, "finished": self.finished, "result": self.result,
                            "stop_reason": self.stop_reason, "usage": self.usage, "total": self.total,
                            "agent_usage": self.agent_usage, "agents": list(self.agents.values()),
-                           "turns": self.turns, "history": history})
+                           "turns": self.turns, "history": history, "idc": self.idc,
+                           "idc_commitments": self.commitments()})
+
+    def commitments(self) -> list[dict]:
+        return self.idc_ctrl.commitments if self.idc_ctrl is not None else list(self.idc_saved)
 
     def save(self) -> None:
         if self.store is not None:
@@ -244,6 +252,8 @@ class Task:
                 setattr(t, f, rec[f])
         t.total = {**_zero(), **(rec.get("total") or {})}
         t.agent_usage = rec.get("agent_usage") or {}
+        t.idc = bool(rec.get("idc"))
+        t.idc_saved = [c for c in rec.get("idc_commitments") or [] if isinstance(c, dict)]
         t.agents = {a["id"]: a for a in rec.get("agents") or []} or t.agents
         t.events = events
         if t.status not in TERMINAL:     # the server stopped in the middle of this turn
@@ -331,7 +341,10 @@ class Task:
             d = {"id": self.id, "task": self.text, "status": self.status, "created": self.created,
                  "finished": self.finished, "stop_reason": self.stop_reason, "result": self.result,
                  "turns": self.turns, "source": self.source}
+            d["idc"] = self.idc
             if full:
+                d["idc_state"] = ({**self.idc_ctrl.snapshot(), "list": self.idc_ctrl.commitments}
+                                  if self.idc_ctrl is not None else {"list": list(self.idc_saved)})
                 d["usage"] = dict(self.usage)
                 d["total"] = dict(self.total)
                 d["agents"] = [dict(a) for a in self.agents.values()]
@@ -376,8 +389,10 @@ class Harness:
                  max_tasks: int = 4, workspace: str | Path | None = None,
                  max_upload_mb: float = 20, max_message_mb: float = 50, key_router: Any = None,
                  store: Any = None, backend: dict | None = None, clock: Callable[[], float] = time.time,
-                 scheduler_tick: float | None = 1.0):
+                 scheduler_tick: float | None = 1.0, idc_config: IDCConfig | None = None, lang: str = "en"):
         self.factory = agent_factory
+        self.idc_config = idc_config or IDCConfig()   # parameters; .enabled = default for new conversations
+        self.lang = i18n.normalize(lang)
         self.key_router = key_router   # keys.KeyRouter or None (.env single-key mode)
         self.workspace = Path(workspace) if workspace is not None else None   # None: uploads disabled
         self.upload_limits = uploads.Limits(int(max_upload_mb * 1024 * 1024),
@@ -397,6 +412,7 @@ class Harness:
         self.stopping = threading.Event()
         self.rules: dict[str, dict] = {}
         self.schedules: dict[str, dict] = {}
+        self.settings: dict[str, Any] = {"idc": bool(self.idc_config.enabled)}
         self._restore()
         self._sched_thread = None
         if scheduler_tick:
@@ -418,7 +434,53 @@ class Harness:
                 self.rules[r["id"]] = r
         for s in self.store.all("schedules"):
             self.schedules[s["id"]] = s
+        for s in self.store.all("settings"):
+            if s.get("id") == "global" and isinstance(s.get("idc"), bool):
+                self.settings["idc"] = s["idc"]
 
+    # -- settings (global) and IDC per conversation
+    def get_settings(self) -> dict:
+        with self._lock:
+            return {**self.settings, "idc_config": self.idc_config.as_dict()}
+
+    def update_settings(self, data: dict) -> dict:
+        if "idc" in data:
+            if not isinstance(data["idc"], bool):
+                raise ValueError("'idc' must be true or false")
+            with self._lock:
+                self.settings["idc"] = data["idc"]
+                if self.store is not None:
+                    self.store.put("settings", "global", {"id": "global", **self.settings})
+        return self.get_settings()
+
+    def set_task_idc(self, task_id: str, enabled: bool) -> "Task":
+        task = self.get(task_id)
+        if task is None:
+            raise KeyError(task_id)
+        with task._lock:
+            if task.status not in TERMINAL:
+                raise Busy(f"task is {task.status}: change IDC between messages")
+            changed = task.idc != enabled
+            task.idc = enabled
+        if changed:
+            task.add_event("idc_toggle", enabled=enabled)
+            self._audit(task, event="idc_toggle", agent="root", depth=0, enabled=enabled)
+            task.save()
+        return task
+
+    def _sync_idc(self, task: "Task") -> None:
+        """Give the conversation's agent its IDC controller (or take it away) before a turn."""
+        agent = task.agent
+        if agent is None or not hasattr(agent, "set_idc"):
+            return
+        if task.idc:
+            if task.idc_ctrl is None:
+                task.idc_ctrl = IDC(self.idc_config, lang=self.lang)
+                task.idc_ctrl.restore(task.idc_saved)
+            if agent.idc is not task.idc_ctrl:
+                agent.set_idc(task.idc_ctrl)
+        elif agent.idc is not None:
+            agent.set_idc(None)
     def _audit(self, task: Task | None, **entry: Any) -> dict:
         return (TaskAudit(self.audit_path, task) if task is not None else AuditLog(self.audit_path)).record(**entry)
 
@@ -431,11 +493,13 @@ class Harness:
     def _save(self, task: Task, decoded: list[tuple[str, bytes]]) -> list[dict]:
         return uploads.save(self.workspace, task.id, decoded) if decoded else []
 
-    def submit(self, text: str, files: Any = None, source: str = "chat") -> Task:
+    def submit(self, text: str, files: Any = None, source: str = "chat", idc: bool | None = None) -> Task:
         if self.stopping.is_set():
             raise Busy("harness is shutting down")
         decoded = self._decode(files)          # validate everything before creating anything
         task = Task(text, self.store, source)
+        with self._lock:
+            task.idc = bool(self.settings["idc"] if idc is None else idc)
         saved = self._save(task, decoded)
         with self._lock:
             self._tasks[task.id] = task
@@ -483,6 +547,8 @@ class Harness:
                                final=data.get("final"))
             elif kind == "stop":
                 task.add_event("stop", agent=data.get("agent", "root"), reason=data.get("reason"))
+            elif kind == "idc":
+                task.add_event("idc", **{"agent": "root", **data})
 
         # wait for a free slot (max_tasks), unless cancelled while queued
         while not self._slots.acquire(timeout=0.1):
@@ -506,10 +572,11 @@ class Harness:
                     if task.history and len(task.history) > 1:   # restored conversation: keep its context
                         agent.messages = agent.messages[:1] + [m for m in task.history[1:] if isinstance(m, dict)]
                     task.agent = agent
+                self._sync_idc(task)
                 res = task.agent.run(text)
                 task.result, task.stop_reason = res.answer, res.stop_reason
                 task.finish_turn(res)
-                status = {"final": "done", "cancelled": "cancelled"}.get(res.stop_reason, "stopped")
+                status = {"final": "done", "idc_collapse": "done", "cancelled": "cancelled"}.get(res.stop_reason, "stopped")
             except Exception as e:  # noqa: BLE001 - a task failure must not kill the server
                 task.result, task.stop_reason, status = f"{type(e).__name__}: {e}", "error", "error"
             with task._lock:
@@ -789,7 +856,8 @@ class Harness:
                 "pending_approvals": self.approvals.pending_count(), "rules": len(self.rules),
                 "schedules_enabled": n_sched,
                 "persistence": str(self.store.path) if self.store is not None else None,
-                "uploads": self.workspace is not None, "keys": keys, "backend": backend}
+                "uploads": self.workspace is not None, "keys": keys, "backend": backend,
+                "idc": {"default": self.settings["idc"]}}
 
     def shutdown(self, wait: float = 10.0) -> None:
         """Cancel everything and give running turns a moment to stop (temp workspace copies are removed)."""
@@ -825,7 +893,7 @@ def _probe(url: str, timeout: float) -> dict:
 
 
 # ---------------------------------------------------------------------------- HTTP
-TASK_RE = re.compile(r"^/tasks/([0-9a-f]+)(/events|/cancel|/messages|/stream|/export)?$")
+TASK_RE = re.compile(r"^/tasks/([0-9a-f]+)(/events|/cancel|/messages|/stream|/export|/idc)?$")
 APPROVAL_RE = re.compile(r"^/approvals/([0-9a-f]+)$")
 RULE_RE = re.compile(r"^/rules/([0-9a-f]+)/revoke$")
 SCHEDULE_RE = re.compile(r"^/schedules/([0-9a-f]+)(/run|/delete)?$")
@@ -972,6 +1040,8 @@ def make_handler(h: Harness, token: str | None, local_only: bool):
                 return self._send(200, {"rules": h.list_rules(), "never_remembered": list(NEVER_REMEMBER)})
             if path == "/schedules":
                 return self._send(200, {"schedules": h.list_schedules()})
+            if path == "/settings":
+                return self._send(200, h.get_settings())
             if path == "/keys":
                 if h.key_router is None:
                     return self._send(200, {"mode": "single-key (.env)", "keys": [], "categories": {}})
@@ -1017,8 +1087,10 @@ def make_handler(h: Harness, token: str | None, local_only: bool):
                 text = self._text(data, "task")
                 if text is None:
                     return
+                if data.get("idc") is not None and not isinstance(data.get("idc"), bool):
+                    return self._send(400, {"error": "'idc' must be true or false"})
                 try:
-                    return self._send(201, h.submit(text, data.get("files")).snapshot())
+                    return self._send(201, h.submit(text, data.get("files"), idc=data.get("idc")).snapshot())
                 except uploads.UploadError as e:
                     return self._send(e.status, {"error": str(e)})
                 except Busy as e:
@@ -1036,6 +1108,20 @@ def make_handler(h: Harness, token: str | None, local_only: bool):
                     return self._send(404, {"error": "unknown task"})
                 except Busy as e:
                     return self._send(409, {"error": str(e)})
+            if m and m.group(2) == "/idc":
+                if not isinstance(data.get("enabled"), bool):
+                    return self._send(400, {"error": "'enabled' (true/false) is required"})
+                try:
+                    return self._send(200, h.set_task_idc(m.group(1), data["enabled"]).snapshot())
+                except KeyError:
+                    return self._send(404, {"error": "unknown task"})
+                except Busy as e:
+                    return self._send(409, {"error": str(e)})
+            if path == "/settings":
+                try:
+                    return self._send(200, h.update_settings(data))
+                except ValueError as e:
+                    return self._send(400, {"error": str(e)})
             if m and m.group(2) == "/cancel":
                 task = h.cancel(m.group(1))
                 if task is None:
