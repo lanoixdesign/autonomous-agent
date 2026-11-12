@@ -14,6 +14,54 @@ with secrets redacted.
 
 > It is not "an agent without guardrails". The guardrails are there; **you** set them.
 
+### Download (no command line)
+
+Not comfortable with the terminal? **Ready-to-run desktop builds exist** for Windows and macOS: no Python,
+no install, no commands. Download the file for your computer from the
+**[Releases page](https://github.com/lanoixdesign/autonomous-agent/releases/latest)**:
+
+| File | For |
+|---|---|
+| `AutonomousAgent-windows-x64.exe` | Windows 10/11, 64-bit |
+| `AutonomousAgent-macos-arm64.zip` | Mac with Apple Silicon (M1, M2, M3, M4…) |
+| `AutonomousAgent-macos-intel.zip` | Mac with an Intel processor |
+
+> ⚠️ **These builds are not signed** (no paid Microsoft/Apple certificate), so your system warns you the
+> first time. That is expected; if you prefer, check the file against `SHA256SUMS.txt` or build it
+> yourself (below).
+
+**Windows**
+1. Double-click `AutonomousAgent-windows-x64.exe`.
+2. If a blue "Windows protected your PC" (SmartScreen) window appears: click **More info**, then **Run anyway**.
+3. A black console window opens (keep it open: it shows what happens) and the chat opens in your browser.
+
+**macOS**
+1. Unzip the file and move `AutonomousAgent.app` to **Applications**.
+2. The first time, **right-click** (or Control-click) the app → **Open** → **Open**.
+   If macOS only offers "Move to Trash" / "Done": open **System Settings → Privacy & Security**, scroll
+   down and click **Open Anyway** next to "AutonomousAgent", then confirm.
+3. Last resort, in Terminal: `xattr -dr com.apple.quarantine /Applications/AutonomousAgent.app`
+4. A Terminal window opens (keep it open) and the chat opens in your browser.
+
+**Where things go.** Everything is in one folder in your home directory, `AutonomousAgent`
+(`C:\Users\<you>\AutonomousAgent` or `/Users/<you>/AutonomousAgent`):
+`.env` (API keys), `permissions.yaml` (what the agent may do), `workspace/` (the only folder the agent's
+file tools can touch; chat attachments go there), `data/` (memory, audit log, conversations).
+
+**API keys.** Without a key the app starts in **demo mode** (offline mock model, canned answers). To use a
+real model, open `AutonomousAgent/.env` with a text editor, remove the `#` in front of one provider and
+paste your key (for example `AGENT_PROVIDER=groq` and `GROQ_API_KEY=...`), save, and restart the app.
+Environment variables work too. Several keys with limits: copy `providers.example.yaml` to
+`providers.yaml` in the same folder (see [Several API keys](#several-api-keys-by-category-with-limits)).
+
+**Stop:** close the console window (or press Ctrl+C in it). **Language:** the page follows your browser and
+has an EN | FR switch; the console follows the system language (`AGENT_LANG=en|fr` in `.env` forces it).
+
+Notes: the server only listens on `127.0.0.1` (your computer); port 8765 if free, else another one (shown
+in the console). The macOS builds are separate for Apple Silicon and Intel. Build it yourself:
+`pip install pyinstaller && pyinstaller packaging/autonomous-agent.spec` (output in `dist/`), or run
+`python -m agent.desktop` from a clone for the same behaviour without packaging.
+
 ### At a glance
 
 - **Agent loop**: plan → tool call → observation → … → answer, with hard limits (steps, tool calls,
@@ -407,7 +455,9 @@ python -m pytest -q
 ```
 
 CI (GitHub Actions) runs the tests on Python 3.10–3.13, with and without PyYAML, plus an offline
-end-to-end run with the mock backend.
+end-to-end run with the mock backend, and a build of the desktop app (PyInstaller) that is started
+and checked through `/health`. Tagging `v*` runs `.github/workflows/release.yml`: Windows and macOS
+builds, each smoke-tested, attached to a GitHub Release.
 
 ### Honest limitations
 
@@ -420,6 +470,9 @@ end-to-end run with the mock backend.
 - Memory recall is simple keyword matching, no embeddings.
 - `web_search` scrapes a public HTML endpoint and may be blocked; prefer `web_fetch` on known URLs.
 - Quality depends heavily on the model; small local models often call tools badly.
+- The desktop builds are **unsigned** (SmartScreen / Gatekeeper warnings), large (the Python runtime is
+  inside, ~10–30 MB) and separate for Apple Silicon and Intel Macs. Antivirus software sometimes flags
+  unsigned PyInstaller executables (false positives).
 - This project is independent: it is **not** Grok Bot and does not reproduce it.
 
 ### License
@@ -440,6 +493,59 @@ catégorie et par outil, si l'appel est autorisé (`allow`), soumis à confirmat
 secrets masqués.
 
 > Ce n'est pas « un agent sans garde-fous ». Les garde-fous existent ; c'est **vous** qui les réglez.
+
+### Télécharger (sans ligne de commande)
+
+Pas à l'aise avec le terminal ? **Des versions de bureau prêtes à l'emploi existent** pour Windows et
+macOS : ni Python, ni installation, ni commande. Téléchargez le fichier correspondant à votre ordinateur
+sur la **[page des versions (Releases)](https://github.com/lanoixdesign/autonomous-agent/releases/latest)** :
+
+| Fichier | Pour |
+|---|---|
+| `AutonomousAgent-windows-x64.exe` | Windows 10/11, 64 bits |
+| `AutonomousAgent-macos-arm64.zip` | Mac avec puce Apple (M1, M2, M3, M4…) |
+| `AutonomousAgent-macos-intel.zip` | Mac avec processeur Intel |
+
+> ⚠️ **Ces versions ne sont pas signées** (pas de certificat payant Microsoft/Apple) : votre système
+> affiche donc un avertissement la première fois. C'est normal ; si vous préférez, vérifiez le fichier avec
+> `SHA256SUMS.txt` ou compilez-le vous-même (voir plus bas).
+
+**Windows**
+1. Double-cliquez sur `AutonomousAgent-windows-x64.exe`.
+2. Si une fenêtre bleue « Windows a protégé votre ordinateur » (SmartScreen) apparaît : cliquez sur
+   **Informations complémentaires**, puis **Exécuter quand même**.
+3. Une fenêtre de console noire s'ouvre (laissez-la ouverte : elle montre ce qui se passe) et le chat
+   s'ouvre dans votre navigateur.
+
+**macOS**
+1. Décompressez le fichier et déplacez `AutonomousAgent.app` dans **Applications**.
+2. La première fois, faites un **clic droit** (ou Contrôle-clic) sur l'app → **Ouvrir** → **Ouvrir**.
+   Si macOS ne propose que « Placer dans la corbeille » / « OK » : ouvrez **Réglages Système →
+   Confidentialité et sécurité**, descendez et cliquez sur **Ouvrir quand même** à côté de
+   « AutonomousAgent », puis confirmez.
+3. En dernier recours, dans Terminal : `xattr -dr com.apple.quarantine /Applications/AutonomousAgent.app`
+4. Une fenêtre Terminal s'ouvre (laissez-la ouverte) et le chat s'ouvre dans votre navigateur.
+
+**Où vont les fichiers.** Tout est dans un seul dossier de votre répertoire personnel, `AutonomousAgent`
+(`C:\Users\<vous>\AutonomousAgent` ou `/Users/<vous>/AutonomousAgent`) : `.env` (clés d'API),
+`permissions.yaml` (ce que l'agent a le droit de faire), `workspace/` (le seul dossier que les outils de
+fichiers de l'agent peuvent toucher ; les pièces jointes du chat y vont), `data/` (mémoire, journal d'audit,
+conversations).
+
+**Clés d'API.** Sans clé, l'application démarre en **mode démo** (modèle mock hors ligne, réponses toutes
+faites). Pour un vrai modèle, ouvrez `AutonomousAgent/.env` avec un éditeur de texte, enlevez le `#` devant
+un fournisseur et collez votre clé (par exemple `AGENT_PROVIDER=groq` et `GROQ_API_KEY=...`), enregistrez,
+puis relancez l'application. Les variables d'environnement fonctionnent aussi. Plusieurs clés avec limites :
+copiez `providers.example.yaml` en `providers.yaml` dans le même dossier (voir
+[Plusieurs clés d'API](#plusieurs-clés-dapi-par-catégorie-avec-limites)).
+
+**Arrêter :** fermez la fenêtre de console (ou Ctrl+C dedans). **Langue :** la page suit votre navigateur
+et a un sélecteur EN | FR ; la console suit la langue du système (`AGENT_LANG=en|fr` dans `.env` pour forcer).
+
+Remarques : le serveur n'écoute que sur `127.0.0.1` (votre ordinateur) ; port 8765 s'il est libre, sinon un
+autre (affiché dans la console). Les versions macOS sont distinctes pour puce Apple et Intel. Compiler
+soi-même : `pip install pyinstaller && pyinstaller packaging/autonomous-agent.spec` (résultat dans
+`dist/`), ou lancer `python -m agent.desktop` depuis un clone pour le même comportement sans empaquetage.
 
 ### En bref
 
@@ -857,7 +963,9 @@ python -m pytest -q
 ```
 
 La CI (GitHub Actions) lance les tests sous Python 3.10 à 3.13, avec et sans PyYAML, plus un essai
-de bout en bout hors ligne avec le backend mock.
+de bout en bout hors ligne avec le backend mock, et une compilation de l'application de bureau
+(PyInstaller) lancée puis vérifiée via `/health`. Pousser une étiquette `v*` lance
+`.github/workflows/release.yml` : versions Windows et macOS, chacune testée, jointes à une Release GitHub.
 
 ### Limites (honnêtement)
 
@@ -872,6 +980,9 @@ de bout en bout hors ligne avec le backend mock.
 - Le rappel mémoire est une simple recherche par mots-clés, sans embeddings.
 - `web_search` lit une page HTML publique et peut être bloqué ; préférez `web_fetch` sur des URL connues.
 - La qualité dépend beaucoup du modèle ; les petits modèles locaux appellent souvent mal les outils.
+- Les versions de bureau ne sont **pas signées** (avertissements SmartScreen / Gatekeeper), assez lourdes
+  (Python est inclus, ~10–30 Mo) et distinctes pour Mac puce Apple et Intel. Certains antivirus signalent
+  à tort les exécutables PyInstaller non signés (faux positifs).
 - Ce projet est indépendant : ce n'est **pas** Grok Bot et il ne le reproduit pas.
 
 ### Licence
