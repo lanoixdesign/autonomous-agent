@@ -16,8 +16,8 @@ secrets masqués.
 | | |
 |---|---|
 | **Boucle** | plan → appel d'outil → observation → … → réponse, avec limites de pas, d'appels d'outils et de tokens, plus un arrêt « pas de progrès » (même appel répété). `stop_rule` personnalisable. |
-| **Outils** | `read_file`, `list_files`, `search_files`, `write_file`, `edit_file` (dans l'espace de travail), `shell`, `web_fetch`, `web_search` (au mieux), `github_get`, `github_write`, `memory_write`, `memory_recall`, `memory_forget`, `list_skills`, `load_skill` |
-| **Catégories de risque** | `read`, `write`, `execute`, `network`, `send` (visible par d'autres), `spend` (coûte de l'argent) |
+| **Outils** | `read_file`, `list_files`, `search_files`, `write_file`, `edit_file` (dans l'espace de travail), `shell`, `web_fetch`, `web_search` (au mieux), `github_get`, `github_write`, `memory_write`, `memory_recall`, `memory_forget`, `list_skills`, `load_skill`, `spawn_agent`, `spawn_agents` (sous-agents) |
+| **Catégories de risque** | `read`, `write`, `execute`, `network`, `send` (visible par d'autres), `spend` (coûte de l'argent), `delegate` (lancer des sous-agents) |
 | **Mémoire** | fichiers simples : `memory/profile.md` + `memory/journal.jsonl`, rappel par mots-clés, oubli (`forget`) |
 | **Compétences** | `skills/<nom>/SKILL.md` avec frontmatter `name` / `description` ; seul l'index est dans le prompt, le contenu est chargé à la demande. Exemples : `research`, `code-review`, `release-notes`. |
 | **LLM** | toute API compatible OpenAI : Groq, OpenAI, OpenRouter, Ollama (local), URL personnalisée ; backend `mock` pour les tests hors ligne |
@@ -64,7 +64,7 @@ python -m agent skills list | show code-review
 
 Options : `--workspace/-w`, `--permissions/-p`, `--model/-m`, `--provider`, `--state-dir`
 (mémoire + audit, défaut `<workspace>/.agent`), `--max-steps`, `--max-tool-calls`, `--max-tokens`,
-`--yolo`, `--offline`, `--quiet`.
+`--max-depth`, `--max-children`, `--yolo`, `--offline`, `--quiet`.
 
 Exemple (essai réel, Groq `openai/gpt-oss-120b`, sans terminal donc `ask` = refusé) :
 
@@ -86,7 +86,7 @@ Exemple (essai réel, Groq `openai/gpt-oss-120b`, sans terminal donc `ask` = ref
 4. `commands.allow` / `domains.allow` correspondant et mode `ask` → autorisé ;
 5. `--yolo` transforme `ask` en `allow` **sauf pour `send` et `spend`** : pour ces deux-là, seul ce que vous avez écrit dans le fichier compte.
 
-Défauts sûrs : `read: allow`, `write: ask`, `execute: ask`, `network: ask`, `send: ask`, `spend: deny`.
+Défauts sûrs : `read: allow`, `write: ask`, `execute: ask`, `network: ask`, `send: ask`, `spend: deny`, `delegate: ask`.
 `ask` demande `[y]es / [n]o / [a]lways` (oui / non / toujours pour cette session) ; sans terminal,
 `ask` vaut refus.
 
@@ -131,6 +131,38 @@ La boucle s'arrête de façon irréversible au premier de : réponse finale, `ma
 s'inspire du projet IDC de l'auteur ([lanoixdesign/idc-wrapper](https://github.com/lanoixdesign/idc-wrapper)) ;
 ce n'est **pas** une dépendance. Pour brancher votre propre critère :
 `Agent(..., stop_rule=lambda state: "ma_raison" if ... else None)`.
+
+## Mode essaim (sous-agents)
+
+Un agent peut lancer des **sous-agents** avec `spawn_agent(task, max_steps?, allowed_tools?)`, ou
+plusieurs à la suite avec `spawn_agents(tasks, ...)`. Un sous-agent est un agent normal exécuté dans
+le même processus, avec le même modèle, le même espace de travail, la même mémoire et le même journal
+d'audit ; sa réponse finale revient au parent comme observation.
+
+Limites (appliquées dans le code, voir `agent/swarm.py`) :
+- lancer un sous-agent relève de la catégorie de risque `delegate`, **`ask` par défaut** ;
+- un sous-agent applique **la politique de permissions du parent**, éventuellement restreinte par
+  `allowed_tools` : il ne peut jamais faire plus que son parent (un `deny`, ou `send` / `spend`, reste
+  tel que le parent l'a) ;
+- son budget est plafonné par ce qui reste au parent, et sa consommation est **déduite** du parent ;
+- `--max-depth` (défaut 2 : agent → sous-agent → sous-sous-agent ; `0` désactive le mode) et
+  `--max-children` (défaut 5 sous-agents par exécution, tout l'arbre compris) ;
+- chaque ligne d'audit porte `agent` (`root`, `root.1`, `root.1.2`…) et `depth`, plus les événements
+  `spawn` / `child_done`.
+
+```bash
+python -m agent run "Relis src/ et docs/ : un sous-agent par dossier, puis fais la synthèse" \
+  --workspace ~/projet --max-depth 1 --max-children 3
+```
+
+```
+  -> spawn_agents [delegate] {"tasks": ["relire src/", "relire docs/"], "allowed_tools": ["read_file", "list_files"]} : allow
+  [root.1] -> list_files [read] {"path": "src"} : allow
+  [root.2] -> list_files [read] {"path": "docs"} : allow
+```
+
+Les sous-agents s'exécutent **l'un après l'autre** (pas de threads), partagent la mémoire du parent et
+héritent de ses confirmations `ask`.
 
 ## Tests
 

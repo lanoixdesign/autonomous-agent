@@ -15,8 +15,8 @@ with secrets redacted.
 | | |
 |---|---|
 | **Loop** | plan → tool call → observation → … → answer, with limits on steps, tool calls and tokens, plus a "no progress" stop (same call repeated). Pluggable `stop_rule`. |
-| **Tools** | `read_file`, `list_files`, `search_files`, `write_file`, `edit_file` (workspace only), `shell`, `web_fetch`, `web_search` (best-effort), `github_get`, `github_write`, `memory_write`, `memory_recall`, `memory_forget`, `list_skills`, `load_skill` |
-| **Risk categories** | `read`, `write`, `execute`, `network`, `send` (visible to others), `spend` (costs money) |
+| **Tools** | `read_file`, `list_files`, `search_files`, `write_file`, `edit_file` (workspace only), `shell`, `web_fetch`, `web_search` (best-effort), `github_get`, `github_write`, `memory_write`, `memory_recall`, `memory_forget`, `list_skills`, `load_skill`, `spawn_agent`, `spawn_agents` (sub-agents) |
+| **Risk categories** | `read`, `write`, `execute`, `network`, `send` (visible to others), `spend` (costs money), `delegate` (launch sub-agents) |
 | **Memory** | plain files: `memory/profile.md` + `memory/journal.jsonl`, keyword recall, `forget` |
 | **Skills** | `skills/<name>/SKILL.md` with `name` / `description` frontmatter; only the index is in the prompt, bodies are loaded on demand. Examples: `research`, `code-review`, `release-notes`. |
 | **LLM** | any OpenAI-compatible API: Groq, OpenAI, OpenRouter, Ollama (local), custom URL; `mock` backend for offline tests |
@@ -63,7 +63,7 @@ python -m agent skills list | show code-review
 
 Options: `--workspace/-w`, `--permissions/-p`, `--model/-m`, `--provider`, `--state-dir`
 (memory + audit, default `<workspace>/.agent`), `--max-steps`, `--max-tool-calls`, `--max-tokens`,
-`--yolo`, `--offline`, `--quiet`.
+`--max-depth`, `--max-children`, `--yolo`, `--offline`, `--quiet`.
 
 Example (real run, Groq `openai/gpt-oss-120b`, no terminal so `ask` = refused):
 
@@ -85,7 +85,7 @@ Example (real run, Groq `openai/gpt-oss-120b`, no terminal so `ask` = refused):
 4. `commands.allow` / `domains.allow` match and mode is `ask` → allow;
 5. `--yolo` turns `ask` into `allow` **except for `send` and `spend`**: those only follow what you wrote in the file.
 
-Safe defaults: `read: allow`, `write: ask`, `execute: ask`, `network: ask`, `send: ask`, `spend: deny`.
+Safe defaults: `read: allow`, `write: ask`, `execute: ask`, `network: ask`, `send: ask`, `spend: deny`, `delegate: ask`.
 `ask` prompts `[y]es / [n]o / [a]lways this session`; without a terminal, `ask` means refused.
 
 ```yaml
@@ -128,6 +128,36 @@ The loop stops irreversibly at the first of: final answer, `max_steps`, `max_too
 `max_tokens`, repeated identical call, LLM error. This explicit-stop design is inspired by the
 author's IDC project ([lanoixdesign/idc-wrapper](https://github.com/lanoixdesign/idc-wrapper)); it is
 **not** a dependency. To plug in your own criterion: `Agent(..., stop_rule=lambda state: "my_reason" if ... else None)`.
+
+## Multi-agent mode (sub-agents)
+
+An agent can launch **sub-agents** with `spawn_agent(task, max_steps?, allowed_tools?)`, or several
+in a row with `spawn_agents(tasks, ...)`. A sub-agent is a normal agent run in-process, with the same
+model, workspace, memory and audit log; its final answer comes back to the parent as the observation.
+
+Limits (all enforced in code, see `agent/swarm.py`):
+- launching is the `delegate` risk category, **`ask` by default**;
+- a sub-agent uses the **parent's permission policy**, optionally narrowed with `allowed_tools`: it can
+  never do more than its parent (a `deny`, or `send` / `spend`, stays as the parent has it);
+- its budget is capped by what the parent has left, and its usage is **deducted** from the parent;
+- `--max-depth` (default 2: agent → sub-agent → sub-sub-agent; `0` disables the mode) and
+  `--max-children` (default 5 sub-agents per run, whole tree);
+- every audit line carries `agent` (`root`, `root.1`, `root.1.2`…) and `depth`, plus `spawn` /
+  `child_done` events.
+
+```bash
+python -m agent run "Review src/ and docs/ in parallel: one sub-agent per folder, then merge" \
+  --workspace ~/project --max-depth 1 --max-children 3
+```
+
+```
+  -> spawn_agents [delegate] {"tasks": ["review src/", "review docs/"], "allowed_tools": ["read_file", "list_files"]} : allow
+  [root.1] -> list_files [read] {"path": "src"} : allow
+  [root.2] -> list_files [read] {"path": "docs"} : allow
+```
+
+Sub-agents run **one after the other** (no threads), share the parent's memory, and inherit its
+`ask` confirmations.
 
 ## Tests
 

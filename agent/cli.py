@@ -14,6 +14,7 @@ from .loop import Agent, Budget
 from .memory import Memory
 from .permissions import CATEGORIES, Permissions
 from .skills import SkillLibrary
+from .swarm import SwarmConfig
 from .tools import ToolContext, default_registry
 
 REPO_SKILLS = Path(__file__).resolve().parent.parent / "skills"
@@ -63,13 +64,16 @@ def make_confirm(interactive: bool):
 
 
 def printer(kind: str, data: dict) -> None:
+    who = f"[{data['agent']}] " if data.get("agent") else ""
     if kind == "tool":
         args = json.dumps(data["args"], ensure_ascii=False)
-        print(f"  -> {data['name']} [{data['category']}] {args[:160]} : {data['decision']}", file=sys.stderr)
+        print(f"  {who}-> {data['name']} [{data['category']}] {args[:160]} : {data['decision']}", file=sys.stderr)
     elif kind == "assistant" and not data["final"]:
-        print(f"  .. {data['content'][:300]}", file=sys.stderr)
+        print(f"  {who}.. {data['content'][:300]}", file=sys.stderr)
+    elif kind == "assistant" and who:
+        print(f"  {who}<- {data['content'][:300]}", file=sys.stderr)
     elif kind == "stop":
-        print(f"  [stop: {data['reason']}]", file=sys.stderr)
+        print(f"  {who}[stop: {data['reason']}]", file=sys.stderr)
 
 
 def build(args) -> tuple[Agent, Permissions]:
@@ -89,8 +93,10 @@ def build(args) -> tuple[Agent, Permissions]:
     llm = make_llm(args.provider, args.model)
     registry = default_registry(enable_web=not args.offline, enable_github=not args.offline)
     budget = Budget(max_steps=args.max_steps, max_tool_calls=args.max_tool_calls, max_tokens=args.max_tokens)
+    swarm = SwarmConfig(max_depth=args.max_depth, max_children=args.max_children) if args.max_depth > 0 else None
     agent = Agent(llm, registry, perms, AuditLog(state / "audit.jsonl"), ctx, budget,
-                  confirm=make_confirm(sys.stdin.isatty()), on_event=None if args.quiet else printer)
+                  confirm=make_confirm(sys.stdin.isatty()), on_event=None if args.quiet else printer,
+                  swarm=swarm)
     return agent, perms
 
 
@@ -103,6 +109,8 @@ def common(p: argparse.ArgumentParser) -> None:
     p.add_argument("--max-steps", type=int, default=12)
     p.add_argument("--max-tool-calls", type=int, default=24)
     p.add_argument("--max-tokens", type=int, default=60000)
+    p.add_argument("--max-depth", type=int, default=2, help="sub-agent nesting limit; 0 disables multi-agent mode")
+    p.add_argument("--max-children", type=int, default=5, help="max sub-agents per run (whole tree)")
     p.add_argument("--yolo", action="store_true", help="turn 'ask' into 'allow' EXCEPT for send and spend")
     p.add_argument("--offline", action="store_true", help="do not register network tools (web, GitHub)")
     p.add_argument("--quiet", "-q", action="store_true")
