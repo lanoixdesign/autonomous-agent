@@ -120,7 +120,8 @@ def serve(args) -> int:
     def factory(task, audit, confirm, cancel, on_event):
         return new_agent(args, perms, ctx, audit, confirm, on_event, cancel)
 
-    h = Harness(factory, state / "audit.jsonl", approval_timeout=args.approval_timeout, max_tasks=args.max_tasks)
+    h = Harness(factory, state / "audit.jsonl", approval_timeout=args.approval_timeout, max_tasks=args.max_tasks,
+                workspace=ctx.workspace, max_upload_mb=args.max_upload_mb, max_message_mb=args.max_message_mb)
     srv = make_server(h, args.host, args.port, os.environ.get("AGENT_HARNESS_TOKEN"))
     host, port = srv.server_address[:2]
     print(f"harness on http://{'127.0.0.1' if host == '127.0.0.1' else host}:{port}/  "
@@ -184,6 +185,8 @@ def main(argv: list[str] | None = None) -> int:
     p_srv.add_argument("--port", type=int, default=8765)
     p_srv.add_argument("--approval-timeout", type=float, default=300.0,
                        help="seconds to wait for an approval; no answer = deny (default 300)")
+    p_srv.add_argument("--max-upload-mb", type=float, default=20, help="chat attachments: max size per file (MB)")
+    p_srv.add_argument("--max-message-mb", type=float, default=50, help="chat attachments: max total per message (MB)")
     p_srv.add_argument("--max-tasks", type=int, default=4, help="conversations/tasks running at once (default 4)")
     for p in (p_chat, p_run, p_mem, p_sk, p_perm, p_aud, p_srv):
         common(p)

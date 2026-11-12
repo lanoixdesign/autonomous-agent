@@ -35,6 +35,14 @@ CHAT_PAGE = r"""<!doctype html>
  .badge.running,.badge.queued,.badge.cancelling{background:#fff0c2} .badge.done{background:#d3f2dc}
  .badge.error,.badge.cancelled,.badge.stopped{background:#f7d4d4}
  #err{color:#b3261e;font-size:12px;padding:0 16px}
+ #attach{background:#e7ecfa!important;color:#2f4aa0!important;font-size:18px;padding:0 12px!important}
+ #chips{display:flex;flex-wrap:wrap;gap:6px;padding:0 16px} #chips:not(:empty){padding:8px 16px 0;background:#fff;border-top:1px solid #dde1e6}
+ .chip{display:inline-flex;align-items:center;gap:6px;background:#eef1f6;border:1px solid #d6dbe3;border-radius:14px;padding:3px 6px 3px 10px;font-size:12px}
+ .chip.bad{background:#fbe3e1;border-color:#f0b4ae} .chip button{border:0;background:none;cursor:pointer;font-size:14px;color:#5a6270;padding:0 2px}
+ .atts{margin-top:6px;display:flex;flex-wrap:wrap;gap:4px} .att{font-size:12px;background:rgba(255,255,255,.18);border:1px solid rgba(255,255,255,.4);border-radius:10px;padding:1px 8px}
+ #drop{display:none;position:absolute;inset:0;background:rgba(64,98,187,.12);border:3px dashed #4062bb;border-radius:12px;z-index:5;
+   align-items:center;justify-content:center;font-size:18px;color:#2f4aa0;font-weight:600;pointer-events:none}
+ main.dragging #drop{display:flex} main{position:relative}
  #popups{position:fixed;right:16px;top:56px;width:380px;max-height:calc(100vh - 150px);overflow:auto;display:flex;flex-direction:column;gap:10px;z-index:10}
  .card{background:#fff;border:2px solid #f0a73a;border-radius:10px;box-shadow:0 8px 24px rgba(0,0,0,.18);padding:10px 12px;animation:pop .15s ease-out}
  @keyframes pop{from{transform:translateY(8px);opacity:0}to{transform:none;opacity:1}}
@@ -55,14 +63,18 @@ CHAT_PAGE = r"""<!doctype html>
   <button id="cancel" style="display:none">Stop</button></div>
  <div id="log"><div class="sys">Type a task below. Sub-agents appear as root.1, root.2… Approvals pop up top-right.</div></div>
  <div id="err"></div>
- <div id="composer"><textarea id="input" placeholder="Message (Enter to send, Shift+Enter for a new line)"></textarea>
+ <div id="chips"></div>
+ <div id="composer"><button id="attach" title="Attach files (or drop them here)">📎</button>
+  <input id="files" type="file" multiple hidden>
+  <textarea id="input" placeholder="Message (Enter to send, Shift+Enter for a new line) — drop files to attach"></textarea>
   <button id="send">Send</button></div>
+ <div id="drop">Drop files to attach</div>
 </main>
 <div id="popups"></div>
 <script>
 const $ = id => document.getElementById(id);
 const tok = $("token"); tok.value = sessionStorage.getItem("harnessToken") || "";
-tok.onchange = () => sessionStorage.setItem("harnessToken", tok.value);
+tok.onchange = () => { sessionStorage.setItem("harnessToken", tok.value); loadConfig(); };
 let cur = location.hash.slice(1) || null, tasks = [];
 const cache = {};            // task id -> {since, events: []}
 const answering = new Set(); // approval ids being answered
@@ -83,13 +95,18 @@ function render(){
   log.scrollTop = log.scrollHeight;
 }
 function node(e){
-  if(e.kind==="user"){ const r=el("div","row user"); r.append(el("div","bubble",e.text)); return r; }
+  if(e.kind==="user"){ const r=el("div","row user"), b=el("div","bubble",e.text);
+    if((e.attachments||[]).length){ const a=el("div","atts");
+      e.attachments.forEach(f=>{ const c=el("span","att","📎 "+f.name+" · "+size(f.bytes)); c.title=f.path; a.append(c); }); b.append(a); }
+    r.append(b); return r; }
   if(e.kind==="message"){ if(!e.content) return null;
     const r=el("div","row d"+Math.min(depth(e.agent),3)), b=el("div","bubble"+(e.final?" final":""));
     b.append(el("div","who",e.agent), el("div",null,e.content)); r.append(b); return r; }
   if(e.kind==="audit"){
     if(e.event==="spawn") return el("div","step spawn","↳ "+e.agent+" launched "+e.child+(e.isolated?" (isolated copy)":"")+": "+short(e.task,160));
     if(e.event==="child_done") return el("div","step spawn","✓ "+e.agent+" finished ("+e.stop_reason+")");
+    if(e.event==="upload") return el("div","step merge","📎 saved "+e.path+" ("+size(e.bytes)+")");
+    if(e.event && !["merge","spawn","child_done"].includes(e.event)) return el("div","step",e.event+(e.agent?" ["+e.agent+"]":""));
     if(e.event==="merge" && e.skipped) return el("div","step conflict","⇢ merge skipped ("+e.skipped+")");
     if(e.event==="merge"){ const d=el("div");
       (e.applied||[]).forEach(a=>d.append(el("div","step merge","⇢ merged "+a.path+" ("+a.action+" by "+a.agent+")")));
@@ -138,18 +155,42 @@ async function popups(){
     ok.onclick=()=>answer("approve"); no.onclick=()=>answer("deny");
     b.append(ok,no); c.append(b); box.append(c); });
 }
+// ---- attachments: chips before sending, sent base64 in the JSON body
+let limits={uploads:true,max_upload_bytes:20*1048576,max_message_bytes:50*1048576}, pending=[];
+function size(n){ return n<1024 ? n+" B" : n<1048576 ? (n/1024).toFixed(1)+" KB" : (n/1048576).toFixed(1)+" MB"; }
+async function loadConfig(){ try{ limits=await api("GET","/config"); }catch(e){} }
+function tooBig(f){ return f.size>limits.max_upload_bytes; }
+function chips(){ const box=$("chips"); box.replaceChildren();
+  pending.forEach((f,i)=>{ const c=el("span","chip"+(tooBig(f)?" bad":""),"📎 "+f.name+" · "+size(f.size)+(tooBig(f)?" (too big)":""));
+    const x=el("button",null,"×"); x.title="remove"; x.onclick=()=>{ pending.splice(i,1); chips(); }; c.append(x); box.append(c); }); }
+function addFiles(list){ for(const f of list) pending.push(f); chips(); }
+function b64(file){ return new Promise((ok,ko)=>{ const r=new FileReader();
+  r.onload=()=>ok(String(r.result).split(",",2)[1]||""); r.onerror=()=>ko(r.error); r.readAsDataURL(file); }); }
+$("attach").onclick=()=>$("files").click();
+$("files").onchange=e=>{ addFiles(e.target.files); e.target.value=""; };
+const main=document.querySelector("main"); let depthDrag=0;
+main.addEventListener("dragenter",e=>{ if([...e.dataTransfer.types].includes("Files")){ e.preventDefault(); depthDrag++; main.classList.add("dragging"); } });
+main.addEventListener("dragover",e=>{ if([...e.dataTransfer.types].includes("Files")) e.preventDefault(); });
+main.addEventListener("dragleave",()=>{ if(--depthDrag<=0){ depthDrag=0; main.classList.remove("dragging"); } });
+main.addEventListener("drop",e=>{ e.preventDefault(); depthDrag=0; main.classList.remove("dragging"); if(e.dataTransfer.files.length) addFiles(e.dataTransfer.files); });
 async function send(){
-  const text=$("input").value.trim(); if(!text) return;
+  const text=$("input").value.trim(); if(!text && !pending.length) return;
+  if(pending.some(tooBig)){ $("err").textContent="remove the files over "+size(limits.max_upload_bytes)+" first"; return; }
+  const total=pending.reduce((s,f)=>s+f.size,0);
+  if(total>limits.max_message_bytes){ $("err").textContent="attachments over "+size(limits.max_message_bytes)+" per message"; return; }
+  $("send").disabled=true;
   try{
-    if(!cur){ const t=await api("POST","/tasks",{task:text}); pick(t.id); }
-    else await api("POST","/tasks/"+cur+"/messages",{text});
-    $("input").value=""; poll();
+    const files=[]; for(const f of pending) files.push({name:f.name, content_b64:await b64(f)});
+    if(!cur){ const t=await api("POST","/tasks",{task:text,files}); pick(t.id); }
+    else await api("POST","/tasks/"+cur+"/messages",{text,files});
+    $("input").value=""; pending=[]; chips(); poll();
   }catch(e){ $("err").textContent="error: "+e.message; }
+  $("send").disabled=false;
 }
 $("send").onclick=send;
 $("input").addEventListener("keydown",e=>{ if(e.key==="Enter"&&!e.shiftKey){ e.preventDefault(); send(); } });
 $("new").onclick=()=>{ pick(null); $("input").focus(); };
 $("cancel").onclick=async()=>{ if(cur) try{ await api("POST","/tasks/"+cur+"/cancel",{}); poll(); }catch(e){} };
-setInterval(poll,1000); poll();
+loadConfig(); setInterval(poll,1000); poll();
 </script></body></html>
 """

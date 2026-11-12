@@ -211,10 +211,23 @@ interrogent le serveur chaque seconde.
 Comme le harness accepte plusieurs validations à la fois, **les sous-agents qui écrivent tournent en
 parallèle** avec lui, chacun dans sa copie isolée (voir plus haut).
 
+**Pièces jointes** : bouton 📎 ou glisser-déposer (plusieurs fichiers à la fois). Les fichiers
+apparaissent en pastilles avant l'envoi, puis en pièces jointes dans votre bulle. Ils sont enregistrés
+dans `<workspace>/uploads/<id conversation>/`, et le message reçu par l'agent contient la liste de leurs
+chemins relatifs à l'espace de travail (les petits fichiers texte sont aussi recopiés), pour qu'il les
+ouvre avec `read_file`.
+- les noms sont réduits à un simple nom de fichier (pas de dossiers, de `..`, de chemin absolu, de point
+  initial ni de caractères de contrôle) ; les fichiers sont créés sans suivre de lien symbolique et
+  n'écrasent jamais rien (`notes-1.md`) ; un dossier `uploads/` qui serait un lien symbolique est refusé ;
+- `--max-upload-mb` par fichier (20 par défaut) et `--max-message-mb` par message (50 par défaut) → HTTP 413 ;
+- mêmes contrôles de jeton / même origine que les autres POST ; chaque fichier est journalisé dans
+  l'audit (`event: upload`, chemin, taille, sha256).
+
 | | |
 |---|---|
 | `POST /tasks` `{"task": "..."}` | lance une conversation → `{"id": ...}` |
 | `POST /tasks/{id}/messages` `{"text": "..."}` | la continue (409 pendant qu'un tour est en cours) |
+| `"files": [{"name": "a.md", "content_b64": "..."}]` | facultatif sur les deux : pièces jointes (base64 dans le JSON) · `GET /config` : limites |
 | `GET /tasks` · `GET /tasks/{id}` | liste · une tâche : statut, résultat, consommation, arbre des agents |
 | `GET /tasks/{id}/events?since=N` | événements (lignes d'audit, messages, validations) depuis N, à interroger régulièrement |
 | `POST /tasks/{id}/cancel` | arrêt au pas suivant ; ses validations en attente sont refusées |

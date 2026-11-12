@@ -4,6 +4,8 @@ JSON API (stdlib http.server) and a one-page UI, with an approval queue instead 
 API (JSON):
   POST /tasks                 {"task": "..."}            -> 201 {"id": ...}   (a task is a conversation)
   POST /tasks/{id}/messages   {"text": "..."}            -> continue the conversation (409 if busy)
+      both accept "files": [{"name": ..., "content_b64": ...}] -> saved in <workspace>/uploads/<id>/
+  GET  /config                upload limits
   GET  /tasks                                            -> {"tasks": [...]}
   GET  /tasks/{id}            task + agent tree (root, root.1, ...) + status + result
   GET  /tasks/{id}/events?since=N                        -> {"events": [...], "next": M}  (polling)
@@ -41,6 +43,7 @@ from .audit import AuditLog, _short
 from .harness_page import PAGE
 from .harness_chat import CHAT_PAGE
 from .redact import redact
+from . import uploads
 
 LOCAL_HOSTS = ("127.0.0.1", "localhost", "::1")
 MAX_BODY = 1_000_000
@@ -149,7 +152,7 @@ class Task:
         self.agent: Any = None          # created on the first turn, kept for the conversation
         self._lock = threading.Lock()
 
-    def new_turn(self, text: str) -> None:
+    def new_turn(self, text: str, attachments: list[dict] | None = None) -> None:
         with self._lock:
             self.turns += 1
             self.status = "queued"
@@ -158,7 +161,7 @@ class Task:
             self.agents = {"root": {"id": "root", "parent": None, "depth": 0, "task": text,
                                     "status": "queued", "answer": None}}
         self.cancel.clear()
-        self.add_event("user", text=text, turn=self.turns)
+        self.add_event("user", text=text, turn=self.turns, attachments=attachments or [])
         self.add_event("status", status="queued")
 
     def add_event(self, kind: str, **data: Any) -> None:
@@ -224,8 +227,14 @@ class Busy(Exception):
 
 class Harness:
     def __init__(self, agent_factory: AgentFactory, audit_path: str | Path, approval_timeout: float = 300.0,
-                 max_tasks: int = 4):
+                 max_tasks: int = 4, workspace: str | Path | None = None,
+                 max_upload_mb: float = 20, max_message_mb: float = 50):
         self.factory = agent_factory
+        self.workspace = Path(workspace) if workspace is not None else None   # None: uploads disabled
+        self.upload_limits = uploads.Limits(int(max_upload_mb * 1024 * 1024),
+                                            int(max(max_message_mb, max_upload_mb) * 1024 * 1024))
+        # JSON body cap: base64 (4/3) of the per-message limit + room for the text
+        self.max_body = max(MAX_BODY, self.upload_limits.max_message_bytes * 4 // 3 + MAX_BODY)
         self.audit_path = Path(audit_path)
         self.approvals = ApprovalQueue(approval_timeout)
         self.max_tasks = max(1, int(max_tasks))
@@ -233,28 +242,51 @@ class Harness:
         self._tasks: dict[str, Task] = {}
         self._lock = threading.Lock()
 
-    def submit(self, text: str) -> Task:
+    def _decode(self, files: Any) -> list[tuple[str, bytes]]:
+        decoded = uploads.decode(files, self.upload_limits)
+        if decoded and self.workspace is None:
+            raise uploads.UploadError(400, "uploads are disabled (no workspace)")
+        return decoded
+
+    def _save(self, task: Task, decoded: list[tuple[str, bytes]]) -> list[dict]:
+        return uploads.save(self.workspace, task.id, decoded) if decoded else []
+
+    def submit(self, text: str, files: Any = None) -> Task:
+        decoded = self._decode(files)          # validate everything before creating anything
         task = Task(text)
+        saved = self._save(task, decoded)
         with self._lock:
             self._tasks[task.id] = task
-        self._start(task, text)
+        self._start(task, text, saved)
         return task
 
-    def send(self, task_id: str, text: str) -> Task:
+    def send(self, task_id: str, text: str, files: Any = None) -> Task:
         """Continue a conversation with a new user message (same agent, history kept)."""
+        decoded = self._decode(files)
         task = self.get(task_id)
         if task is None:
             raise KeyError(task_id)
         with task._lock:
             if task.status not in TERMINAL:
                 raise Busy(f"task is {task.status}")
-            task.status = "queued"   # reserve: a concurrent send now gets Busy
-        self._start(task, text)
+            previous, task.status = task.status, "queued"   # reserve: a concurrent send now gets Busy
+        try:
+            saved = self._save(task, decoded)
+        except BaseException:
+            with task._lock:
+                task.status = previous
+            raise
+        self._start(task, text, saved)
         return task
 
-    def _start(self, task: Task, text: str) -> None:
-        task.new_turn(text)
-        threading.Thread(target=self._run, args=(task, text), name=f"task-{task.id}", daemon=True).start()
+    def _start(self, task: Task, text: str, saved: list[dict] | None = None) -> None:
+        task.new_turn(text, uploads.public(saved or []))
+        if saved:   # one audit line per uploaded file (after the user message, so the chat reads in order)
+            audit = TaskAudit(self.audit_path, task)
+            for s in saved:
+                audit.record(event="upload", agent="root", depth=0, path=s["path"], bytes=s["bytes"], sha256=s["sha256"])
+        agent_text = uploads.describe(text, saved or [])
+        threading.Thread(target=self._run, args=(task, agent_text), name=f"task-{task.id}", daemon=True).start()
 
     def running(self) -> int:
         with self._lock:
@@ -384,7 +416,7 @@ def make_handler(h: Harness, token: str | None, local_only: bool):
 
         def _body(self) -> dict | None:
             n = int(self.headers.get("Content-Length") or 0)
-            if n > MAX_BODY:
+            if n > h.max_body:
                 self._send(413, {"error": "body too large"})
                 return None
             try:
@@ -396,6 +428,19 @@ def make_handler(h: Harness, token: str | None, local_only: bool):
                 self._send(400, {"error": "JSON object expected"})
                 return None
             return data
+
+        def _text(self, data: dict, key: str) -> str | None:
+            """The message text; may be empty only if files are attached."""
+            text = data.get(key)
+            if text is None and data.get("files"):
+                text = ""
+            if not isinstance(text, str) or (not text.strip() and not data.get("files")):
+                self._send(400, {"error": f"'{key}' (non-empty string) is required"})
+                return None
+            if len(text) > MAX_TASK_CHARS:
+                self._send(400, {"error": f"{key} too long"})
+                return None
+            return text.strip() or "Please look at the attached file(s)."
 
         def do_GET(self) -> None:  # noqa: N802
             u = urlparse(self.path)
@@ -411,6 +456,11 @@ def make_handler(h: Harness, token: str | None, local_only: bool):
                 return
             if path == "/tasks":
                 return self._send(200, {"tasks": h.list()})
+            if path == "/config":
+                lim = h.upload_limits
+                return self._send(200, {"uploads": h.workspace is not None,
+                                        "max_upload_bytes": lim.max_file_bytes,
+                                        "max_message_bytes": lim.max_message_bytes})
             if path == "/approvals":
                 return self._send(200, {"approvals": h.approvals.list(pending_only="all" not in q)})
             m = TASK_RE.match(path)
@@ -436,21 +486,22 @@ def make_handler(h: Harness, token: str | None, local_only: bool):
             if data is None:
                 return
             if path == "/tasks":
-                text = data.get("task")
-                if not isinstance(text, str) or not text.strip():
-                    return self._send(400, {"error": "'task' (non-empty string) is required"})
-                if len(text) > MAX_TASK_CHARS:
-                    return self._send(400, {"error": "task too long"})
-                return self._send(201, h.submit(text.strip()).snapshot())
+                text = self._text(data, "task")
+                if text is None:
+                    return
+                try:
+                    return self._send(201, h.submit(text, data.get("files")).snapshot())
+                except uploads.UploadError as e:
+                    return self._send(e.status, {"error": str(e)})
             m = TASK_RE.match(path)
             if m and m.group(2) == "/messages":
-                text = data.get("text")
-                if not isinstance(text, str) or not text.strip():
-                    return self._send(400, {"error": "'text' (non-empty string) is required"})
-                if len(text) > MAX_TASK_CHARS:
-                    return self._send(400, {"error": "message too long"})
+                text = self._text(data, "text")
+                if text is None:
+                    return
                 try:
-                    return self._send(202, h.send(m.group(1), text.strip()).snapshot(full=False))
+                    return self._send(202, h.send(m.group(1), text, data.get("files")).snapshot(full=False))
+                except uploads.UploadError as e:
+                    return self._send(e.status, {"error": str(e)})
                 except KeyError:
                     return self._send(404, {"error": "unknown task"})
                 except Busy as e:

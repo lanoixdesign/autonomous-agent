@@ -203,10 +203,22 @@ conversations, which can run at the same time (at most `--max-tasks`, default 4;
 Because the harness can take several approvals at once, **writing sub-agents run in parallel** there,
 each in its isolated copy (see above).
 
+**Attachments**: the 📎 button or drag-and-drop (several files at once). Files show as chips before
+sending, then as attachments in your bubble. They are saved under
+`<workspace>/uploads/<conversation id>/`, and the agent's message gets the list of their
+workspace-relative paths (small text files are also inlined), so it can open them with `read_file`.
+- names are reduced to a plain file name (no directories, `..`, absolute paths, leading dot or control
+  characters); files are created without following symlinks and never overwrite (`notes-1.md`); a
+  symlinked `uploads/` directory is refused;
+- `--max-upload-mb` per file (default 20) and `--max-message-mb` per message (default 50) → HTTP 413;
+- same token / same-origin checks as the other POSTs; each file is audit-logged (`event: upload`,
+  path, size, sha256).
+
 | | |
 |---|---|
 | `POST /tasks` `{"task": "..."}` | start a conversation → `{"id": ...}` |
 | `POST /tasks/{id}/messages` `{"text": "..."}` | continue it (409 while a turn is running) |
+| `"files": [{"name": "a.md", "content_b64": "..."}]` | optional on both: attachments (base64 in the JSON body) · `GET /config`: limits |
 | `GET /tasks` · `GET /tasks/{id}` | list · one task: status, result, usage, agent tree |
 | `GET /tasks/{id}/events?since=N` | events (audit lines, messages, approvals) from N, for polling |
 | `POST /tasks/{id}/cancel` | stop at the next step; its pending approvals are denied |

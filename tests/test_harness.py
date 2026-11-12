@@ -29,12 +29,14 @@ def server(ctx, tmp_path):
     """start(llm_factory, perms=None, timeout=5, token=None) -> (base_url, harness)."""
     started = []
 
-    def start(llm_factory, perms=None, timeout=5.0, token=None, budget=None, swarm=None, max_tasks=4):
+    def start(llm_factory, perms=None, timeout=5.0, token=None, budget=None, swarm=None, max_tasks=4,
+              max_upload_mb=20, max_message_mb=50):
         def factory(task, audit, confirm, cancel, on_event):
             return Agent(llm_factory(), default_registry(enable_web=False, enable_github=False),
                          perms or Permissions(), audit, ctx, budget or Budget(), confirm=confirm,
                          on_event=on_event, swarm=swarm or SwarmConfig(), cancel=cancel)
-        h = Harness(factory, tmp_path / "state" / "audit.jsonl", approval_timeout=timeout, max_tasks=max_tasks)
+        h = Harness(factory, tmp_path / "state" / "audit.jsonl", approval_timeout=timeout, max_tasks=max_tasks,
+                    workspace=ctx.workspace, max_upload_mb=max_upload_mb, max_message_mb=max_message_mb)
         srv = make_server(h, "127.0.0.1", 0, token, warn=lambda m: None)
         threading.Thread(target=srv.serve_forever, daemon=True).start()
         started.append((srv, h))
@@ -268,3 +270,113 @@ def test_max_concurrent_tasks(server):
     gate.set()
     assert sorted(finished(base, i)["status"] for i in ids) == ["cancelled", "done", "done", "done"]
     assert stats["peak"] == 2
+
+
+# ---------------------------------------------------------------- attachments
+
+import base64  # noqa: E402
+
+
+def b64(data):
+    return base64.b64encode(data if isinstance(data, bytes) else data.encode()).decode()
+
+
+class ReadAttachmentLLM:
+    """Reads the first attached path announced in the user message, then answers with what it read."""
+    def __init__(self):
+        self.seen = []
+
+    def chat(self, messages, tools=None):
+        user = [m for m in messages if m["role"] == "user"][-1]["content"]
+        self.seen.append(user)
+        tool_msgs = [m for m in messages if m["role"] == "tool"]
+        if not tool_msgs or messages[-1]["role"] == "user":
+            path = [ln[2:].split(" (")[0] for ln in user.splitlines() if ln.startswith("- uploads/")][0]
+            return LLMReply({"role": "assistant", "content": None, "tool_calls": [
+                {"id": "r", "type": "function", "function": {"name": "read_file", "arguments": json.dumps({"path": path})}}]}, 1, 1)
+        return LLMReply({"role": "assistant", "content": "read: " + tool_msgs[-1]["content"]}, 1, 1)
+
+
+def test_upload_roundtrip_and_agent_gets_paths(server, ws, tmp_path):
+    llm = ReadAttachmentLLM()
+    base, _ = server(lambda: llm)
+    png = bytes(range(256)) * 4
+    st, t = call(base, "POST", "/tasks", {"task": "summarise", "files": [
+        {"name": "notes.md", "content_b64": b64("# Notes\nbuy milk\n")},
+        {"name": "pic.png", "content_b64": b64(png)}]})
+    assert st == 201
+    tid = t["id"]
+    done = finished(base, tid)
+    assert (ws / "uploads" / tid / "notes.md").read_text() == "# Notes\nbuy milk\n"
+    assert (ws / "uploads" / tid / "pic.png").read_bytes() == png
+    # the agent received the workspace-relative paths (+ the small text file inlined) and read it
+    msg = llm.seen[0]
+    assert f"- uploads/{tid}/notes.md (17 bytes, text)" in msg and f"- uploads/{tid}/pic.png (1024 bytes, binary)" in msg
+    assert "buy milk" in msg and "buy milk" in done["result"]
+    ev = call(base, "GET", f"/tasks/{tid}/events")[1]["events"]
+    user = [e for e in ev if e["kind"] == "user"][0]
+    assert user["text"] == "summarise" and [a["name"] for a in user["attachments"]] == ["notes.md", "pic.png"]
+    audit = [json.loads(x) for x in (tmp_path / "state" / "audit.jsonl").read_text().splitlines()]
+    ups = [l for l in audit if l.get("event") == "upload"]
+    assert [u["path"] for u in ups] == [f"uploads/{tid}/notes.md", f"uploads/{tid}/pic.png"]
+    assert ups[0]["bytes"] == 17 and len(ups[0]["sha256"]) == 64 and ups[0]["task_id"] == tid
+    # a follow-up message with a file (and no text) goes to the same conversation folder
+    st, _ = call(base, "POST", f"/tasks/{tid}/messages", {"files": [{"name": "notes.md", "content_b64": b64("v2")}]})
+    assert st == 202
+    wait_for(lambda: call(base, "GET", f"/tasks/{tid}")[1]["turns"] == 2 and finished(base, tid))
+    assert (ws / "uploads" / tid / "notes-1.md").read_text() == "v2"         # never overwrites
+    assert "Please look at the attached file(s)." in llm.seen[-1]
+
+
+def test_upload_names_are_sanitized(server, ws, tmp_path):
+    base, _ = server(lambda: MockLLM([{"content": "ok"}]))
+    names = ["../../evil.txt", "/etc/passwd", "..\\..\\win.ini", ".env", "a/b/c.txt", "..", "x\x00y.txt"]
+    st, t = call(base, "POST", "/tasks", {"task": "t", "files": [{"name": n, "content_b64": b64("x")} for n in names]})
+    assert st == 201
+    finished(base, t["id"])
+    d = ws / "uploads" / t["id"]
+    assert sorted(p.name for p in d.iterdir()) == sorted(
+        ["evil.txt", "passwd", "win.ini", "env", "c.txt", "file", "xy.txt"])
+    assert not (tmp_path / "evil.txt").exists() and not (ws / "evil.txt").exists()
+    assert (ws / ".env").read_text() == "SECRET=1\n"                           # untouched
+
+
+def test_upload_refuses_symlinked_uploads_dir(server, ws, tmp_path):
+    outside = tmp_path / "outside"
+    outside.mkdir()
+    (ws / "uploads").symlink_to(outside, target_is_directory=True)
+    base, _ = server(lambda: MockLLM([{"content": "ok"}]))
+    st, r = call(base, "POST", "/tasks", {"task": "t", "files": [{"name": "a.txt", "content_b64": b64("x")}]})
+    assert st == 400 and "symlink" in r["error"] and list(outside.iterdir()) == []
+    assert call(base, "GET", "/tasks")[1]["tasks"] == []
+
+
+def test_upload_size_limits_413(server, ws):
+    base, _ = server(lambda: MockLLM([{"content": "ok"}]), max_upload_mb=0.001, max_message_mb=0.0015)
+    big = "x" * 1100                                    # > 1048 bytes
+    st, r = call(base, "POST", "/tasks", {"task": "t", "files": [{"name": "big.txt", "content_b64": b64(big)}]})
+    assert st == 413 and "limit" in r["error"]
+    two = [{"name": f"f{i}.txt", "content_b64": b64("y" * 900)} for i in range(2)]   # 1800 > 1572 per message
+    st, r = call(base, "POST", "/tasks", {"task": "t", "files": two})
+    assert st == 413 and "per-message" in r["error"]
+    assert call(base, "POST", "/tasks", {"task": "t", "files": [{"name": "a", "content_b64": "%%%"}]})[0] == 400
+    assert not (ws / "uploads").exists() and call(base, "GET", "/tasks")[1]["tasks"] == []
+    assert call(base, "GET", "/config")[1]["max_upload_bytes"] == 1048
+
+
+def test_upload_requires_token_when_set(server, ws):
+    base, _ = server(lambda: MockLLM([{"content": "ok"}]), token="s3cret")
+    body = {"task": "t", "files": [{"name": "a.txt", "content_b64": b64("x")}]}
+    assert call(base, "POST", "/tasks", body)[0] == 401
+    assert call(base, "POST", "/tasks", body, {"Authorization": "Bearer s3cret", "Origin": "http://evil.example"})[0] == 403
+    assert not (ws / "uploads").exists()
+    st, t = call(base, "POST", "/tasks", body, {"Authorization": "Bearer s3cret"})
+    assert st == 201 and (ws / "uploads" / t["id"] / "a.txt").exists()
+
+
+def test_chat_page_has_attach_ui(server):
+    base, _ = server(lambda: MockLLM())
+    with urllib.request.urlopen(base + "/") as r:
+        page = r.read().decode()
+    for needle in ('id="attach"', 'type="file" multiple', 'id="chips"', '"drop"', "content_b64", "Drop files to attach"):
+        assert needle in page
