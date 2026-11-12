@@ -59,11 +59,12 @@ python -m agent permissions      # effective permissions, tool by tool
 python -m agent audit -n 20      # last audit entries
 python -m agent memory list | recall "query" | add "text" | forget "text-or-id"
 python -m agent skills list | show code-review
+python -m agent serve --port 8765  # local harness: web page + JSON API + approvals queue
 ```
 
 Options: `--workspace/-w`, `--permissions/-p`, `--model/-m`, `--provider`, `--state-dir`
 (memory + audit, default `<workspace>/.agent`), `--max-steps`, `--max-tool-calls`, `--max-tokens`,
-`--max-depth`, `--max-children`, `--yolo`, `--offline`, `--quiet`.
+`--max-depth`, `--max-children`, `--max-parallel`, `--yolo`, `--offline`, `--quiet`.
 
 Example (real run, Groq `openai/gpt-oss-120b`, no terminal so `ask` = refused):
 
@@ -156,8 +157,52 @@ python -m agent run "Review src/ and docs/ in parallel: one sub-agent per folder
   [root.2] -> list_files [read] {"path": "docs"} : allow
 ```
 
-Sub-agents run **one after the other** (no threads), share the parent's memory, and inherit its
-`ask` confirmations.
+Sub-agents share the parent's memory and inherit its `ask` confirmations.
+
+**Parallel children** (`--max-parallel`, default 3): `spawn_agents` runs children concurrently in a
+thread pool **only if they are read-only**, i.e. `allowed_tools` is given and every listed tool is in
+the `read` or `network` category and already decided `allow` (or `deny`) by your policy, never `ask`.
+A child that may write, execute, delegate or need an approval runs sequentially. (Simpler and safer
+than isolated workspace copies with merging: parallel children cannot write, so there is nothing to
+merge.) Budget reservations, the child counter and the audit writer are thread-safe. In the example
+above the two children run in parallel because they only have `read_file` and `list_files`.
+
+## Harness (local server, web page, approvals)
+
+`python -m agent serve` starts a local harness: tasks run in background threads, sub-agents included,
+and every `ask` goes to an **approval queue** instead of the terminal. Standard library only
+(`http.server` + `threading`).
+
+```bash
+python -m agent serve --workspace ~/project --port 8765          # then open http://127.0.0.1:8765/
+AGENT_HARNESS_TOKEN=change-me python -m agent serve --approval-timeout 120 --max-parallel 3
+```
+
+The page at `/` lets you launch a task, follow the live agent tree (`root`, `root.1`, `root.1.2`…),
+read the event log, cancel a task, and approve or deny pending requests; each request shows the agent id
+that asked. JSON API:
+
+| | |
+|---|---|
+| `POST /tasks` `{"task": "..."}` | start a task → `{"id": ...}` |
+| `GET /tasks` · `GET /tasks/{id}` | list · one task: status, result, usage, agent tree |
+| `GET /tasks/{id}/events?since=N` | events (audit lines, messages, approvals) from N, for polling |
+| `POST /tasks/{id}/cancel` | stop at the next step; its pending approvals are denied |
+| `GET /approvals` (`?all=1`) · `POST /approvals/{id}` `{"decision": "approve"\|"deny"}` | approval queue |
+
+```bash
+curl -s -X POST localhost:8765/tasks -H 'Content-Type: application/json' -d '{"task":"Summarise notes.md"}'
+curl -s localhost:8765/approvals
+curl -s -X POST localhost:8765/approvals/<id> -H 'Content-Type: application/json' -d '{"decision":"approve"}'
+```
+
+- **No answer = deny**: an approval waits `--approval-timeout` seconds (default 300), then is refused.
+- Binds **127.0.0.1** by default. With `AGENT_HARNESS_TOKEN` set, every API call needs
+  `Authorization: Bearer <token>` (paste it in the page's token field). Binding another host prints a
+  warning. POSTs must be JSON and same-origin, and the `Host` header is checked on localhost.
+- Same `permissions.yaml`, memory and `audit.jsonl` as the CLI (harness lines carry a `task_id`).
+  Terminal mode (`run`, `chat`) is unchanged.
+- Not a multi-user server: no accounts, no TLS. Tasks live in memory and are lost when it stops.
 
 ## Tests
 

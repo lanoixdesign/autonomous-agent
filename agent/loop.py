@@ -9,12 +9,14 @@ ONE of these is true, and never resumes on its own:
   - max_tokens (prompt+completion, as reported) reached  -> "max_tokens"
   - the same tool call (name+args) repeated `max_repeats` times in a row -> "no_progress"
   - the LLM backend fails                                -> "llm_error"
+  - the `cancel` event is set (harness)                  -> "cancelled"
 Sub-agents (see swarm.py) run inside this budget: their usage is deducted from the parent's.
 You can pass your own `stop_rule(state) -> str | None` to add a criterion.
 """
 from __future__ import annotations
 
 import json
+import threading
 import time
 from dataclasses import dataclass, field
 from typing import Any, Callable
@@ -54,6 +56,10 @@ class RunState:
     tool_calls: int = 0
     tokens: int = 0
     last_calls: list[str] = field(default_factory=list)
+    # budget reserved by running sub-agents (swarm.py), released when they finish
+    reserved_steps: int = 0
+    reserved_calls: int = 0
+    reserved_tokens: int = 0
 
 
 @dataclass
@@ -79,7 +85,8 @@ class Agent:
                  on_event: Callable[[str, dict], None] | None = None,
                  stop_rule: Callable[[RunState], str | None] | None = None,
                  swarm: SwarmConfig | None = None, depth: int = 0, agent_id: str = "root",
-                 swarm_state: SwarmState | None = None, allow_spawn: bool = True):
+                 swarm_state: SwarmState | None = None, allow_spawn: bool = True,
+                 cancel: threading.Event | None = None):
         self.llm, self.registry, self.permissions, self.audit = llm, registry, permissions, audit
         self.ctx, self.budget, self.confirm = ctx, budget or Budget(), confirm
         self.on_event = on_event or (lambda kind, data: None)
@@ -89,6 +96,8 @@ class Agent:
         self.swarm_state = swarm_state or (SwarmState() if swarm else None)
         self.base_registry = registry
         self.state: RunState | None = None
+        self.lock = threading.Lock()      # guards self.state when sub-agents run in threads
+        self.cancel = cancel
         if swarm and allow_spawn and depth < swarm.max_depth:
             from . import swarm as swarm_mod
             self.registry = Registry(dict(registry.tools))
@@ -115,11 +124,13 @@ class Agent:
         st = RunState()
         self.state = st
         if self.depth == 0 and self.swarm_state is not None:
-            self.swarm_state.spawned = 0   # max_children counts per root run
+            self.swarm_state.reset()   # max_children counts per root run
         b = self.budget
         while True:
             reason = None
-            if st.steps >= b.max_steps:
+            if self.cancel is not None and self.cancel.is_set():
+                reason = "cancelled"
+            elif st.steps >= b.max_steps:
                 reason = "max_steps"
             elif st.tokens >= b.max_tokens:
                 reason = "max_tokens"
@@ -179,7 +190,10 @@ class Agent:
         decision = self.permissions.decide(tool.name, tool.category, tool.subject_kind, tool.subject(args))
         mode, why = decision.mode, decision.reason
         if mode == "ask":
-            approved = bool(self.confirm(tool.name, tool.category, redact(args), why))
+            # A confirm object with `with_agent` (the harness) is told which agent is asking.
+            ask = getattr(self.confirm, "with_agent", None)
+            approved = bool(ask(self.agent_id, tool.name, tool.category, redact(args), why) if ask
+                            else self.confirm(tool.name, tool.category, redact(args), why))
             mode = "allow" if approved else "deny"
             why += "; user approved" if approved else "; user refused (or no terminal)"
         self.on_event("tool", {"name": name, "category": tool.category, "args": redact(args), "decision": mode})

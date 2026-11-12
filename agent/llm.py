@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import json
 import os
+import threading
 import time
 import urllib.error
 import urllib.request
@@ -104,20 +105,23 @@ class MockLLM:
         self.script = list(script) if script is not None else None
         self.calls = 0
         self.model = "mock"
+        self._lock = threading.Lock()   # sub-agents may call one backend from several threads
 
     def chat(self, messages: list[dict], tools: list[dict] | None = None) -> LLMReply:
-        self.calls += 1
         prompt_chars = sum(len(str(m.get("content") or "")) for m in messages)
-        if self.script is not None:
-            step = self.script.pop(0) if self.script else {"content": "(mock script exhausted)"}
-        else:
-            step = self._default(messages)
+        with self._lock:
+            self.calls += 1
+            calls_now = self.calls
+            if self.script is not None:
+                step = self.script.pop(0) if self.script else {"content": "(mock script exhausted)"}
+            else:
+                step = self._default(messages)
         if "content" in step:
             msg = {"role": "assistant", "content": step["content"]}
         else:
             calls = step.get("tools") or [step]
             msg = {"role": "assistant", "content": step.get("say"), "tool_calls": [
-                {"id": f"mock_{self.calls}_{i}", "type": "function",
+                {"id": f"mock_{calls_now}_{i}", "type": "function",
                  "function": {"name": c["tool"], "arguments": json.dumps(c.get("args", {}))}}
                 for i, c in enumerate(calls)]}
         return LLMReply(msg, prompt_chars // 4, len(json.dumps(msg)) // 4)

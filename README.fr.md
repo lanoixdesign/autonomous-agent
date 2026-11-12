@@ -60,11 +60,12 @@ python -m agent permissions      # permissions effectives, outil par outil
 python -m agent audit -n 20      # dernières entrées du journal d'audit
 python -m agent memory list | recall "requête" | add "texte" | forget "texte-ou-id"
 python -m agent skills list | show code-review
+python -m agent serve --port 8765  # harness local : page web + API JSON + file de validation
 ```
 
 Options : `--workspace/-w`, `--permissions/-p`, `--model/-m`, `--provider`, `--state-dir`
 (mémoire + audit, défaut `<workspace>/.agent`), `--max-steps`, `--max-tool-calls`, `--max-tokens`,
-`--max-depth`, `--max-children`, `--yolo`, `--offline`, `--quiet`.
+`--max-depth`, `--max-children`, `--max-parallel`, `--yolo`, `--offline`, `--quiet`.
 
 Exemple (essai réel, Groq `openai/gpt-oss-120b`, sans terminal donc `ask` = refusé) :
 
@@ -161,8 +162,56 @@ python -m agent run "Relis src/ et docs/ : un sous-agent par dossier, puis fais 
   [root.2] -> list_files [read] {"path": "docs"} : allow
 ```
 
-Les sous-agents s'exécutent **l'un après l'autre** (pas de threads), partagent la mémoire du parent et
-héritent de ses confirmations `ask`.
+Les sous-agents partagent la mémoire du parent et héritent de ses confirmations `ask`.
+
+**Sous-agents en parallèle** (`--max-parallel`, 3 par défaut) : `spawn_agents` lance les enfants en
+même temps dans un pool de threads **seulement s'ils sont en lecture seule**, c'est-à-dire si
+`allowed_tools` est donné et que chaque outil listé est de catégorie `read` ou `network` et déjà décidé
+`allow` (ou `deny`) par votre politique, jamais `ask`. Un enfant qui peut écrire, exécuter, déléguer ou
+attendre une validation s'exécute à la suite des autres. (Plus simple et plus sûr que des copies isolées
+de l'espace de travail avec fusion : les enfants en parallèle ne peuvent pas écrire, il n'y a rien à
+fusionner.) Les réservations de budget, le compteur d'enfants et l'écriture de l'audit sont
+thread-safe. Dans l'exemple ci-dessus, les deux enfants tournent en parallèle car ils n'ont que
+`read_file` et `list_files`.
+
+## Harness (serveur local, page web, validations)
+
+`python -m agent serve` lance un harness local : les tâches tournent en arrière-plan dans des threads,
+sous-agents compris, et chaque `ask` part dans une **file de validation** au lieu du terminal.
+Bibliothèque standard uniquement (`http.server` + `threading`).
+
+```bash
+python -m agent serve --workspace ~/projet --port 8765          # puis ouvrir http://127.0.0.1:8765/
+AGENT_HARNESS_TOKEN=a-changer python -m agent serve --approval-timeout 120 --max-parallel 3
+```
+
+La page `/` permet de lancer une tâche, de suivre l'arbre des agents en direct (`root`, `root.1`,
+`root.1.2`…), de lire le journal des événements, d'annuler une tâche et d'approuver ou refuser les
+demandes en attente ; chaque demande affiche l'identifiant de l'agent qui l'a faite. API JSON :
+
+| | |
+|---|---|
+| `POST /tasks` `{"task": "..."}` | lance une tâche → `{"id": ...}` |
+| `GET /tasks` · `GET /tasks/{id}` | liste · une tâche : statut, résultat, consommation, arbre des agents |
+| `GET /tasks/{id}/events?since=N` | événements (lignes d'audit, messages, validations) depuis N, à interroger régulièrement |
+| `POST /tasks/{id}/cancel` | arrêt au pas suivant ; ses validations en attente sont refusées |
+| `GET /approvals` (`?all=1`) · `POST /approvals/{id}` `{"decision": "approve"\|"deny"}` | file de validation |
+
+```bash
+curl -s -X POST localhost:8765/tasks -H 'Content-Type: application/json' -d '{"task":"Résume notes.md"}'
+curl -s localhost:8765/approvals
+curl -s -X POST localhost:8765/approvals/<id> -H 'Content-Type: application/json' -d '{"decision":"approve"}'
+```
+
+- **Pas de réponse = refus** : une validation attend `--approval-timeout` secondes (300 par défaut), puis est refusée.
+- Écoute sur **127.0.0.1** par défaut. Si `AGENT_HARNESS_TOKEN` est défini, chaque appel d'API exige
+  `Authorization: Bearer <jeton>` (à coller dans le champ « token » de la page). Écouter sur une autre
+  adresse affiche un avertissement. Les POST doivent être en JSON et de même origine, et l'en-tête
+  `Host` est vérifié en local.
+- Mêmes `permissions.yaml`, mémoire et `audit.jsonl` que la CLI (les lignes du harness portent un
+  `task_id`). Le mode terminal (`run`, `chat`) ne change pas.
+- Ce n'est pas un serveur multi-utilisateur : pas de comptes, pas de TLS. Les tâches sont gardées en
+  mémoire et perdues à l'arrêt.
 
 ## Tests
 

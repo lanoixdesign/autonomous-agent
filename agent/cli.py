@@ -1,4 +1,4 @@
-"""Command line: python -m agent chat | run "task" | memory | skills | permissions | audit."""
+"""Command line: python -m agent chat | run "task" | serve | memory | skills | permissions | audit."""
 from __future__ import annotations
 
 import argparse
@@ -76,7 +76,8 @@ def printer(kind: str, data: dict) -> None:
         print(f"  {who}[stop: {data['reason']}]", file=sys.stderr)
 
 
-def build(args) -> tuple[Agent, Permissions]:
+def parts(args) -> tuple[Permissions, ToolContext, Path]:
+    """What every agent of this process shares: permissions, tool context (workspace, memory, skills), state dir."""
     ws = Path(args.workspace).resolve()
     ws.mkdir(parents=True, exist_ok=True)
     state = Path(args.state_dir).resolve() if args.state_dir else ws / ".agent"
@@ -90,14 +91,49 @@ def build(args) -> tuple[Agent, Permissions]:
     mem = Memory(state / "memory")
     skills = SkillLibrary([ws / "skills", state / "skills", REPO_SKILLS])
     ctx = ToolContext(workspace=ws, memory=mem, skills=skills)
+    return perms, ctx, state
+
+
+def new_agent(args, perms: Permissions, ctx: ToolContext, audit: AuditLog, confirm, on_event, cancel=None) -> Agent:
     llm = make_llm(args.provider, args.model)
     registry = default_registry(enable_web=not args.offline, enable_github=not args.offline)
     budget = Budget(max_steps=args.max_steps, max_tool_calls=args.max_tool_calls, max_tokens=args.max_tokens)
-    swarm = SwarmConfig(max_depth=args.max_depth, max_children=args.max_children) if args.max_depth > 0 else None
-    agent = Agent(llm, registry, perms, AuditLog(state / "audit.jsonl"), ctx, budget,
-                  confirm=make_confirm(sys.stdin.isatty()), on_event=None if args.quiet else printer,
-                  swarm=swarm)
+    swarm = (SwarmConfig(max_depth=args.max_depth, max_children=args.max_children,
+                         max_parallel=max(1, args.max_parallel)) if args.max_depth > 0 else None)
+    return Agent(llm, registry, perms, audit, ctx, budget, confirm=confirm, on_event=on_event,
+                 swarm=swarm, cancel=cancel)
+
+
+def build(args) -> tuple[Agent, Permissions]:
+    perms, ctx, state = parts(args)
+    agent = new_agent(args, perms, ctx, AuditLog(state / "audit.jsonl"), make_confirm(sys.stdin.isatty()),
+                      None if args.quiet else printer)
     return agent, perms
+
+
+def serve(args) -> int:
+    from .harness import Harness, make_server
+
+    perms, ctx, state = parts(args)
+    make_llm(args.provider, args.model)   # fail fast on a missing key
+
+    def factory(task, audit, confirm, cancel, on_event):
+        return new_agent(args, perms, ctx, audit, confirm, on_event, cancel)
+
+    h = Harness(factory, state / "audit.jsonl", approval_timeout=args.approval_timeout)
+    srv = make_server(h, args.host, args.port, os.environ.get("AGENT_HARNESS_TOKEN"))
+    host, port = srv.server_address[:2]
+    print(f"harness on http://{'127.0.0.1' if host == '127.0.0.1' else host}:{port}/  "
+          f"(workspace {ctx.workspace}, {perms.source}"
+          f"{', token required' if os.environ.get('AGENT_HARNESS_TOKEN') else ''}) — Ctrl+C to stop", file=sys.stderr)
+    try:
+        srv.serve_forever()
+    except KeyboardInterrupt:
+        pass
+    finally:
+        h.cancel_all()
+        srv.server_close()
+    return 0
 
 
 def common(p: argparse.ArgumentParser) -> None:
@@ -111,6 +147,8 @@ def common(p: argparse.ArgumentParser) -> None:
     p.add_argument("--max-tokens", type=int, default=60000)
     p.add_argument("--max-depth", type=int, default=2, help="sub-agent nesting limit; 0 disables multi-agent mode")
     p.add_argument("--max-children", type=int, default=5, help="max sub-agents per run (whole tree)")
+    p.add_argument("--max-parallel", type=int, default=3,
+                   help="spawn_agents: read-only sub-agents run in parallel up to this many (1 = sequential)")
     p.add_argument("--yolo", action="store_true", help="turn 'ask' into 'allow' EXCEPT for send and spend")
     p.add_argument("--offline", action="store_true", help="do not register network tools (web, GitHub)")
     p.add_argument("--quiet", "-q", action="store_true")
@@ -133,11 +171,22 @@ def main(argv: list[str] | None = None) -> int:
     p_perm = sub.add_parser("permissions", help="show the effective permissions")
     p_aud = sub.add_parser("audit", help="show the last audit entries")
     p_aud.add_argument("-n", type=int, default=20)
-    for p in (p_chat, p_run, p_mem, p_sk, p_perm, p_aud):
+    p_srv = sub.add_parser("serve", help="local harness: JSON API + web page, approvals queue")
+    p_srv.add_argument("--host", default="127.0.0.1", help="bind address (default 127.0.0.1)")
+    p_srv.add_argument("--port", type=int, default=8765)
+    p_srv.add_argument("--approval-timeout", type=float, default=300.0,
+                       help="seconds to wait for an approval; no answer = deny (default 300)")
+    for p in (p_chat, p_run, p_mem, p_sk, p_perm, p_aud, p_srv):
         common(p)
     args = ap.parse_args(argv)
     if args.cmd in ("memory", "skills", "permissions", "audit"):
         args.provider = "mock"  # these commands never call a model
+    if args.cmd == "serve":
+        try:
+            return serve(args)
+        except (LLMError, ValueError, FileNotFoundError, OSError) as e:
+            print(f"error: {e}", file=sys.stderr)
+            return 2
     try:
         agent, perms = build(args)
     except (LLMError, ValueError, FileNotFoundError) as e:
