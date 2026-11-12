@@ -1,0 +1,78 @@
+name: Release (desktop builds, unsigned)
+# Push a tag like v0.1.0 -> builds Windows .exe + macOS .app (Apple Silicon and Intel), attaches them to a
+# GitHub Release. Manual runs (workflow_dispatch) only build and upload the files as workflow artifacts.
+on:
+  push:
+    tags: ["v*"]
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  build:
+    name: build (${{ matrix.name }})
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: windows-latest
+            name: windows-x64
+          - os: macos-latest
+            name: macos-arm64
+          - os: macos-15-intel
+            name: macos-intel
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - run: python -m pip install pyinstaller
+      - name: Build
+        run: |
+          export APP_VERSION="${GITHUB_REF_NAME#v}"
+          case "$APP_VERSION" in [0-9]*) ;; *) APP_VERSION=0.1.0 ;; esac
+          python -m PyInstaller --noconfirm --clean packaging/autonomous-agent.spec
+      - name: Smoke test (start, /health, stop)
+        run: |
+          if [ "$RUNNER_OS" = Windows ]; then
+            packaging/smoke.sh dist/AutonomousAgent.exe
+          else
+            packaging/smoke.sh dist/AutonomousAgent.app/Contents/MacOS/AutonomousAgent
+          fi
+      - name: Package
+        run: |
+          mkdir -p out
+          if [ "$RUNNER_OS" = Windows ]; then
+            cp dist/AutonomousAgent.exe "out/AutonomousAgent-${{ matrix.name }}.exe"
+          else
+            ditto -c -k --sequesterRsrc --keepParent dist/AutonomousAgent.app "out/AutonomousAgent-${{ matrix.name }}.zip"
+          fi
+          ls -l out
+      - uses: actions/upload-artifact@v4
+        with:
+          name: AutonomousAgent-${{ matrix.name }}
+          path: out/*
+          if-no-files-found: error
+
+  release:
+    if: startsWith(github.ref, 'refs/tags/v')
+    needs: build
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        with:
+          path: out
+          merge-multiple: true
+      - name: Create the GitHub Release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          ls -l out
+          (cd out && sha256sum * > SHA256SUMS.txt)
+          gh release create "$GITHUB_REF_NAME" out/* --title "$GITHUB_REF_NAME" --notes-file packaging/RELEASE_NOTES.md
