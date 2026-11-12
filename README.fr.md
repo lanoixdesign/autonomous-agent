@@ -61,11 +61,12 @@ python -m agent audit -n 20      # dernières entrées du journal d'audit
 python -m agent memory list | recall "requête" | add "texte" | forget "texte-ou-id"
 python -m agent skills list | show code-review
 python -m agent serve --port 8765  # harness local : page web + API JSON + file de validation
+python -m agent keys               # clés d'API (masquées) et quotas restants, si providers.yaml est utilisé
 ```
 
 Options : `--workspace/-w`, `--permissions/-p`, `--model/-m`, `--provider`, `--state-dir`
 (mémoire + audit, défaut `<workspace>/.agent`), `--max-steps`, `--max-tool-calls`, `--max-tokens`,
-`--max-depth`, `--max-children`, `--max-parallel`, `--yolo`, `--offline`, `--quiet`.
+`--max-depth`, `--max-children`, `--max-parallel`, `--keys`, `--category`, `--yolo`, `--offline`, `--quiet`.
 
 Exemple (essai réel, Groq `openai/gpt-oss-120b`, sans terminal donc `ask` = refusé) :
 
@@ -132,6 +133,54 @@ La boucle s'arrête de façon irréversible au premier de : réponse finale, `ma
 s'inspire du projet IDC de l'auteur ([lanoixdesign/idc-wrapper](https://github.com/lanoixdesign/idc-wrapper)) ;
 ce n'est **pas** une dépendance. Pour brancher votre propre critère :
 `Agent(..., stop_rule=lambda state: "ma_raison" if ... else None)`.
+
+## Plusieurs clés d'API, par catégorie, avec limites
+
+Facultatif. Sans fichier de clés rien ne change : la clé unique du `.env` est utilisée comme avant.
+Copiez `providers.example.yaml` en `providers.yaml` (ignoré par git ; ou `--keys FICHIER`, ou la
+variable `AGENT_KEYS_FILE`). Chaque entrée indique la **variable d'environnement** qui contient la clé
+(`key_env`), jamais la clé elle-même, plus `provider`/`base_url`, `model` ou `models` par catégorie,
+`categories` (`text`, `code`, `image`, `audio_tts`, `audio_stt`, `embeddings`, ou les vôtres),
+`priority` (la plus basse d'abord), `pricing` facultatif et des `limits` : `requests_per_minute`,
+`requests_per_day`, `tokens_per_day`, `tokens_per_month`, `cost_per_day`, `cost_per_month` (dans votre
+`currency`, nécessite `pricing`), `images_per_day`, `audio_minutes_per_day`.
+
+```yaml
+currency: EUR
+keys:
+  - name: groq-main
+    provider: groq
+    key_env: GROQ_API_KEY
+    categories: [text, code]
+    model: openai/gpt-oss-120b
+    priority: 1
+    pricing: {input_per_1m: 0.15, output_per_1m: 0.60}
+    limits: {requests_per_day: 1000, tokens_per_day: 500000, cost_per_month: 5}
+  - name: openrouter-backup
+    provider: openrouter
+    key_env: OPENROUTER_API_KEY
+    categories: [text, code]
+    model: openai/gpt-4o-mini
+    priority: 2
+```
+
+- **Choix de la clé** : à chaque appel du modèle, le routeur prend la première clé de la catégorie (par
+  priorité) qui est définie, pas en pause, et qui peut accepter la requête **sans dépasser aucune
+  limite**. La requête est réservée avant l'envoi (jetons : invite estimée + plafond `max_tokens`
+  envoyé au fournisseur, coût d'après `pricing`), donc des agents en parallèle ne peuvent pas dépasser
+  ensemble. La consommation réelle est enregistrée ensuite.
+- **Bascule** : un 429 (avec `Retry-After`) ou une erreur 5xx / réseau met la clé en pause et la clé
+  suivante est essayée. Quand aucune clé ne peut servir la catégorie, l'appel s'arrête avec une erreur
+  claire qui donne la raison pour chaque clé (l'agent finit en `llm_error`). Rien n'est jamais envoyé
+  au-delà d'une limite.
+- **Consommation** enregistrée dans `<state-dir>/usage.json` (par minute / jour / mois, heure locale,
+  plus les pauses), donc les limites tiennent après un redémarrage. Une limite atteinte ou une erreur
+  du fournisseur est journalisée (`event: key_limit` / `key_error`).
+- `--category code` choisit la catégorie du modèle de chat ; `agent/media.py` fournit des interfaces
+  minimales (`ImageGenerator`, `TextToSpeech`, `SpeechToText`, `Embeddings`) qui réservent une clé de
+  leur catégorie pour l'appel au fournisseur que vous branchez (pas de génération d'image/son intégrée).
+- `python -m agent keys` et le harness (`GET /keys`, barre latérale du chat, `/dashboard`) affichent le
+  quota restant par clé et par catégorie, avec les clés masquées (`gsk_…abcd`).
 
 ## Mode essaim (sous-agents)
 

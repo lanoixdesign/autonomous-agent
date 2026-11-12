@@ -11,6 +11,11 @@ CHAT_PAGE = r"""<!doctype html>
  #convs{flex:1;overflow:auto} .conv{padding:8px 14px;cursor:pointer;border-left:3px solid transparent}
  .conv:hover{background:#2a2f37} .conv.sel{background:#2f3540;border-left-color:#7e9cff}
  .conv .t{white-space:nowrap;overflow:hidden;text-overflow:ellipsis} .conv small{color:#9aa3b0}
+ #quota{max-height:38vh;overflow:auto;padding:4px 12px;font-size:11.5px;border-top:1px solid #2f3540}
+ #quota h2{font-size:11px;text-transform:uppercase;letter-spacing:.05em;color:#9aa3b0;margin:6px 0}
+ .qk{margin:0 0 8px} .qk b{color:#e8eaee} .qk code{color:#9aa3b0;font-size:11px} .qk .off{color:#f19a92}
+ .ql{display:flex;justify-content:space-between;color:#c5cad3} .bar{height:3px;background:#3a414c;border-radius:2px;margin:1px 0 3px}
+ .bar i{display:block;height:3px;background:#7fc79a;border-radius:2px} .bar i.hi{background:#f0a73a} .bar i.full{background:#e5534b}
  aside footer{padding:10px 12px;font-size:12px;color:#9aa3b0} aside footer input{width:100%;margin-top:4px}
  aside footer a{color:#9fb4ff}
  main{flex:1;display:flex;flex-direction:column;min-width:0}
@@ -56,6 +61,7 @@ CHAT_PAGE = r"""<!doctype html>
 <aside><h1>autonomous-agent</h1>
  <button class="new" id="new">+ New conversation</button>
  <div id="convs"></div>
+ <div id="quota"></div>
  <footer>token (if AGENT_HARNESS_TOKEN is set)<input id="token" type="password">
   <div style="margin-top:6px"><a href="/dashboard">dashboard</a></div></footer></aside>
 <main>
@@ -191,6 +197,20 @@ $("send").onclick=send;
 $("input").addEventListener("keydown",e=>{ if(e.key==="Enter"&&!e.shiftKey){ e.preventDefault(); send(); } });
 $("new").onclick=()=>{ pick(null); $("input").focus(); };
 $("cancel").onclick=async()=>{ if(cur) try{ await api("POST","/tasks/"+cur+"/cancel",{}); poll(); }catch(e){} };
-loadConfig(); setInterval(poll,1000); poll();
+// ---- API keys: remaining quota per key and category (keys arrive masked from the server)
+function fmt(f,v){ return f.startsWith("cost") ? v.toFixed(2) : (v>=10000 ? Math.round(v/1000)+"k" : String(Math.round(v*100)/100)); }
+async function quotas(){
+  let st; try{ st=await api("GET","/keys"); }catch(e){ return; }
+  const box=$("quota"); box.replaceChildren(); if(!st.keys || !st.keys.length) return;
+  box.append(el("h2",null,"API keys & quotas"+(st.currency?" ("+st.currency+")":"")));
+  st.keys.forEach(k=>{ const d=el("div","qk"); const h=el("div");
+    h.append(el("b",null,k.name+" "), el("code",null,k.key));
+    if(!k.available) h.append(el("span","off"," · key not set")); if(k.cooldown_s) h.append(el("span","off"," · cooldown "+k.cooldown_s+"s"));
+    d.append(h, el("div",null,k.categories.join(", ")+" · priority "+k.priority));
+    Object.entries(k.limits).forEach(([f,v])=>{ const r=el("div","ql"); r.append(el("span",null,f.replace(/_/g," ")), el("span",null,fmt(f,v.remaining)+" left / "+fmt(f,v.limit)));
+      const pct=v.limit? Math.min(100,100*v.used/v.limit):0, b=el("div","bar"), i=el("i",pct>=100?"full":pct>=80?"hi":""); i.style.width=pct+"%"; b.append(i); d.append(r,b); });
+    box.append(d); });
+}
+loadConfig(); setInterval(poll,1000); poll(); setInterval(quotas,5000); quotas();
 </script></body></html>
 """

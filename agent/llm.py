@@ -23,7 +23,9 @@ PROVIDERS: dict[str, dict[str, Any]] = {
 
 
 class LLMError(Exception):
-    pass
+    def __init__(self, message: str, status: int | None = None, retry_after: float | None = None):
+        super().__init__(message)
+        self.status, self.retry_after = status, retry_after
 
 
 @dataclass
@@ -39,19 +41,22 @@ class LLMReply:
 
 class OpenAICompatible:
     def __init__(self, base_url: str, model: str, api_key: str | None = None, timeout: int = 120,
-                 temperature: float = 0.2, retries: int = 2):
+                 temperature: float = 0.2, retries: int = 2, max_tokens: int | None = None):
         self.base_url = base_url.rstrip("/")
         self.model = model
         self._api_key = api_key
         self.timeout = timeout
         self.temperature = temperature
         self.retries = retries
+        self.max_tokens = max_tokens
 
     def __repr__(self) -> str:  # never show the key
         return f"OpenAICompatible(base_url={self.base_url!r}, model={self.model!r})"
 
     def chat(self, messages: list[dict], tools: list[dict] | None = None) -> LLMReply:
         payload: dict[str, Any] = {"model": self.model, "messages": messages, "temperature": self.temperature}
+        if self.max_tokens:
+            payload["max_tokens"] = self.max_tokens
         if tools:
             payload["tools"] = tools
             payload["tool_choice"] = "auto"
@@ -68,7 +73,12 @@ class OpenAICompatible:
                 break
             except urllib.error.HTTPError as e:
                 detail = e.read().decode("utf-8", "replace")[:800]
-                last = LLMError(f"HTTP {e.code} from {self.base_url}: {redact(detail, [self._api_key or ''])}")
+                try:
+                    retry_after = float(e.headers.get("Retry-After")) if e.headers.get("Retry-After") else None
+                except (TypeError, ValueError):
+                    retry_after = None
+                last = LLMError(f"HTTP {e.code} from {self.base_url}: {redact(detail, [self._api_key or ''])}",
+                                status=e.code, retry_after=retry_after)
                 if e.code not in (429, 500, 502, 503, 504) or attempt == self.retries:
                     raise last
             except (urllib.error.URLError, TimeoutError) as e:
@@ -163,3 +173,50 @@ def make_llm(provider: str | None = None, model: str | None = None) -> Any:
     if cfg["key_env"] and not key and provider != "custom":
         raise LLMError(f"missing API key: set {cfg['key_env']} (see .env.example)")
     return OpenAICompatible(base, model, key)
+
+
+class RoutedLLM:
+    """Chat backend that takes its key from a KeyRouter (agent/keys.py) for one category (text, code...).
+
+    Per call: reserve a request on the best key (prompt tokens estimated generously at chars/3, and the
+    completion capped with `max_tokens` to what the limits allow), call it, commit the real usage. On a
+    429 / 5xx / network error the key cools down and the next key is tried; when no key is left the
+    call fails with a clear LLMError (the agent loop stops with "llm_error")."""
+
+    def __init__(self, router: Any, category: str = "text", client_factory: Any = None):
+        self.router, self.category = router, category
+        self.client_factory = client_factory or (lambda base_url, model, key, max_tokens: OpenAICompatible(
+            base_url, model, key, retries=0, max_tokens=max_tokens))
+        self.model = f"router:{category}"
+
+    def chat(self, messages: list[dict], tools: list[dict] | None = None) -> LLMReply:
+        from .keys import KeysExhausted
+
+        est_prompt = (len(json.dumps(messages, ensure_ascii=False)) + len(json.dumps(tools or []))) // 3 + 16
+        errors = []
+        while True:
+            try:
+                lease = self.router.acquire(self.category, prompt_tokens=est_prompt)
+            except KeysExhausted as e:
+                raise LLMError(str(e) + (f"; errors: {' | '.join(errors)}" if errors else ""))
+            if not lease.base_url or not lease.model:
+                lease.release()
+                raise LLMError(f"key {lease.name}: base_url and a model for '{self.category}' are required")
+            client = self.client_factory(lease.base_url, lease.model, lease.api_key, lease.max_completion_tokens)
+            try:
+                reply = client.chat(messages, tools)
+            except LLMError as e:
+                if e.status is not None and e.status != 429 and e.status < 500:
+                    lease.fail(e.status)
+                    raise   # a 4xx other than 429 is not a key problem: do not burn the other keys
+                lease.fail(e.status, e.retry_after)
+                errors.append(f"{lease.name}: {e}")
+                continue
+            except Exception:
+                lease.fail(None)
+                raise
+            pt, ct = reply.prompt_tokens, reply.completion_tokens
+            if not pt and not ct:   # provider did not report usage: keep the estimate
+                pt, ct = est_prompt, len(json.dumps(reply.message)) // 3
+            lease.commit(pt, ct)
+            return reply

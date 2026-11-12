@@ -91,11 +91,42 @@ def parts(args) -> tuple[Permissions, ToolContext, Path]:
     mem = Memory(state / "memory")
     skills = SkillLibrary([ws / "skills", state / "skills", REPO_SKILLS])
     ctx = ToolContext(workspace=ws, memory=mem, skills=skills)
+    args._router = make_router(args, ws, state)
     return perms, ctx, state
 
 
+def keys_file(args, ws: Path) -> Path | None:
+    """--keys, else AGENT_KEYS_FILE, else ./providers.yaml or <workspace>/providers.yaml if present."""
+    if getattr(args, "keys", None):
+        return Path(args.keys)
+    if os.environ.get("AGENT_KEYS_FILE"):
+        return Path(os.environ["AGENT_KEYS_FILE"])
+    for cand in (Path.cwd() / "providers.yaml", ws / "providers.yaml"):
+        if cand.is_file():
+            return cand
+    return None
+
+
+def make_router(args, ws: Path, state: Path):
+    """A KeyRouter when a keys file is configured and no --provider was forced; else None (.env mode)."""
+    if args.provider and not getattr(args, "keys", None):
+        return None
+    path = keys_file(args, ws)
+    if path is None:
+        return None
+    if not path.is_file():
+        raise FileNotFoundError(f"keys file not found: {path}")
+    from .keys import KeyRouter
+    return KeyRouter.from_file(path, state / "usage.json", AuditLog(state / "audit.jsonl"))
+
+
 def new_agent(args, perms: Permissions, ctx: ToolContext, audit: AuditLog, confirm, on_event, cancel=None) -> Agent:
-    llm = make_llm(args.provider, args.model)
+    router = getattr(args, "_router", None)
+    if router is not None:
+        from .llm import RoutedLLM
+        llm = RoutedLLM(router, args.category)
+    else:
+        llm = make_llm(args.provider, args.model)
     registry = default_registry(enable_web=not args.offline, enable_github=not args.offline)
     budget = Budget(max_steps=args.max_steps, max_tool_calls=args.max_tool_calls, max_tokens=args.max_tokens)
     swarm = (SwarmConfig(max_depth=args.max_depth, max_children=args.max_children,
@@ -115,13 +146,15 @@ def serve(args) -> int:
     from .harness import Harness, make_server
 
     perms, ctx, state = parts(args)
-    make_llm(args.provider, args.model)   # fail fast on a missing key
+    if args._router is None:
+        make_llm(args.provider, args.model)   # fail fast on a missing key
 
     def factory(task, audit, confirm, cancel, on_event):
         return new_agent(args, perms, ctx, audit, confirm, on_event, cancel)
 
     h = Harness(factory, state / "audit.jsonl", approval_timeout=args.approval_timeout, max_tasks=args.max_tasks,
-                workspace=ctx.workspace, max_upload_mb=args.max_upload_mb, max_message_mb=args.max_message_mb)
+                workspace=ctx.workspace, max_upload_mb=args.max_upload_mb, max_message_mb=args.max_message_mb,
+                key_router=args._router)
     srv = make_server(h, args.host, args.port, os.environ.get("AGENT_HARNESS_TOKEN"))
     host, port = srv.server_address[:2]
     print(f"harness on http://{'127.0.0.1' if host == '127.0.0.1' else host}:{port}/  "
@@ -158,6 +191,9 @@ def common(p: argparse.ArgumentParser) -> None:
     p.add_argument("--max-children", type=int, default=5, help="max sub-agents per run (whole tree)")
     p.add_argument("--max-parallel", type=int, default=3,
                    help="spawn_agents: read-only sub-agents run in parallel up to this many (1 = sequential)")
+    p.add_argument("--keys", default=None,
+                   help="providers.yaml with several keys + limits (default: AGENT_KEYS_FILE or ./providers.yaml if present)")
+    p.add_argument("--category", default="text", help="key category used for the chat model (text, code...)")
     p.add_argument("--yolo", action="store_true", help="turn 'ask' into 'allow' EXCEPT for send and spend")
     p.add_argument("--offline", action="store_true", help="do not register network tools (web, GitHub)")
     p.add_argument("--quiet", "-q", action="store_true")
@@ -180,6 +216,7 @@ def main(argv: list[str] | None = None) -> int:
     p_perm = sub.add_parser("permissions", help="show the effective permissions")
     p_aud = sub.add_parser("audit", help="show the last audit entries")
     p_aud.add_argument("-n", type=int, default=20)
+    p_keys = sub.add_parser("keys", help="API keys: remaining quota per key and category (keys masked)")
     p_srv = sub.add_parser("serve", help="local harness: JSON API + web page, approvals queue")
     p_srv.add_argument("--host", default="127.0.0.1", help="bind address (default 127.0.0.1)")
     p_srv.add_argument("--port", type=int, default=8765)
@@ -188,11 +225,32 @@ def main(argv: list[str] | None = None) -> int:
     p_srv.add_argument("--max-upload-mb", type=float, default=20, help="chat attachments: max size per file (MB)")
     p_srv.add_argument("--max-message-mb", type=float, default=50, help="chat attachments: max total per message (MB)")
     p_srv.add_argument("--max-tasks", type=int, default=4, help="conversations/tasks running at once (default 4)")
-    for p in (p_chat, p_run, p_mem, p_sk, p_perm, p_aud, p_srv):
+    for p in (p_chat, p_run, p_mem, p_sk, p_perm, p_aud, p_srv, p_keys):
         common(p)
     args = ap.parse_args(argv)
     if args.cmd in ("memory", "skills", "permissions", "audit"):
         args.provider = "mock"  # these commands never call a model
+    if args.cmd == "keys":
+        try:
+            ws = Path(args.workspace).resolve()
+            state = Path(args.state_dir).resolve() if args.state_dir else ws / ".agent"
+            args.provider = None
+            router = make_router(args, ws, state)
+        except (ValueError, FileNotFoundError) as e:
+            print(f"error: {e}", file=sys.stderr)
+            return 2
+        if router is None:
+            print("no keys file (providers.yaml): single-key .env mode", file=sys.stderr)
+            return 0
+        st = router.status()
+        for k in st["keys"]:
+            flag = "" if k["available"] else "  [unavailable]"
+            if k["cooldown_s"]:
+                flag += f"  [cooldown {k['cooldown_s']}s]"
+            print(f"{k['name']}  {k['key']}  p{k['priority']}  {','.join(k['categories'])}{flag}")
+            for f, v in k["limits"].items():
+                print(f"    {f:22s} {v['used']:g} / {v['limit']:g}  (left {v['remaining']:g})")
+        return 0
     if args.cmd == "serve":
         try:
             return serve(args)

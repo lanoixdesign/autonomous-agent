@@ -36,7 +36,8 @@ PAGE = r"""<!doctype html>
   <div id="tree" class="muted">Select a task.</div>
   <h2 style="margin-top:12px">Result</h2><pre id="result" class="muted">—</pre>
   <h2>Event log</h2><div id="events"></div></section>
- <section><h2>Pending approvals</h2><div id="approvals" class="muted">None.</div></section>
+ <section><h2>Pending approvals</h2><div id="approvals" class="muted">None.</div>
+  <h2 style="margin-top:14px">API keys &amp; quotas</h2><div id="keys" class="muted">single-key (.env) mode</div></section>
 </main>
 <script>
 const $ = id => document.getElementById(id);
@@ -95,6 +96,13 @@ async function refreshApprovals(){
 }
 async function refresh(){ try{ await refreshTasks(); await refreshTask(); await refreshApprovals(); $("msg").textContent=""; }
   catch(e){ $("msg").textContent = "error: "+e.message; } }
-setInterval(refresh, 1000); refresh();
+async function refreshKeys(){
+  let st; try{ st=await api("GET","/keys"); }catch(e){ return; }
+  const box=$("keys"); if(!st.keys.length) return; box.className=""; box.replaceChildren();
+  st.keys.forEach(k=>{ const d=el("div","ap"); d.append(el("div","who",k.name+"  "+k.key+(k.available?"":"  (not set)")+(k.cooldown_s?"  cooldown "+k.cooldown_s+"s":"")),
+      el("div","muted",k.categories.join(", ")+" · priority "+k.priority));
+    Object.entries(k.limits).forEach(([f,v])=>d.append(el("div",null,f+": "+v.used+" / "+v.limit+" (left "+v.remaining+")"))); box.append(d); });
+}
+setInterval(refresh, 1000); refresh(); setInterval(refreshKeys, 5000); refreshKeys();
 </script></body></html>
 """

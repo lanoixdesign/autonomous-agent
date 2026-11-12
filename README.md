@@ -60,11 +60,12 @@ python -m agent audit -n 20      # last audit entries
 python -m agent memory list | recall "query" | add "text" | forget "text-or-id"
 python -m agent skills list | show code-review
 python -m agent serve --port 8765  # local harness: web page + JSON API + approvals queue
+python -m agent keys               # API keys (masked) and remaining quotas, if providers.yaml is used
 ```
 
 Options: `--workspace/-w`, `--permissions/-p`, `--model/-m`, `--provider`, `--state-dir`
 (memory + audit, default `<workspace>/.agent`), `--max-steps`, `--max-tool-calls`, `--max-tokens`,
-`--max-depth`, `--max-children`, `--max-parallel`, `--yolo`, `--offline`, `--quiet`.
+`--max-depth`, `--max-children`, `--max-parallel`, `--keys`, `--category`, `--yolo`, `--offline`, `--quiet`.
 
 Example (real run, Groq `openai/gpt-oss-120b`, no terminal so `ask` = refused):
 
@@ -129,6 +130,52 @@ The loop stops irreversibly at the first of: final answer, `max_steps`, `max_too
 `max_tokens`, repeated identical call, LLM error. This explicit-stop design is inspired by the
 author's IDC project ([lanoixdesign/idc-wrapper](https://github.com/lanoixdesign/idc-wrapper)); it is
 **not** a dependency. To plug in your own criterion: `Agent(..., stop_rule=lambda state: "my_reason" if ... else None)`.
+
+## Several API keys, by category, with limits
+
+Optional. Without a keys file nothing changes: the single key from `.env` is used as before.
+Copy `providers.example.yaml` to `providers.yaml` (git-ignored; or pass `--keys FILE`, or set
+`AGENT_KEYS_FILE`). Each entry names the **environment variable** holding the key (`key_env`), never
+the key itself, plus its `provider`/`base_url`, `model` or `models` per category, `categories` (`text`,
+`code`, `image`, `audio_tts`, `audio_stt`, `embeddings`, or your own), `priority` (lower first),
+optional `pricing`, and `limits`: `requests_per_minute`, `requests_per_day`, `tokens_per_day`,
+`tokens_per_month`, `cost_per_day`, `cost_per_month` (in your `currency`, needs `pricing`),
+`images_per_day`, `audio_minutes_per_day`.
+
+```yaml
+currency: EUR
+keys:
+  - name: groq-main
+    provider: groq
+    key_env: GROQ_API_KEY
+    categories: [text, code]
+    model: openai/gpt-oss-120b
+    priority: 1
+    pricing: {input_per_1m: 0.15, output_per_1m: 0.60}
+    limits: {requests_per_day: 1000, tokens_per_day: 500000, cost_per_month: 5}
+  - name: openrouter-backup
+    provider: openrouter
+    key_env: OPENROUTER_API_KEY
+    categories: [text, code]
+    model: openai/gpt-4o-mini
+    priority: 2
+```
+
+- **Routing**: for each model call the router takes the first key of the category (by priority) that
+  is set, not cooling down, and can take the request **without exceeding any limit**. The request is
+  reserved before it is sent (tokens: estimated prompt + a `max_tokens` cap sent to the provider,
+  cost from `pricing`), so parallel agents cannot overshoot together. The real usage is recorded after.
+- **Failover**: a 429 (honouring `Retry-After`) or a 5xx / network error puts the key on cooldown and
+  the next key is tried. When no key can serve the category, the call stops with a clear error listing
+  the reason for each key (the agent ends with `llm_error`). Nothing is ever sent over a limit.
+- **Usage** is persisted in `<state-dir>/usage.json` (per minute / day / month, local time, plus
+  cooldowns), so limits survive restarts. Hitting a limit or a provider error is audit-logged
+  (`event: key_limit` / `key_error`).
+- `--category code` picks the category for the chat model; `agent/media.py` gives minimal interfaces
+  (`ImageGenerator`, `TextToSpeech`, `SpeechToText`, `Embeddings`) that reserve a key of their
+  category for the provider call you plug in (no image/audio generation is built in).
+- `python -m agent keys` and the harness (`GET /keys`, chat sidebar, `/dashboard`) show the remaining
+  quota per key and category, with keys masked (`gsk_…abcd`).
 
 ## Multi-agent mode (sub-agents)
 

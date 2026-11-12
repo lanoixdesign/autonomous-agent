@@ -1,0 +1,60 @@
+# providers.example.yaml — copy to providers.yaml (git-ignored) and adapt.
+# Secrets are NEVER written here: each key names the environment variable that holds it (key_env),
+# e.g. in your .env file. Without providers.yaml the agent keeps using the single-key .env setup.
+#
+# Categories are free strings: text, code, image, audio_tts, audio_stt, embeddings, ... (add yours).
+# The router tries the keys of a category by priority (lower first), skips a key that would exceed one
+# of its limits, and fails over to the next key on 429 / 5xx. When every key is used up it refuses.
+# Limits (all optional): requests_per_minute, requests_per_day, tokens_per_day, tokens_per_month,
+#   cost_per_day, cost_per_month (need pricing), images_per_day, audio_minutes_per_day.
+# Usage is saved in <state-dir>/usage.json (days and months in local time).
+
+currency: EUR            # unit of pricing and cost limits
+
+keys:
+  - name: groq-main
+    provider: groq                      # fills base_url (groq, openai, openrouter, ollama)
+    key_env: GROQ_API_KEY
+    categories: [text, code]
+    models:
+      text: openai/gpt-oss-120b
+      code: openai/gpt-oss-120b
+    priority: 1
+    pricing:                            # per 1M tokens, in `currency`
+      input_per_1m: 0.15
+      output_per_1m: 0.60
+    limits:
+      requests_per_minute: 30
+      requests_per_day: 1000
+      tokens_per_day: 500000
+      cost_per_day: 0.50
+      cost_per_month: 5
+
+  - name: openrouter-backup
+    provider: openrouter
+    key_env: OPENROUTER_API_KEY
+    categories: [text, code]
+    model: openai/gpt-4o-mini           # one model for every category of this key
+    priority: 2
+    pricing: {input_per_1m: 0.15, output_per_1m: 0.60}
+    limits:
+      requests_per_day: 200
+      cost_per_month: 3
+
+  - name: local-ollama                  # no key_env: no key needed
+    provider: ollama
+    categories: [text, embeddings]
+    models: {text: llama3.1, embeddings: nomic-embed-text}
+    priority: 9
+
+  - name: openai-media
+    provider: openai
+    key_env: OPENAI_API_KEY
+    categories: [image, audio_tts, audio_stt]
+    models: {image: gpt-image-1, audio_tts: tts-1, audio_stt: whisper-1}
+    priority: 1
+    pricing: {per_image: 0.04, per_audio_minute: 0.015}
+    limits:
+      images_per_day: 10
+      audio_minutes_per_day: 30
+      cost_per_month: 5

@@ -6,6 +6,7 @@ API (JSON):
   POST /tasks/{id}/messages   {"text": "..."}            -> continue the conversation (409 if busy)
       both accept "files": [{"name": ..., "content_b64": ...}] -> saved in <workspace>/uploads/<id>/
   GET  /config                upload limits
+  GET  /keys                  API keys (masked) with used / remaining quota per limit, by category
   GET  /tasks                                            -> {"tasks": [...]}
   GET  /tasks/{id}            task + agent tree (root, root.1, ...) + status + result
   GET  /tasks/{id}/events?since=N                        -> {"events": [...], "next": M}  (polling)
@@ -228,8 +229,9 @@ class Busy(Exception):
 class Harness:
     def __init__(self, agent_factory: AgentFactory, audit_path: str | Path, approval_timeout: float = 300.0,
                  max_tasks: int = 4, workspace: str | Path | None = None,
-                 max_upload_mb: float = 20, max_message_mb: float = 50):
+                 max_upload_mb: float = 20, max_message_mb: float = 50, key_router: Any = None):
         self.factory = agent_factory
+        self.key_router = key_router   # keys.KeyRouter or None (.env single-key mode)
         self.workspace = Path(workspace) if workspace is not None else None   # None: uploads disabled
         self.upload_limits = uploads.Limits(int(max_upload_mb * 1024 * 1024),
                                             int(max(max_message_mb, max_upload_mb) * 1024 * 1024))
@@ -456,6 +458,10 @@ def make_handler(h: Harness, token: str | None, local_only: bool):
                 return
             if path == "/tasks":
                 return self._send(200, {"tasks": h.list()})
+            if path == "/keys":
+                if h.key_router is None:
+                    return self._send(200, {"mode": "single-key (.env)", "keys": [], "categories": {}})
+                return self._send(200, {"mode": "router", **h.key_router.status()})
             if path == "/config":
                 lim = h.upload_limits
                 return self._send(200, {"uploads": h.workspace is not None,
