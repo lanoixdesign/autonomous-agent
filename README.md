@@ -78,6 +78,9 @@ in the console). The macOS builds are separate for Apple Silicon and Intel. Buil
   parent's permissions and never get more. Read-only children run in parallel. Writing children run in
   parallel in **isolated copies** that are merged back file by file, and conflicts are kept as
   `.conflict-*` files.
+- **IDC mode** (optional, off by default): a vitality budget that decays with every step, append-only
+  commitments, and a forced "good enough now" answer; saying "I don't know" costs less than an
+  unsupported claim. A hypothesis to test, see [IDC mode](#idc-mode-optional-off-by-default).
 - **Harness** (`python -m agent serve`):
   - web chat with **pop-up approval cards** and several conversations running in parallel;
   - **attachments**;
@@ -233,12 +236,81 @@ description: One sentence saying when to use it.
 
 Skills are looked up in `<workspace>/skills`, `<state-dir>/skills`, then the repository's `skills/`.
 
-### Stop rule and IDC (optional)
+### Stop rule
 
 The loop stops irreversibly at the first of: final answer, `max_steps`, `max_tool_calls`,
-`max_tokens`, repeated identical call, LLM error. This explicit-stop design is inspired by the
-author's IDC project ([lanoixdesign/idc-wrapper](https://github.com/lanoixdesign/idc-wrapper)); it is
-**not** a dependency. To plug in your own criterion: `Agent(..., stop_rule=lambda state: "my_reason" if ... else None)`.
+`max_tokens`, repeated identical call, LLM error. To plug in your own criterion:
+`Agent(..., stop_rule=lambda state: "my_reason" if ... else None)`.
+
+### IDC mode (optional, off by default)
+
+**IDC — Irreversible Decision Collapse** (*Effondrement Décisionnel Irréversible*) is the author's model
+([lanoixdesign/idc-wrapper](https://github.com/lanoixdesign/idc-wrapper)). It is a **hypothesis, not a
+validated result**: an AI with no finitude can deliberate forever, waste compute, hesitate, and invent
+answers, because inventing costs no more than admitting it does not know. IDC gives the agent finitude
+through three pillars, implemented in `agent/idc.py`:
+
+1. **A decreasing resource: vitality.** Each model call, tool call and 1000 tokens cost vitality (per user
+   message; default 100). At 0 the agent cannot think any more ("cognitive death").
+2. **Append-only commitments.** The `idc_commit` tool records a `fact`, `decision`, `answer` or `unknown`
+   ("I don't know") with **evidence**: exact quotes from what the agent observed. Entries are never
+   edited or deleted. Correcting one adds a new entry pointing to the old one and costs `revise_cost`; with
+   `allow_revise: false` it is refused. The final answer is recorded too. Commitments are written to the
+   audit log and kept with the conversation.
+3. **A stopping rule: collapse.** When vitality falls to `collapse_threshold`, or after `stall_limit` tool
+   calls in a row that bring nothing new (same result as before, error, refusal), the agent gets one last
+   call **without tools** and must answer now (`idc_collapse`). If vitality reaches 0, there is no more
+   model call: the answer is the last **supported** committed answer, else an explicit "I don't know"
+   listing what is known and what is unverified (`idc_exhausted`).
+
+**Hallucination hypothesis, made concrete.** A commitment is *supported* when every evidence quote appears
+in what the agent observed in this turn (the user's message, tool results). Costs by default: supported 1,
+"I don't know" 0.5 (the cheapest), **unsupported 15**. The configuration refuses `unknown_cost >=
+unsupported_cost`. Sub-agents get a slice of the vitality left (`child_share`, default half, split
+between parallel children); what they spend is charged to the parent, and their collapse threshold is
+scaled down with their budget.
+
+**Turn it on**
+
+| Where | How |
+|---|---|
+| Command line | `python -m agent run "..." --idc` (or `--no-idc`; `--idc-vitality 60`) |
+| Environment / `.env` | `AGENT_IDC=1`, and any parameter as `AGENT_IDC_<NAME>`, e.g. `AGENT_IDC_VITALITY=60` |
+| `permissions.yaml` | an `idc:` section (commented example in the file) |
+| Chat (harness) | the **IDC** switch at the top: per conversation (also between two messages), or for the next new one; **IDC on by default** in the sidebar is the global setting, saved across restarts |
+| Desktop app | `AGENT_IDC=1` in `~/AutonomousAgent/.env`, or the switches in the chat |
+
+Order: defaults < `idc:` in the permissions file < `AGENT_IDC*` < command line. In the harness the
+global default starts from that value; the chat switches then decide. API: `POST /tasks` with
+`"idc": true|false`, `POST /tasks/{id}/idc` `{"enabled": true}`, `GET|POST /settings` `{"idc": true}`.
+`GET /tasks/{id}` returns `idc_state` (vitality, commitments); live `idc` events are in the stream.
+
+When IDC is on, the chat shows a **vitality bar**, the collapse reason, and the list of commitments
+(supported in green, unsupported in red):
+
+![Chat with IDC mode on](docs/chat-idc.png)
+
+**Parameters** (`idc:` section or `AGENT_IDC_<NAME>`)
+
+| Name | Default | Meaning |
+|---|---|---|
+| `enabled` | `false` | default for new conversations / CLI runs |
+| `vitality` | 100 | budget per user message (root agent) |
+| `step_cost` / `tool_cost` / `token_cost` | 4 / 3 / 0.5 | per model call / per tool call / per 1000 tokens |
+| `collapse_threshold` | 20 | at or below: answer now, without tools |
+| `stall_limit` | 3 | tool calls in a row without new information before collapse |
+| `commit_cost` / `unknown_cost` / `unsupported_cost` | 1 / 0.5 / 15 | supported / "I don't know" / unsupported commitment |
+| `revise_cost` | 25 | added when a commitment corrects an earlier one |
+| `allow_revise` | `true` | `false`: commitments can never be corrected |
+| `child_share` | 0.5 | share of the vitality left given to a sub-agent |
+
+**Limits (honestly).** The costs and the threshold are arbitrary starting points and must be calibrated per
+model and task: too low and the agent gives up early, too high and IDC changes nothing. "Supported" only
+means "the quote was observed", not "the claim is true", and the free-text final answer itself is not
+checked. A model can ignore the rules in its prompt; what is enforced is the budget, the forced tool-free
+answer, the fallback and the append-only log. **It is not a guarantee against hallucinations**: whether IDC
+reduces them is exactly what remains to be validated experimentally (same tasks with and without IDC,
+measuring wrong answers, "I don't know" rates and cost).
 
 ### Several API keys, by category, with limits
 
@@ -563,6 +635,10 @@ soi-même : `pip install pyinstaller && pyinstaller packaging/autonomous-agent.s
   Les enfants héritent des permissions du parent, jamais plus. Les enfants en lecture seule tournent en
   parallèle. Ceux qui écrivent tournent en parallèle dans des **copies isolées**, fusionnées fichier par
   fichier, et les conflits sont gardés en fichiers `.conflict-*`.
+- **Mode IDC** (facultatif, désactivé par défaut) : un budget de vitalité qui baisse à chaque étape, des
+  engagements en ajout seul et une réponse forcée « assez bonne maintenant » ; dire « je ne sais pas »
+  coûte moins cher qu'une affirmation non étayée. Une hypothèse à tester, voir
+  [Mode IDC](#mode-idc-facultatif-désactivé-par-défaut).
 - **Harness** (`python -m agent serve`) :
   - chat web avec **cartes de validation pop-up** et plusieurs conversations en parallèle ;
   - **pièces jointes** ;
@@ -722,13 +798,85 @@ description: Une phrase qui dit quand l'utiliser.
 
 Recherche dans `<workspace>/skills`, `<state-dir>/skills`, puis `skills/` du dépôt.
 
-### Règle d'arrêt et IDC (facultatif)
+### Règle d'arrêt
 
 La boucle s'arrête de façon irréversible au premier de : réponse finale, `max_steps`,
-`max_tool_calls`, `max_tokens`, appel identique répété, erreur du LLM. Ce principe d'arrêt explicite
-s'inspire du projet IDC de l'auteur ([lanoixdesign/idc-wrapper](https://github.com/lanoixdesign/idc-wrapper)) ;
-ce n'est **pas** une dépendance. Pour brancher votre propre critère :
+`max_tool_calls`, `max_tokens`, appel identique répété, erreur du LLM. Pour brancher votre propre critère :
 `Agent(..., stop_rule=lambda state: "ma_raison" if ... else None)`.
+
+### Mode IDC (facultatif, désactivé par défaut)
+
+L'**IDC — Effondrement Décisionnel Irréversible** est le modèle de l'auteur
+([lanoixdesign/idc-wrapper](https://github.com/lanoixdesign/idc-wrapper)). C'est une **hypothèse, pas un
+résultat validé** : une IA sans finitude peut délibérer sans fin, gaspiller du calcul, hésiter et inventer,
+parce qu'inventer ne coûte pas plus cher que d'avouer qu'elle ne sait pas. L'IDC impose la finitude par
+trois piliers, implémentés dans `agent/idc.py` :
+
+1. **Une ressource qui diminue : la vitalité.** Chaque appel du modèle, chaque appel d'outil et chaque
+   tranche de 1000 jetons coûtent de la vitalité (par message de l'utilisateur ; 100 par défaut). À 0,
+   l'agent ne peut plus réfléchir (« mort cognitive »).
+2. **Des engagements en ajout seul.** L'outil `idc_commit` enregistre un `fact` (fait), une `decision`,
+   une `answer` (réponse) ou `unknown` (« je ne sais pas ») avec des **preuves** : des citations exactes
+   de ce que l'agent a observé. Une entrée n'est jamais modifiée ni effacée. La corriger ajoute une nouvelle
+   entrée qui pointe vers l'ancienne et coûte `revise_cost` ; avec `allow_revise: false`, c'est refusé. La
+   réponse finale est aussi enregistrée. Les engagements vont dans le journal d'audit et restent avec la
+   conversation.
+3. **Une règle d'arrêt : l'effondrement.** Quand la vitalité descend à `collapse_threshold`, ou après
+   `stall_limit` appels d'outils d'affilée sans rien de nouveau (même résultat qu'avant, erreur, refus),
+   l'agent a un dernier appel **sans outils** et doit répondre maintenant (`idc_collapse`). Si la vitalité
+   atteint 0, plus aucun appel au modèle : la réponse est la dernière réponse engagée **étayée**, sinon un
+   « je ne sais pas » explicite avec ce qui est su et ce qui n'est pas vérifié (`idc_exhausted`).
+
+**L'hypothèse sur les hallucinations, rendue concrète.** Un engagement est *étayé* quand chaque citation
+apparaît dans ce que l'agent a observé pendant ce tour (message de l'utilisateur, résultats d'outils).
+Coûts par défaut : étayé 1, « je ne sais pas » 0,5 (le moins cher), **non étayé 15**. La configuration
+refuse `unknown_cost >= unsupported_cost`. Les sous-agents reçoivent une part de la vitalité restante
+(`child_share`, la moitié par défaut, partagée entre enfants parallèles) ; ce qu'ils dépensent est facturé
+au parent, et leur seuil d'effondrement est réduit à proportion de leur budget.
+
+**L'activer**
+
+| Où | Comment |
+|---|---|
+| Ligne de commande | `python -m agent run "..." --idc` (ou `--no-idc` ; `--idc-vitality 60`) |
+| Environnement / `.env` | `AGENT_IDC=1`, et chaque paramètre en `AGENT_IDC_<NOM>`, ex. `AGENT_IDC_VITALITY=60` |
+| `permissions.yaml` | une section `idc:` (exemple commenté dans le fichier) |
+| Chat (harness) | l'interrupteur **IDC** en haut : par conversation (aussi entre deux messages), ou pour la prochaine nouvelle ; **IDC activé par défaut** dans la barre latérale est le réglage global, conservé au redémarrage |
+| Application de bureau | `AGENT_IDC=1` dans `~/AutonomousAgent/.env`, ou les interrupteurs du chat |
+
+Ordre : valeurs par défaut < `idc:` du fichier de permissions < `AGENT_IDC*` < ligne de commande. Dans le
+harness, le réglage global part de cette valeur, puis les interrupteurs du chat décident. API :
+`POST /tasks` avec `"idc": true|false`, `POST /tasks/{id}/idc` `{"enabled": true}`, `GET|POST /settings`
+`{"idc": true}`. `GET /tasks/{id}` renvoie `idc_state` (vitalité, engagements) ; les événements `idc` sont
+dans le flux en direct.
+
+Quand l'IDC est activé, le chat affiche une **barre de vitalité**, la raison de l'effondrement et la liste
+des engagements (étayés en vert, non étayés en rouge) :
+
+![Chat avec le mode IDC activé](docs/chat-idc.png)
+
+**Paramètres** (section `idc:` ou `AGENT_IDC_<NOM>`)
+
+| Nom | Défaut | Sens |
+|---|---|---|
+| `enabled` | `false` | valeur par défaut des nouvelles conversations / lancements en ligne de commande |
+| `vitality` | 100 | budget par message de l'utilisateur (agent racine) |
+| `step_cost` / `tool_cost` / `token_cost` | 4 / 3 / 0,5 | par appel du modèle / par appel d'outil / par 1000 jetons |
+| `collapse_threshold` | 20 | à ce niveau ou en dessous : répondre maintenant, sans outils |
+| `stall_limit` | 3 | appels d'outils d'affilée sans information nouvelle avant l'effondrement |
+| `commit_cost` / `unknown_cost` / `unsupported_cost` | 1 / 0,5 / 15 | engagement étayé / « je ne sais pas » / non étayé |
+| `revise_cost` | 25 | ajouté quand un engagement en corrige un autre |
+| `allow_revise` | `true` | `false` : les engagements ne peuvent jamais être corrigés |
+| `child_share` | 0,5 | part de la vitalité restante donnée à un sous-agent |
+
+**Limites (honnêtement).** Les coûts et le seuil sont des points de départ arbitraires, à calibrer selon le
+modèle et la tâche : trop bas, l'agent abandonne trop tôt ; trop haut, l'IDC ne change rien. « Étayé » veut
+seulement dire « la citation a été observée », pas « l'affirmation est vraie », et la réponse finale en
+texte libre n'est pas vérifiée. Un modèle peut ignorer les règles de son prompt ; ce qui est imposé, c'est
+le budget, la réponse forcée sans outils, la réponse de repli et le journal en ajout seul. **Ce n'est pas une
+garantie contre les hallucinations** : savoir si l'IDC les réduit est justement ce qui reste à valider
+expérimentalement (mêmes tâches avec et sans IDC, en mesurant les réponses fausses, le taux de « je ne sais
+pas » et le coût).
 
 ### Plusieurs clés d'API, par catégorie, avec limites
 

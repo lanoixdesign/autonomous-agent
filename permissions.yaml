@@ -67,3 +67,20 @@ domains:
   allow:
     - "api.github.com"
   deny: []
+
+# IDC mode (optional, OFF by default) — finite deliberation, append-only commitments, forced collapse.
+# See the README ("IDC mode"). Also: --idc / --no-idc, AGENT_IDC=1, the IDC switch in the chat.
+# idc:
+#   enabled: false
+#   vitality: 100            # per user message
+#   step_cost: 4             # per model call
+#   tool_cost: 3             # per tool call
+#   token_cost: 0.5          # per 1000 tokens
+#   collapse_threshold: 20   # at or below: answer now, without tools
+#   stall_limit: 3           # tool calls in a row without new information -> answer now
+#   commit_cost: 1           # supported commitment
+#   unknown_cost: 0.5        # "I don't know" (must stay cheaper than unsupported_cost)
+#   unsupported_cost: 15     # claim whose evidence was not observed
+#   revise_cost: 25          # correcting an earlier commitment
+#   allow_revise: true       # false: commitments can never be corrected
+#   child_share: 0.5         # a sub-agent gets at most this share of the vitality left

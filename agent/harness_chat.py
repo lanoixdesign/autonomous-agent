@@ -66,6 +66,17 @@ CHAT_PAGE = r"""<!doctype html>
  .card .cat.send,.card .cat.spend,.card .cat.execute{background:#fbd9d6;color:#9a1d14}
  .card .btns{display:flex;gap:8px;margin-top:6px} .card button{flex:1;padding:7px;border:0;border-radius:6px;cursor:pointer;font-weight:600}
  .card .ok{background:#1f7a45;color:#fff} .card .no{background:#e4e7eb}
+ #idcbox{display:inline-flex;align-items:center;gap:4px;font:600 12px system-ui;color:#5b3d8f;background:#efe8fa;border-radius:8px;padding:4px 8px;cursor:pointer}
+ #idcbox.on{background:#5b3d8f;color:#fff} #idcbox input{margin:0}
+ #idcpanel{padding:6px 16px 8px;background:#f8f5fd;border-bottom:1px solid #e3d9f3;font-size:12px;color:#3d2a63}
+ #idcpanel .vrow{display:flex;justify-content:space-between;gap:10px} #idcpanel .why{color:#b3261e;font-weight:600}
+ .vbar{height:8px;background:#e4e7eb;border-radius:4px;overflow:hidden;margin:4px 0}
+ .vbar i{display:block;height:8px;background:#7c5cc4;transition:width .3s} .vbar i.low{background:#f0a73a} .vbar i.dead{background:#e5534b}
+ @media (prefers-reduced-motion: reduce){.vbar i{transition:none}}
+ #idcpanel summary{cursor:pointer;font-weight:600} #idcpanel ol{margin:4px 0 0;padding-left:20px;max-height:22vh;overflow:auto}
+ #idcpanel li{margin:2px 0} #idcpanel li .k{font-weight:600} #idcpanel li .u{color:#b3261e} #idcpanel li .s{color:#1f7a45}
+ .step.idc{color:#5b3d8f} .step.idcbad{color:#b3261e}
+ #idcdefrow{display:flex;align-items:center;gap:6px;margin-top:8px;cursor:pointer} #idcdefrow input{width:auto;margin:0}
 /*LANG_CSS*/
 </style></head><body>
 <aside><h1>autonomous-agent</h1>
@@ -73,13 +84,16 @@ CHAT_PAGE = r"""<!doctype html>
  <div id="convs"></div>
  <div id="quota"></div>
  <footer><span data-i18n="token.label"></span><input id="token" type="password">
+  <label id="idcdefrow" data-i18n-title="idc.default.title"><input type="checkbox" id="idcdef"><span data-i18n="idc.default"></span></label>
   <div style="margin-top:6px;display:flex;justify-content:space-between;align-items:center"><a href="/dashboard" data-i18n="link.dashboard"></a>/*LANG_SWITCH*/</div></footer></aside>
 <main>
  <div id="top"><span id="title"></span><span id="status"></span><span id="mode"></span>
+  <label id="idcbox"><input type="checkbox" id="idc"><span data-i18n="idc.label"></span></label>
   <button id="cancel" style="display:none" data-i18n="chat.stop"></button>
   <button id="expmd" class="lite" style="display:none" data-i18n-title="chat.expmd.title">⇩ MD</button>
   <button id="expjson" class="lite" style="display:none" data-i18n-title="chat.expjson.title">⇩ JSON</button>
   <button id="stopall" data-i18n="btn.stopall" data-i18n-title="title.stopall"></button></div>
+ <div id="idcpanel" hidden></div>
  <div id="log"></div>
  <div id="err"></div>
  <div id="chips"></div>
@@ -119,6 +133,7 @@ function add(c, evs){
   c.events.push(...fresh); c.since=fresh[fresh.length-1].seq+1;
   if(first) render(); else fresh.forEach(e=>{ const n=node(e); if(n) log.append(n); });
   if(atEnd) log.scrollTop=log.scrollHeight;
+  if(fresh.some(e=>e.kind==="idc"||e.kind==="idc_toggle")) idcUI();
 }
 function el(tag, cls, text){ const e=document.createElement(tag); if(cls) e.className=cls; if(text!=null) e.textContent=text; return e; }
 function fail(e){ $("err").textContent=t("err.prefix",{msg:e.message}); }
@@ -144,7 +159,15 @@ function node(e){
   if(e.kind==="message"){ if(!e.content) return null;
     const r=el("div","row d"+Math.min(depth(e.agent),3)), b=el("div","bubble"+(e.final?" final":""));
     b.append(el("div","who",e.agent), el("div",null,e.content)); r.append(b); return r; }
+  if(e.kind==="idc"){
+    if(e.commit && e.commit.kind!=="final"){ const c=e.commit;
+      return el("div","step "+(c.supported?"idc":"idcbad"),t("idc.step.commit",{agent:c.agent||e.agent,id:c.id,kind:tr("idc.kind",c.kind),
+        support:t(c.supported?"idc.supported":"idc.unsupported"),cost:num(c.cost,2),text:short(c.text,220)})+(c.revises?" · "+t("idc.revises",{id:c.revises}):"")); }
+    if(e.collapse) return el("div","step conflict",t("idc.step.collapse",{agent:e.agent,why:tr("idc.why",e.collapse),v:num(e.vitality,1)}));
+    return null; }
+  if(e.kind==="idc_toggle") return el("div","sys",t("idc.step.toggled",{state:t(e.enabled?"idc.on":"idc.off")}));
   if(e.kind==="audit"){
+    if(["idc_commit","idc_collapse","idc_toggle"].includes(e.event)) return null;
     if(e.event==="spawn") return el("div","step spawn",t("step.spawn",{agent:e.agent,child:e.child,isolated:e.isolated?t("step.isolated"):"",task:short(e.task,160)}));
     if(e.event==="child_done") return el("div","step spawn",t("step.childDone",{agent:e.agent,reason:tr("status",e.stop_reason)}));
     if(e.event==="upload") return el("div","step merge",t("step.upload",{path:e.path,size:size(e.bytes)}));
@@ -181,6 +204,7 @@ async function poll(){
     $("status").replaceChildren(c ? badge(c.status) : "");
     $("cancel").style.display = c && ["queued","running","cancelling"].includes(c.status) ? "" : "none";
     $("expmd").style.display = $("expjson").style.display = c ? "" : "none";
+    idcUI();
     if(cur){ stream(); if(!live){ const k=cache[cur], r=await api("GET","/tasks/"+cur+"/events?since="+k.since); add(k, r.events); } }
     await popups(); $("err").textContent="";
   }catch(e){ fail(e); }
@@ -231,7 +255,7 @@ async function send(){
   $("send").disabled=true;
   try{
     const files=[]; for(const f of pending) files.push({name:f.name, content_b64:await b64(f)});
-    if(!cur){ const r=await api("POST","/tasks",{task:text,files}); pick(r.id); }
+    if(!cur){ const r=await api("POST","/tasks",{task:text,files,idc:idcOn()}); nextIdc=null; tasks.push(r); pick(r.id); }
     else await api("POST","/tasks/"+cur+"/messages",{text,files});
     $("input").value=""; pending=[]; chips(); poll();
   }catch(e){ fail(e); }
@@ -264,8 +288,42 @@ async function quotas(){
       const pct=v.limit? Math.min(100,100*v.used/v.limit):0, b=el("div","bar"), i=el("i",pct>=100?"full":pct>=80?"hi":""); i.style.width=pct+"%"; b.append(i); d.append(r,b); });
     box.append(d); });
 }
-onLang = () => { render(); mode(); poll(); quotas(); chips(); };
-render(); loadConfig(); setInterval(poll,1000); stream(); poll(); setInterval(quotas,5000); quotas();
+// ---- IDC: per-conversation toggle, global default, vitality bar + append-only commitments
+let settings={idc:false}, nextIdc=null;
+async function loadSettings(){ try{ settings=await api("GET","/settings"); $("idcdef").checked=!!settings.idc; }catch(e){} idcUI(); }
+$("idcdef").onchange=async e=>{ try{ settings=await api("POST","/settings",{idc:e.target.checked}); nextIdc=null; }catch(err){ fail(err); e.target.checked=!e.target.checked; } idcUI(); };
+function curTask(){ return tasks.find(x=>x.id===cur); }
+function idcOn(){ const c=curTask(); return c ? !!c.idc : (nextIdc!=null ? nextIdc : !!settings.idc); }
+$("idc").onchange=async e=>{ const v=e.target.checked;
+  if(!cur){ nextIdc=v; idcUI(); return; }
+  try{ await api("POST","/tasks/"+cur+"/idc",{enabled:v}); const c=curTask(); if(c) c.idc=v; idcUI(); poll(); }
+  catch(err){ fail(err); e.target.checked=!v; } };
+function idcUI(){
+  const on=idcOn(), c=curTask(), box=$("idcbox"), p=$("idcpanel");
+  $("idc").checked=on; box.classList.toggle("on",on); box.title=t(cur?"idc.toggle.title":"idc.toggle.newTitle");
+  $("idc").disabled=!!(c && ["queued","running","cancelling"].includes(c.status));
+  if(!on || !cur){ p.hidden=true; return; }
+  const evs=((cache[cur]||{}).events||[]).filter(e=>e.kind==="idc");
+  const last=[...evs].reverse().find(e=>(e.agent||"root")==="root");
+  const commits=evs.filter(e=>e.commit).map(e=>e.commit);
+  p.hidden=false; p.replaceChildren();
+  const row=el("div","vrow"), v=last?last.vitality:null, mx=last?last.max:(settings.idc_config||{}).vitality||100;
+  const left=el("span",null,t("idc.vitality",{v:num(v==null?mx:v,1),max:num(mx,0)})+(last&&last.reserved>0?t("idc.reserved",{r:num(last.reserved,1)}):""));
+  row.append(left); if(last&&last.collapsed) row.append(el("span","why",t("idc.collapsed",{why:tr("idc.why",last.collapsed)})));
+  const bar=el("div","vbar"), i=el("i"), pct=Math.max(0,Math.min(100,100*(v==null?mx:v)/mx));
+  i.className = v!=null && v<=0 ? "dead" : (last && v<=last.threshold ? "low" : ""); i.style.width=pct+"%"; bar.append(i);
+  const d=el("details"); d.open=commits.length>0 && commits.length<=6;
+  d.append(el("summary",null,t("idc.commitments",{n:commits.length})));
+  if(!commits.length) d.append(el("div",null,t("idc.none")));
+  else { const ol=el("ol"); commits.forEach(cm=>{ const li=el("li"); li.title=cm.id+(cm.evidence&&cm.evidence.length?" — "+cm.evidence.join(" | "):"");
+    li.append(el("span","k",tr("idc.kind",cm.kind)+" "));
+    if(cm.supported!=null) li.append(el("span",cm.supported?"s":"u","("+t(cm.supported?"idc.supported":"idc.unsupported")+") "));
+    li.append(document.createTextNode(short(cm.text,200)+(cm.revises?" · "+t("idc.revises",{id:cm.revises}):"")+" · "+cm.agent));
+    ol.append(li); }); d.append(ol); }
+  p.append(row,bar,d);
+}
+onLang = () => { render(); mode(); poll(); quotas(); chips(); idcUI(); };
+render(); loadConfig(); loadSettings(); setInterval(poll,1000); stream(); poll(); setInterval(quotas,5000); quotas();
 </script></body></html>
 """
 CHAT_PAGE = CHAT_PAGE.replace("/*LANG_CSS*/", LANG_CSS).replace("/*LANG_SWITCH*/", LANG_SWITCH).replace("/*I18N_JS*/", I18N_JS)

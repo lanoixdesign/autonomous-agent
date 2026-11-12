@@ -60,6 +60,7 @@ class Permissions:
     domain_deny: list[str] = field(default_factory=list)
     yolo: bool = False
     source: str = "built-in safe defaults"
+    idc: dict = field(default_factory=dict)   # optional `idc:` section (agent/idc.py), not a permission
 
     # ---------- loading ----------
     @classmethod
@@ -86,6 +87,9 @@ class Permissions:
             p.command_deny = list(cmds.get("deny") or [])
         p.domain_allow = list(doms.get("allow") or [])
         p.domain_deny = list(doms.get("deny") or [])
+        idc = data.get("idc") or {}
+        _check(isinstance(idc, dict), "idc must be a mapping")
+        p.idc = dict(idc)
         return p
 
     @classmethod
