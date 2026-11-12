@@ -20,6 +20,7 @@ with secrets redacted.
 | **Memory** | plain files: `memory/profile.md` + `memory/journal.jsonl`, keyword recall, `forget` |
 | **Skills** | `skills/<name>/SKILL.md` with `name` / `description` frontmatter; only the index is in the prompt, bodies are loaded on demand. Examples: `research`, `code-review`, `release-notes`. |
 | **LLM** | any OpenAI-compatible API: Groq, OpenAI, OpenRouter, Ollama (local), custom URL; `mock` backend for offline tests |
+| **Harness** | `python -m agent serve`: local chat with approval cards, attachments, several API keys with quotas, live updates (SSE), conversations persisted in SQLite, emergency stop, remembered approvals (never for send/spend), usage per agent, Markdown/JSON export, scheduled prompts, `/health` |
 
 ## Install
 
@@ -245,7 +246,8 @@ as chat bubbles labelled with the agent id (`root`, `root.1`, `root.1.2`…). Pe
 cards (top right) showing the agent id, the tool, the risk category and the arguments (secrets
 redacted); several can be pending at once and each is answered on its own. The sidebar lists the
 conversations, which can run at the same time (at most `--max-tasks`, default 4; the others wait as
-`queued`). `/dashboard` keeps the compact view (agent tree + event log). The pages poll every second.
+`queued`). `/dashboard` keeps the compact view (agent tree + event log) plus usage, schedules, rules and health.
+The chat gets events live (Server-Sent Events) and falls back to polling.
 
 Because the harness can take several approvals at once, **writing sub-agents run in parallel** there,
 each in its isolated copy (see above).
@@ -270,6 +272,13 @@ workspace-relative paths (small text files are also inlined), so it can open the
 | `GET /tasks/{id}/events?since=N` | events (audit lines, messages, approvals) from N, for polling |
 | `POST /tasks/{id}/cancel` | stop at the next step; its pending approvals are denied |
 | `GET /approvals` (`?all=1`) · `POST /approvals/{id}` `{"decision": "approve"\|"deny"}` | approval queue |
+| `GET /tasks/{id}/stream` | the same events pushed live (Server-Sent Events) |
+| `POST /approvals/{id}` `{"decision": "approve", "remember": "conversation"\|"session"}` | approve and remember · `GET /rules` · `POST /rules/{id}/revoke` |
+| `POST /stop-all` (`{"disable_schedules": true}`) | emergency stop |
+| `GET /usage` | tokens, cost, steps per conversation and per agent, plus key quotas |
+| `GET /tasks/{id}/export?format=md\|json` | conversation + audit trail |
+| `GET /schedules` · `POST /schedules` · `POST /schedules/{id}` `{"enabled": false}` · `…/run` · `…/delete` | scheduled prompts |
+| `GET /health` (`?check=1`) | status, masked keys, backend reachability |
 
 ```bash
 curl -s -X POST localhost:8765/tasks -H 'Content-Type: application/json' -d '{"task":"Summarise notes.md"}'
@@ -283,8 +292,44 @@ curl -s -X POST localhost:8765/approvals/<id> -H 'Content-Type: application/json
   warning. POSTs must be JSON and same-origin, and the `Host` header is checked on localhost.
 - Same `permissions.yaml`, memory and `audit.jsonl` as the CLI (harness lines carry a `task_id`).
   Terminal mode (`run`, `chat`) is unchanged.
-- Not a multi-user server: no accounts, no TLS. Conversations live in memory and are lost when it
-  stops (Ctrl+C / SIGTERM cancel running turns and remove temp copies).
+- Not a multi-user server: no accounts, no TLS. Ctrl+C / SIGTERM cancel running turns and remove
+  temp copies; conversations are kept on disk (see below) unless `--no-persist`.
+
+### Persistence, live updates and control
+
+- **Persistence**: conversations (with the agent's history), their events, schedules and
+  conversation-scoped rules are saved in SQLite (`<state-dir>/harness.sqlite3`, mode 0600, redacted,
+  `--db PATH` to move it, `--no-persist` to keep everything in memory). They come back on restart, and
+  the conversation can be continued. A turn that was running when the process died is marked
+  **`interrupted`** (its approvals are gone, nothing is resumed on its own).
+- **Live updates**: the chat listens to `GET /tasks/{id}/stream` (SSE; resumes with `Last-Event-ID` or
+  `?since=N`; with a token, `?access_token=` is accepted on this route only because `EventSource`
+  cannot send headers). If the stream fails, the page falls back to polling `/events` (the top bar shows
+  `● live` or `○ polling`).
+- **Emergency stop**: the **⛔ Stop all** button (chat and dashboard) or `POST /stop-all` cancels every
+  unfinished task and denies every pending approval at once. The button also pauses all schedules
+  (`"disable_schedules": true`). Audit-logged (`event: stop_all`).
+- **Remembered approvals**: an approval card offers *Always allow `<tool>` in this conversation* or
+  *… for this session*. Rules only answer what would otherwise be asked (`ask`): they never override
+  a `deny`, and **never apply to `send` or `spend`**, which are asked every time (the card does not
+  offer it and the API returns 400). A rule matches one tool and category, for every agent of the
+  conversation, sub-agents included. Session rules end when the server stops; conversation rules are
+  persisted. You can see and revoke them on the dashboard (`GET /rules`, `POST /rules/{id}/revoke`).
+  Audit: `rule_created`, `rule_applied` (each use), `rule_revoked`.
+- **Usage dashboard** (`/dashboard`, `GET /usage`): steps, tool calls, tokens and cost per
+  conversation and per agent. *Inclusive* numbers include sub-agents; *own* numbers do not. Per-key
+  quotas are shown too. Cost is known when the key router has `pricing`; it is 0 in single-key mode.
+- **Export**: the chat's **⇩ MD / ⇩ JSON** buttons, or `GET /tasks/{id}/export?format=md|json`, export
+  the conversation, usage, events and the audit lines of this conversation (secrets redacted).
+- **Scheduled tasks** (dashboard, or `POST /schedules` with `{"prompt": "...", "every_minutes": 60}` or
+  `{"prompt": "...", "daily_at": "08:30"}` in local time). Each run starts a **new conversation**
+  (`source: schedule:<id>`) through the same permissions, approvals, budgets, key limits and
+  `--max-tasks` as a chat message. A run is skipped while the previous one is still active. You can
+  enable, disable, run now or delete a schedule. Schedules are persisted, and missed runs are not
+  replayed in a burst. Audit: `schedule_created`, `schedule_run`, `schedule_skipped`…
+- **`GET /health`**: status, uptime, tasks by status, pending approvals, persistence, and the keys
+  (**masked**), or the `.env` provider and model. No network by default. `?check=1` sends a
+  `GET <base_url>/models` **without any API key** to each backend and reports whether it is reachable.
 
 ## Tests
 

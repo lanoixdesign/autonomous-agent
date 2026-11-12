@@ -10,3 +10,4 @@ build/
 providers.yaml
 keys.yaml
 usage.json
+harness.sqlite3*

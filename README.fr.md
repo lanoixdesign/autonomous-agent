@@ -21,6 +21,7 @@ secrets masqués.
 | **Mémoire** | fichiers simples : `memory/profile.md` + `memory/journal.jsonl`, rappel par mots-clés, oubli (`forget`) |
 | **Compétences** | `skills/<nom>/SKILL.md` avec frontmatter `name` / `description` ; seul l'index est dans le prompt, le contenu est chargé à la demande. Exemples : `research`, `code-review`, `release-notes`. |
 | **LLM** | toute API compatible OpenAI : Groq, OpenAI, OpenRouter, Ollama (local), URL personnalisée ; backend `mock` pour les tests hors ligne |
+| **Harness** | `python -m agent serve` : chat local avec cartes de validation, pièces jointes, plusieurs clés d'API avec quotas, direct (SSE), conversations enregistrées dans SQLite, arrêt d'urgence, validations retenues (jamais pour send/spend), consommation par agent, export Markdown/JSON, prompts planifiés, `/health` |
 
 ## Installation
 
@@ -254,8 +255,9 @@ de l'agent (`root`, `root.1`, `root.1.2`…). Les validations en attente apparai
 droite) avec l'agent, l'outil, la catégorie de risque et les arguments (secrets masqués) ; plusieurs
 peuvent attendre en même temps et chacune se traite séparément. La barre latérale liste les
 conversations, qui peuvent tourner en même temps (au plus `--max-tasks`, 4 par défaut ; les autres
-attendent en `queued`). `/dashboard` garde la vue compacte (arbre des agents + journal). Les pages
-interrogent le serveur chaque seconde.
+attendent en `queued`). `/dashboard` garde la vue compacte (arbre des agents + journal), avec en plus la consommation, les
+planifications, les règles et l'état du serveur. Le chat reçoit les événements en direct
+(Server-Sent Events) et repasse à l'interrogation régulière en cas d'échec.
 
 Comme le harness accepte plusieurs validations à la fois, **les sous-agents qui écrivent tournent en
 parallèle** avec lui, chacun dans sa copie isolée (voir plus haut).
@@ -281,6 +283,13 @@ ouvre avec `read_file`.
 | `GET /tasks/{id}/events?since=N` | événements (lignes d'audit, messages, validations) depuis N, à interroger régulièrement |
 | `POST /tasks/{id}/cancel` | arrêt au pas suivant ; ses validations en attente sont refusées |
 | `GET /approvals` (`?all=1`) · `POST /approvals/{id}` `{"decision": "approve"\|"deny"}` | file de validation |
+| `GET /tasks/{id}/stream` | les mêmes événements, poussés en direct (Server-Sent Events) |
+| `POST /approvals/{id}` `{"decision": "approve", "remember": "conversation"\|"session"}` | valider et retenir · `GET /rules` · `POST /rules/{id}/revoke` |
+| `POST /stop-all` (`{"disable_schedules": true}`) | arrêt d'urgence |
+| `GET /usage` | jetons, coût, pas par conversation et par agent, quotas des clés |
+| `GET /tasks/{id}/export?format=md\|json` | conversation + piste d'audit |
+| `GET /schedules` · `POST /schedules` · `POST /schedules/{id}` `{"enabled": false}` · `…/run` · `…/delete` | tâches planifiées |
+| `GET /health` (`?check=1`) | état, clés masquées, joignabilité du backend |
 
 ```bash
 curl -s -X POST localhost:8765/tasks -H 'Content-Type: application/json' -d '{"task":"Résume notes.md"}'
@@ -295,9 +304,53 @@ curl -s -X POST localhost:8765/approvals/<id> -H 'Content-Type: application/json
   `Host` est vérifié en local.
 - Mêmes `permissions.yaml`, mémoire et `audit.jsonl` que la CLI (les lignes du harness portent un
   `task_id`). Le mode terminal (`run`, `chat`) ne change pas.
-- Ce n'est pas un serveur multi-utilisateur : pas de comptes, pas de TLS. Les conversations sont
-  gardées en mémoire et perdues à l'arrêt (Ctrl+C / SIGTERM annulent les tours en cours et suppriment
-  les copies temporaires).
+- Ce n'est pas un serveur multi-utilisateur : pas de comptes, pas de TLS. Ctrl+C / SIGTERM annulent
+  les tours en cours et suppriment les copies temporaires ; les conversations sont gardées sur disque
+  (voir ci-dessous), sauf avec `--no-persist`.
+
+### Persistance, direct et contrôle
+
+- **Persistance** : les conversations (avec l'historique de l'agent), leurs événements, les
+  planifications et les règles de conversation sont enregistrés dans SQLite
+  (`<state-dir>/harness.sqlite3`, droits 0600, contenu masqué ; `--db CHEMIN` pour le déplacer,
+  `--no-persist` pour tout garder en mémoire). Ils reviennent au redémarrage et la conversation peut
+  continuer. Un tour qui tournait quand le processus s'est arrêté net est marqué **`interrupted`** (ses
+  validations sont perdues et rien ne reprend tout seul).
+- **Direct** : le chat écoute `GET /tasks/{id}/stream` (SSE ; reprise avec `Last-Event-ID` ou
+  `?since=N`). Avec un jeton, `?access_token=` est accepté sur cette route uniquement, car
+  `EventSource` ne peut pas envoyer d'en-têtes. Si le flux échoue, la page repasse à l'interrogation de
+  `/events` (la barre du haut affiche `● live` ou `○ polling`).
+- **Arrêt d'urgence** : le bouton **⛔ Stop all** (chat et tableau de bord) ou `POST /stop-all` annule
+  toutes les tâches non terminées et refuse d'un coup toutes les validations en attente. Le bouton met
+  aussi en pause toutes les planifications (`"disable_schedules": true`). L'arrêt est journalisé
+  (`event: stop_all`).
+- **Validations retenues** : une carte propose *Toujours autoriser `<outil>` dans cette conversation*
+  ou *… pour cette session*. Une règle ne répond qu'à ce qui serait demandé (`ask`) : elle ne lève
+  jamais un `deny` et **ne s'applique jamais à `send` ni à `spend`**, qui sont demandés à chaque fois (la
+  carte ne le propose pas et l'API répond 400). Une règle vise un outil et une catégorie, pour tous les
+  agents de la conversation, sous-agents compris. Les règles de session s'arrêtent avec le serveur ;
+  celles de conversation sont enregistrées. On les voit et on les révoque dans le tableau de bord
+  (`GET /rules`, `POST /rules/{id}/revoke`). Audit : `rule_created`, `rule_applied` (à chaque
+  utilisation), `rule_revoked`.
+- **Tableau de consommation** (`/dashboard`, `GET /usage`) : pas, appels d'outils, jetons et coût par
+  conversation et par agent. Les chiffres *inclusifs* comptent les sous-agents, les chiffres *propres*
+  non. Les quotas par clé sont affichés aussi. Le coût est connu si le routeur de clés a un `pricing` ;
+  il vaut 0 en mode clé unique.
+- **Export** : boutons **⇩ MD / ⇩ JSON** du chat, ou `GET /tasks/{id}/export?format=md|json`. On
+  obtient la conversation, la consommation, les événements et les lignes d'audit de cette conversation
+  (secrets masqués).
+- **Tâches planifiées** (tableau de bord, ou `POST /schedules` avec
+  `{"prompt": "...", "every_minutes": 60}` ou `{"prompt": "...", "daily_at": "08:30"}` en heure locale).
+  Chaque exécution ouvre une **nouvelle conversation** (`source: schedule:<id>`). Elle passe par les
+  mêmes permissions, validations, budgets, limites de clés et `--max-tasks` qu'un message du chat. Une
+  exécution est sautée tant que la précédente n'est pas finie. On peut activer, désactiver, lancer tout
+  de suite ou supprimer une planification. Les planifications sont enregistrées, et les exécutions
+  manquées ne sont pas rejouées en rafale. Audit : `schedule_created`, `schedule_run`,
+  `schedule_skipped`…
+- **`GET /health`** : état, durée de fonctionnement, tâches par statut, validations en attente,
+  persistance, et clés (**masquées**) ou fournisseur et modèle du `.env`. Aucun accès réseau par défaut.
+  `?check=1` envoie un `GET <base_url>/models` **sans aucune clé d'API** à chaque backend et indique
+  s'il répond.
 
 ## Tests
 

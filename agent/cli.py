@@ -152,9 +152,13 @@ def serve(args) -> int:
     def factory(task, audit, confirm, cancel, on_event):
         return new_agent(args, perms, ctx, audit, confirm, on_event, cancel)
 
+    store = None
+    if not args.no_persist:
+        from .store import Store
+        store = Store(Path(args.db).resolve() if args.db else state / "harness.sqlite3")
     h = Harness(factory, state / "audit.jsonl", approval_timeout=args.approval_timeout, max_tasks=args.max_tasks,
                 workspace=ctx.workspace, max_upload_mb=args.max_upload_mb, max_message_mb=args.max_message_mb,
-                key_router=args._router)
+                key_router=args._router, store=store, backend=backend_info(args))
     srv = make_server(h, args.host, args.port, os.environ.get("AGENT_HARNESS_TOKEN"))
     host, port = srv.server_address[:2]
     print(f"harness on http://{'127.0.0.1' if host == '127.0.0.1' else host}:{port}/  "
@@ -175,7 +179,23 @@ def serve(args) -> int:
     finally:
         h.shutdown()
         srv.server_close()
+        if store is not None:
+            store.close()
     return 0
+
+
+def backend_info(args) -> dict:
+    """Single-key (.env) backend, for GET /health: provider, model, base URL, masked key. No network."""
+    from .keys import mask
+    from .llm import PROVIDERS
+    provider = (args.provider or os.environ.get("AGENT_PROVIDER") or "mock").lower()
+    cfg = PROVIDERS.get(provider)
+    if cfg is None:
+        return {"provider": provider, "model": args.model, "base_url": None, "key": None}
+    secret = os.environ.get(cfg.get("key_env") or "") if cfg.get("key_env") else None
+    return {"provider": provider, "model": args.model or os.environ.get("AGENT_MODEL") or cfg.get("model"),
+            "base_url": os.environ.get("AGENT_BASE_URL") or cfg.get("base_url"),
+            "key": mask(secret) if secret else "(not set)", "key_env": cfg.get("key_env")}
 
 
 def common(p: argparse.ArgumentParser) -> None:
@@ -225,6 +245,9 @@ def main(argv: list[str] | None = None) -> int:
     p_srv.add_argument("--max-upload-mb", type=float, default=20, help="chat attachments: max size per file (MB)")
     p_srv.add_argument("--max-message-mb", type=float, default=50, help="chat attachments: max total per message (MB)")
     p_srv.add_argument("--max-tasks", type=int, default=4, help="conversations/tasks running at once (default 4)")
+    p_srv.add_argument("--db", default=None,
+                       help="SQLite file for conversations, events, schedules, rules (default <state-dir>/harness.sqlite3)")
+    p_srv.add_argument("--no-persist", action="store_true", help="keep everything in memory only (lost on restart)")
     for p in (p_chat, p_run, p_mem, p_sk, p_perm, p_aud, p_srv, p_keys):
         common(p)
     args = ap.parse_args(argv)

@@ -16,15 +16,21 @@ PAGE = r"""<!doctype html>
  .task:hover{background:#f0f2f5} .task.sel{border-color:#4062bb;background:#eef2fb}
  .st{font-size:11px;padding:1px 6px;border-radius:9px;background:#e4e7eb;margin-left:4px}
  .st.running,.st.queued,.st.cancelling{background:#fff0c2} .st.done{background:#d3f2dc}
- .st.error,.st.cancelled,.st.stopped{background:#f7d4d4}
+ .st.error,.st.cancelled,.st.stopped,.st.interrupted{background:#f7d4d4}
  .agent{margin:3px 0;padding:4px 6px;border-left:3px solid #4062bb;background:#f7f8fa}
  .agent small{color:#5a6270} pre{white-space:pre-wrap;word-break:break-word;margin:4px 0;font-size:12px}
  #events{max-height:55vh;overflow:auto;font:12px/1.35 ui-monospace,monospace}
  .ev{border-bottom:1px solid #eef0f2;padding:2px 0} .ev b{color:#4062bb}
  .ap{border:1px solid #f0c36d;background:#fffaf0;border-radius:6px;padding:6px;margin-bottom:8px}
  .ap .who{font-weight:600} .muted{color:#8a919c}
+ table{border-collapse:collapse;width:100%;font-size:12px} td,th{padding:3px 6px;border-bottom:1px solid #eef0f2;text-align:right}
+ td:first-child,th:first-child,td.l,th.l{text-align:left} tr.conv td{background:#f3f5f9;font-weight:600}
+ #stopall{background:#7a0f0a;color:#fff;border:0;border-radius:6px;padding:6px 12px;font-weight:700}
+ .row{display:flex;gap:6px;align-items:center;flex-wrap:wrap;margin:4px 0} .row input[type=text]{flex:1;min-width:120px}
+ .sched{border:1px solid #dde1e6;border-radius:6px;padding:6px;margin:6px 0} .off{opacity:.55}
 </style></head><body>
 <header><h1>autonomous-agent · harness <a href="/" style="color:#9fb4ff;font-size:12px">chat</a></h1>
+ <button id="stopall" title="Cancel every task, deny every pending approval, pause schedules">⛔ Stop all</button>
  <label>token <input id="token" type="password" placeholder="AGENT_HARNESS_TOKEN (if set)"></label></header>
 <main>
  <section><h2>New task</h2>
@@ -38,6 +44,14 @@ PAGE = r"""<!doctype html>
   <h2>Event log</h2><div id="events"></div></section>
  <section><h2>Pending approvals</h2><div id="approvals" class="muted">None.</div>
   <h2 style="margin-top:14px">API keys &amp; quotas</h2><div id="keys" class="muted">single-key (.env) mode</div></section>
+ <section style="grid-column:1 / 3"><h2>Usage — tokens, cost, steps per conversation and per agent</h2><div id="usage" class="muted">—</div></section>
+ <section><h2>Scheduled tasks</h2>
+  <div class="row"><input id="sprompt" type="text" placeholder="Prompt to run"></div>
+  <div class="row"><select id="skind"><option value="every">every N minutes</option><option value="daily">daily at HH:MM</option></select>
+   <input id="swhen" type="text" placeholder="60 or 08:30" style="width:90px"><button id="sadd">Add</button></div>
+  <div id="schedules" class="muted">None.</div>
+  <h2 style="margin-top:14px">Remembered approval rules</h2><div id="rules" class="muted">None.</div>
+  <h2 style="margin-top:14px">Health</h2><pre id="health" class="muted">—</pre></section>
 </main>
 <script>
 const $ = id => document.getElementById(id);
@@ -103,6 +117,47 @@ async function refreshKeys(){
       el("div","muted",k.categories.join(", ")+" · priority "+k.priority));
     Object.entries(k.limits).forEach(([f,v])=>d.append(el("div",null,f+": "+v.used+" / "+v.limit+" (left "+v.remaining+")"))); box.append(d); });
 }
-setInterval(refresh, 1000); refresh(); setInterval(refreshKeys, 5000); refreshKeys();
+function money(v){ return (v||0).toFixed(4); }
+async function refreshUsage(){
+  let u; try{ u=await api("GET","/usage"); }catch(e){ return; }
+  const box=$("usage"); box.className=""; const tb=el("table"), hd=el("tr");
+  ["conversation / agent","turns","steps","tool calls","tokens","cost","own steps","own tokens","own cost"].forEach(h=>hd.append(el("th",null,h))); tb.append(hd);
+  const row=(cls,cells)=>{ const tr=el("tr",cls); cells.forEach((c,i)=>tr.append(el("td",i===0?"l":null,String(c)))); tb.append(tr); };
+  u.conversations.slice().reverse().forEach(c=>{
+    row("conv",[c.id+" · "+c.task.slice(0,50)+(c.source!=="chat"?" ["+c.source+"]":""),c.turns,c.total.steps,c.total.tool_calls,c.total.tokens,money(c.total.cost),"","",""]);
+    c.agents.forEach(a=>row(null,["\u00a0\u00a0".repeat(a.id.split(".").length)+a.id,"",a.steps,a.tool_calls,a.tokens,money(a.cost),a.own.steps,a.own.tokens,money(a.own.cost)])); });
+  row("conv",["total","",u.total.steps,u.total.tool_calls,u.total.tokens,money(u.total.cost),"","",""]);
+  box.replaceChildren(tb);
+}
+$("sadd").onclick=async()=>{ const prompt=$("sprompt").value.trim(), w=$("swhen").value.trim(); if(!prompt||!w) return;
+  const body=$("skind").value==="every" ? {prompt, every_minutes:Number(w)} : {prompt, daily_at:w};
+  try{ await api("POST","/schedules",body); $("sprompt").value=$("swhen").value=""; refreshSchedules(); }catch(e){ $("msg").textContent="error: "+e.message; } };
+async function refreshSchedules(){
+  let r; try{ r=await api("GET","/schedules"); }catch(e){ return; }
+  const box=$("schedules"); box.className=r.schedules.length?"":"muted"; box.replaceChildren(); if(!r.schedules.length) box.textContent="None.";
+  r.schedules.forEach(s=>{ const d=el("div","sched"+(s.enabled?"":" off"));
+    d.append(el("div",null,s.prompt.slice(0,120)), el("div","muted",s.when+" · next "+new Date(s.next_run*1000).toLocaleString()+" · runs "+s.runs+(s.skipped?" · skipped "+s.skipped:"")+(s.last_task?" · last "+s.last_task:"")));
+    const t=el("button",null,s.enabled?"Disable":"Enable"), n=el("button",null,"Run now"), x=el("button",null,"Delete");
+    t.onclick=()=>api("POST","/schedules/"+s.id,{enabled:!s.enabled}).then(refreshSchedules).catch(()=>{});
+    n.onclick=()=>api("POST","/schedules/"+s.id+"/run",{}).then(refreshSchedules).catch(()=>{});
+    x.onclick=()=>{ if(confirm("Delete this schedule?")) api("POST","/schedules/"+s.id+"/delete",{}).then(refreshSchedules).catch(()=>{}); };
+    const b=el("div","row"); b.append(t,n,x); d.append(b); box.append(d); });
+}
+async function refreshRules(){
+  let r; try{ r=await api("GET","/rules"); }catch(e){ return; }
+  const box=$("rules"); box.className=r.rules.length?"":"muted"; box.replaceChildren(); if(!r.rules.length) box.textContent="None. ("+r.never_remembered.join(", ")+" are never remembered)";
+  r.rules.forEach(x=>{ const d=el("div","row"); const b=el("button",null,"Revoke");
+    b.onclick=()=>api("POST","/rules/"+x.id+"/revoke",{}).then(refreshRules).catch(()=>{});
+    d.append(el("span",null,x.tool+" ["+x.category+"] · "+x.scope+(x.scope==="conversation"?" "+x.task_id:"")+" · used "+x.uses), b); box.append(d); });
+}
+async function refreshHealth(){ try{ const h=await api("GET","/health"); $("health").className="";
+  $("health").textContent=h.status+" · up "+Math.round(h.uptime_s)+"s · running "+h.running+"/"+h.max_tasks+" · approvals "+h.pending_approvals+
+    "\nkeys: "+h.keys.mode+(h.keys.keys?" "+h.keys.keys.map(k=>k.name+" "+k.key).join(", "):(h.keys.key?" "+h.keys.provider+" "+h.keys.key:""))+
+    "\npersistence: "+(h.persistence||"off (memory only)"); }catch(e){} }
+$("stopall").onclick=async()=>{ if(!confirm("Emergency stop: cancel EVERY task, deny every pending approval and pause all schedules?")) return;
+  try{ const r=await api("POST","/stop-all",{disable_schedules:true}); $("msg").textContent="stopped "+r.cancelled.length+" task(s), denied "+r.approvals_denied.length+" approval(s)"; refresh(); refreshSchedules(); }
+  catch(e){ $("msg").textContent="error: "+e.message; } };
+function slow(){ refreshKeys(); refreshUsage(); refreshSchedules(); refreshRules(); refreshHealth(); }
+setInterval(refresh, 1000); refresh(); setInterval(slow, 5000); slow();
 </script></body></html>
 """
