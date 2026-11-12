@@ -623,11 +623,22 @@ class Harness:
                 raise ValueError(f"remember must be one of {', '.join(RULE_SCOPES)}")
             if ap.category in NEVER_REMEMBER:
                 raise ValueError(f"'{ap.category}' actions are always asked: they cannot be remembered")
-        ap = self.approvals.decide(approval_id, approve)    # ValueError if no longer pending
         rule = None
         task = self.get(ap.task_id)
-        if remember is not None and task is not None:
+        if remember is not None and task is not None and ap.status == "pending":
+            # create (and audit) the rule BEFORE releasing the agent, so rule_created precedes any rule_applied
             rule = self.add_rule(remember, ap.tool, ap.category, task, ap.id)
+        try:
+            ap = self.approvals.decide(approval_id, approve)    # ValueError if no longer pending
+        except ValueError:
+            if rule is not None:                                # answered meanwhile: roll the rule back
+                with self._lock:
+                    self.rules.pop(rule["id"], None)
+                if self.store is not None:
+                    self.store.delete("rules", rule["id"])
+                self._audit(task, event="rule_revoked", agent="user", rule=rule["id"], scope=rule["scope"],
+                            tool=rule["tool"], category=rule["category"], reason="approval no longer pending")
+            raise
         return ap, rule
 
     # -- usage

@@ -462,3 +462,15 @@ def test_health_single_key_mode_and_token(make):
     assert hl["persistence"] is None and hl["tasks"] == {} and hl["pending_approvals"] == 0
     hl = call(base, "GET", "/health?check=1", headers={"Authorization": "Bearer t0k"})[1]
     assert hl["backend"]["results"][0]["reachable"] is False
+
+
+def test_remember_on_already_answered_approval_leaves_no_rule(make, ws, tmp_path):
+    base, h = make(lambda: MockLLM(write_script("late.txt")))
+    tid = call(base, "POST", "/tasks", {"task": "w"})[1]["id"]
+    ap = pending(base)[0]
+    assert call(base, "POST", f"/approvals/{ap['id']}", {"decision": "deny"})[0] == 200
+    st, _ = call(base, "POST", f"/approvals/{ap['id']}", {"decision": "approve", "remember": "session"})
+    assert st == 409 and h.list_rules() == []
+    finished(base, tid)
+    evs = [a["event"] for a in audit_lines(tmp_path) if a.get("event", "").startswith("rule_")]
+    assert evs == ["rule_created", "rule_revoked"]
