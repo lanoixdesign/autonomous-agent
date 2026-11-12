@@ -473,4 +473,4 @@ def test_remember_on_already_answered_approval_leaves_no_rule(make, ws, tmp_path
     assert st == 409 and h.list_rules() == []
     finished(base, tid)
     evs = [a["event"] for a in audit_lines(tmp_path) if a.get("event", "").startswith("rule_")]
-    assert evs == ["rule_created", "rule_revoked"]
+    assert evs == []          # already answered: no rule is created at all
