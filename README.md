@@ -295,6 +295,15 @@ curl -s -X POST localhost:8765/approvals/<id> -H 'Content-Type: application/json
 - Not a multi-user server: no accounts, no TLS. Ctrl+C / SIGTERM cancel running turns and remove
   temp copies; conversations are kept on disk (see below) unless `--no-persist`.
 
+**English / French**: the chat and the dashboard have an **EN | FR** switch (bottom of the chat
+sidebar, top of the dashboard). The default follows the browser (`navigator.language` starting with
+`fr` gives French, anything else English). The choice is remembered (localStorage), and `?lang=fr` or
+`?lang=en` in the URL forces it (`http://127.0.0.1:8765/?lang=fr`). All texts come from one dictionary
+per language in `agent/i18n.py`; tool names, API fields and server messages are unchanged.
+The Markdown export follows the page language (`/tasks/{id}/export?format=md&lang=fr`). In the
+terminal, `--lang fr` or `AGENT_LANG=fr` translates the approval prompt (`[o]ui / [n]on / [t]oujours`)
+and the `keys` output.
+
 ### Persistence, live updates and control
 
 - **Persistence**: conversations (with the agent's history), their events, schedules and

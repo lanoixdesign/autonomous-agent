@@ -7,7 +7,7 @@ import os
 import sys
 from pathlib import Path
 
-from . import __version__
+from . import __version__, i18n
 from .audit import AuditLog
 from .llm import LLMError, make_llm
 from .loop import Agent, Budget
@@ -34,14 +34,14 @@ def load_dotenv(path: Path) -> None:
             os.environ[k] = v
 
 
-def make_confirm(interactive: bool):
+def make_confirm(interactive: bool, lang: str = "en"):
     always: set[str] = set()
 
     def confirm(tool: str, category: str, args: dict, reason: str) -> bool:
         if tool in always:
             return True
         if not interactive:
-            print(f"  ! {tool} [{category}] needs confirmation but there is no terminal -> refused", file=sys.stderr)
+            print(i18n.t(lang, "cli.noTerminal", tool=tool, category=category), file=sys.stderr)
             return False
         shown = json.dumps(args, ensure_ascii=False)
         if len(shown) > 600:
@@ -49,12 +49,12 @@ def make_confirm(interactive: bool):
         print(f"\n  ? {tool} [{category}] {shown}\n    ({reason})", file=sys.stderr)
         while True:
             try:
-                ans = input("    allow? [y]es / [n]o / [a]lways this session: ").strip().lower()
+                ans = input(i18n.t(lang, "cli.ask")).strip().lower()
             except EOFError:
                 return False
             if ans in ("y", "yes", "o", "oui"):
                 return True
-            if ans in ("a", "always", "toujours"):
+            if ans in ("a", "always", "t", "toujours"):
                 always.add(tool)
                 return True
             if ans in ("", "n", "no", "non"):
@@ -137,7 +137,7 @@ def new_agent(args, perms: Permissions, ctx: ToolContext, audit: AuditLog, confi
 
 def build(args) -> tuple[Agent, Permissions]:
     perms, ctx, state = parts(args)
-    agent = new_agent(args, perms, ctx, AuditLog(state / "audit.jsonl"), make_confirm(sys.stdin.isatty()),
+    agent = new_agent(args, perms, ctx, AuditLog(state / "audit.jsonl"), make_confirm(sys.stdin.isatty(), args.lang),
                       None if args.quiet else printer)
     return agent, perms
 
@@ -217,6 +217,8 @@ def common(p: argparse.ArgumentParser) -> None:
     p.add_argument("--yolo", action="store_true", help="turn 'ask' into 'allow' EXCEPT for send and spend")
     p.add_argument("--offline", action="store_true", help="do not register network tools (web, GitHub)")
     p.add_argument("--quiet", "-q", action="store_true")
+    p.add_argument("--lang", default=None, choices=i18n.LANGS,
+                   help="language of terminal prompts/messages: en|fr (default: AGENT_LANG, else en)")
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -251,6 +253,7 @@ def main(argv: list[str] | None = None) -> int:
     for p in (p_chat, p_run, p_mem, p_sk, p_perm, p_aud, p_srv, p_keys):
         common(p)
     args = ap.parse_args(argv)
+    args.lang = i18n.normalize(args.lang) if getattr(args, "lang", None) else i18n.env_lang()
     if args.cmd in ("memory", "skills", "permissions", "audit"):
         args.provider = "mock"  # these commands never call a model
     if args.cmd == "keys":
@@ -263,16 +266,17 @@ def main(argv: list[str] | None = None) -> int:
             print(f"error: {e}", file=sys.stderr)
             return 2
         if router is None:
-            print("no keys file (providers.yaml): single-key .env mode", file=sys.stderr)
+            print(i18n.t(args.lang, "cli.noKeys"), file=sys.stderr)
             return 0
         st = router.status()
         for k in st["keys"]:
-            flag = "" if k["available"] else "  [unavailable]"
+            flag = "" if k["available"] else i18n.t(args.lang, "cli.unavailable")
             if k["cooldown_s"]:
-                flag += f"  [cooldown {k['cooldown_s']}s]"
+                flag += i18n.t(args.lang, "cli.cooldown", s=k["cooldown_s"])
             print(f"{k['name']}  {k['key']}  p{k['priority']}  {','.join(k['categories'])}{flag}")
             for f, v in k["limits"].items():
-                print(f"    {f:22s} {v['used']:g} / {v['limit']:g}  (left {v['remaining']:g})")
+                print(i18n.t(args.lang, "cli.limit", name=f, used=f"{v['used']:g}", limit=f"{v['limit']:g}",
+                             left=f"{v['remaining']:g}"))
         return 0
     if args.cmd == "serve":
         try:

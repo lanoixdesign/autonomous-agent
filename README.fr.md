@@ -308,6 +308,15 @@ curl -s -X POST localhost:8765/approvals/<id> -H 'Content-Type: application/json
   les tours en cours et suppriment les copies temporaires ; les conversations sont gardées sur disque
   (voir ci-dessous), sauf avec `--no-persist`.
 
+**Français / anglais** : le chat et le tableau de bord ont un sélecteur **EN | FR** (en bas de la
+barre latérale du chat, en haut du tableau de bord). Par défaut, la langue suit le navigateur
+(`navigator.language` qui commence par `fr` donne le français, sinon l'anglais). Le choix est retenu
+(localStorage), et `?lang=fr` ou `?lang=en` dans l'adresse l'impose (`http://127.0.0.1:8765/?lang=fr`).
+Tous les textes viennent d'un dictionnaire par langue dans `agent/i18n.py` ; les noms d'outils, les
+champs de l'API et les messages du serveur ne changent pas. L'export Markdown suit la langue de la page
+(`/tasks/{id}/export?format=md&lang=fr`). Dans le terminal, `--lang fr` ou `AGENT_LANG=fr` traduit la
+question de validation (`[o]ui / [n]on / [t]oujours`) et la sortie de `keys`.
+
 ### Persistance, direct et contrôle
 
 - **Persistance** : les conversations (avec l'historique de l'agent), leurs événements, les

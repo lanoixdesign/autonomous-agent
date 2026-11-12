@@ -12,7 +12,7 @@ API (JSON):
   GET  /tasks/{id}/events?since=N                        -> {"events": [...], "next": M}  (polling)
   POST /tasks/{id}/cancel
   GET  /tasks/{id}/stream     Server-Sent Events (same events, pushed; ?access_token= if a token is set)
-  GET  /tasks/{id}/export?format=json|md                 conversation + its audit trail (redacted)
+  GET  /tasks/{id}/export?format=json|md[&lang=fr]       conversation + its audit trail (redacted)
   GET  /approvals[?all=1]     pending (or all) approval requests, each with the requesting agent id
   POST /approvals/{id}        {"decision": "approve" | "deny", "remember": "conversation" | "session"}
   GET  /rules                 remembered approval rules;  POST /rules/{id}/revoke
@@ -21,7 +21,7 @@ API (JSON):
   GET  /schedules             POST /schedules {"prompt", "every_minutes" | "daily_at": "HH:MM"}
   POST /schedules/{id}        {"enabled": bool};  POST /schedules/{id}/run;  POST /schedules/{id}/delete
   GET  /health[?check=1]      status, keys (masked), backend reachability (network only with check=1)
-  GET  /                      chat page (approvals pop up as cards)
+  GET  /[?lang=fr|en]         chat page (approvals pop up as cards); pages are English/French
   GET  /dashboard             compact dashboard page
 
 At most `max_tasks` turns run at once (default 4); the others wait in status "queued".
@@ -55,9 +55,18 @@ from .audit import AuditLog, _short
 from .harness_page import PAGE
 from .harness_chat import CHAT_PAGE
 from .redact import redact
-from . import __version__, export, schedule, uploads
+from . import __version__, export, i18n, schedule, uploads
 
 LOCAL_HOSTS = ("127.0.0.1", "localhost", "::1")
+_I18N_DATA = json.dumps(i18n.ui_strings(), ensure_ascii=False).replace("</", "<\\/")
+
+
+def render_page(page: str, lang: str | None = None) -> bytes:
+    """Insert the EN/FR dictionaries; `?lang=` also sets <html lang> (the page then remembers it)."""
+    out = page.replace("/*I18N_DATA*/{}", _I18N_DATA)
+    if lang:
+        out = out.replace('<html lang="en">', f'<html lang="{i18n.normalize(lang)}">', 1)
+    return out.encode("utf-8")
 MAX_BODY = 1_000_000
 MAX_TASK_CHARS = 20_000
 TERMINAL = ("done", "stopped", "cancelled", "error", "interrupted")
@@ -649,7 +658,7 @@ class Harness:
                             out.append(e)
         return out
 
-    def export(self, task_id: str, fmt: str = "json") -> tuple[str, bytes, str]:
+    def export(self, task_id: str, fmt: str = "json", lang: str = "en") -> tuple[str, bytes, str]:
         task = self.get(task_id)
         if task is None:
             raise KeyError(task_id)
@@ -657,7 +666,7 @@ class Harness:
         events, _ = task.events_since(0)
         b = export.bundle(snap, events, self.audit_for(task_id), task.usage_report())
         if fmt == "md":
-            return f"conversation-{task_id}.md", export.markdown(b).encode("utf-8"), "text/markdown; charset=utf-8"
+            return f"conversation-{task_id}.md", export.markdown(b, lang).encode("utf-8"), "text/markdown; charset=utf-8"
         return (f"conversation-{task_id}.json", json.dumps(b, ensure_ascii=False, indent=2).encode("utf-8"),
                 "application/json; charset=utf-8")
 
@@ -933,7 +942,8 @@ def make_handler(h: Harness, token: str | None, local_only: bool):
             if path in ("/", "/chat", "/dashboard"):
                 page = PAGE if path == "/dashboard" else CHAT_PAGE
                 if self._host_ok():
-                    self._send(200, body=page.encode("utf-8"), ctype="text/html; charset=utf-8")
+                    lang = (q.get("lang") or [None])[0]
+                    self._send(200, body=render_page(page, lang), ctype="text/html; charset=utf-8")
                 else:
                     self._send(403, {"error": "bad Host header"})
                 return
@@ -972,7 +982,7 @@ def make_handler(h: Harness, token: str | None, local_only: bool):
                     fmt = (q.get("format") or ["json"])[0]
                     if fmt not in export.FORMATS:
                         return self._send(400, {"error": "format must be json or md"})
-                    name, body, ctype = h.export(task.id, fmt)
+                    name, body, ctype = h.export(task.id, fmt, (q.get("lang") or ["en"])[0])
                     return self._send(200, body=body, ctype=ctype,
                                       extra={"Content-Disposition": f'attachment; filename="{name}"'})
                 if m.group(2) == "/events":
