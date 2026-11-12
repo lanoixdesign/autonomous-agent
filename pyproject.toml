@@ -17,6 +17,7 @@ dev = ["pytest>=7", "pyyaml>=6"]
 
 [project.scripts]
 autonomous-agent = "agent.cli:main"
+autonomous-agent-desktop = "agent.desktop:main"
 
 [tool.setuptools]
 packages = ["agent", "agent.tools"]

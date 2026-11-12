@@ -3,6 +3,7 @@
 - `ui.*`, `status.*`, `cat.*`… are sent to the harness pages (chat + dashboard), which pick the language
   from `?lang=fr|en`, then localStorage, then `navigator.language` (fr* -> French, else English).
 - `export.*` are the Markdown export labels (`/tasks/{id}/export?format=md&lang=fr`).
+- `desktop.*` are the console messages of the double-click launcher (agent/desktop.py).
 - `cli.*` are terminal prompts/messages (`--lang`, or AGENT_LANG; default English).
 Placeholders are `{name}`; both languages must use the same ones. Tool names, API fields and the
 values sent to the server never change.
@@ -144,6 +145,16 @@ EN: dict[str, str] = {
     "cli.noKeys": "no keys file (providers.yaml): single-key .env mode",
     "cli.unavailable": "  [unavailable]", "cli.cooldown": "  [cooldown {s}s]",
     "cli.limit": "    {name:22s} {used} / {limit}  (left {left})",
+    # ------------------------------------------------------------ desktop launcher console
+    "desktop.banner": "autonomous-agent — local harness (unsigned desktop build)",
+    "desktop.home": "Your folder (keys, settings, workspace, data): {home}",
+    "desktop.keysFile": "API keys: {path}",
+    "desktop.demo": "No API key found: DEMO mode (offline mock model, canned answers).\n  To use a real model, open {env}, follow the instructions, then restart.\n  (Several keys with limits: copy providers.example.yaml to providers.yaml in {home}.)",
+    "desktop.token": "A token is set (AGENT_HARNESS_TOKEN): paste it in the page's token field.",
+    "desktop.url": "Chat: {url}  (opening your browser…)",
+    "desktop.stop": "Keep this window open while you use the agent. To stop: close it or press Ctrl+C.",
+    "desktop.error": "Could not start: {error}",
+    "desktop.pressEnter": "Press Enter to close this window.",
 }
 
 FR: dict[str, str] = {
@@ -267,6 +278,15 @@ FR: dict[str, str] = {
     "cli.noKeys": "pas de fichier de clés (providers.yaml) : mode clé unique .env",
     "cli.unavailable": "  [indisponible]", "cli.cooldown": "  [pause {s} s]",
     "cli.limit": "    {name:22s} {used} / {limit}  (reste {left})",
+    "desktop.banner": "autonomous-agent — harness local (version de bureau non signée)",
+    "desktop.home": "Votre dossier (clés, réglages, espace de travail, données) : {home}",
+    "desktop.keysFile": "Clés d'API : {path}",
+    "desktop.demo": "Aucune clé d'API trouvée : mode DÉMO (modèle mock hors ligne, réponses toutes faites).\n  Pour un vrai modèle, ouvrez {env}, suivez les instructions, puis relancez.\n  (Plusieurs clés avec limites : copiez providers.example.yaml en providers.yaml dans {home}.)",
+    "desktop.token": "Un jeton est défini (AGENT_HARNESS_TOKEN) : collez-le dans le champ « jeton » de la page.",
+    "desktop.url": "Chat : {url}  (ouverture du navigateur…)",
+    "desktop.stop": "Laissez cette fenêtre ouverte pendant l'utilisation. Pour arrêter : fermez-la ou appuyez sur Ctrl+C.",
+    "desktop.error": "Démarrage impossible : {error}",
+    "desktop.pressEnter": "Appuyez sur Entrée pour fermer cette fenêtre.",
 }
 
 STRINGS = {"en": EN, "fr": FR}
@@ -289,5 +309,5 @@ def t(lang: str, key: str, **kw) -> str:
 
 def ui_strings() -> dict[str, dict[str, str]]:
     """What the pages get: everything except the terminal and export strings."""
-    return {lang: {k: v for k, v in d.items() if not k.startswith(("cli.", "export."))}
+    return {lang: {k: v for k, v in d.items() if not k.startswith(("cli.", "export.", "desktop."))}
             for lang, d in STRINGS.items()}
