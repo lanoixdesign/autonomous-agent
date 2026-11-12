@@ -55,6 +55,7 @@ class RunState:
     steps: int = 0
     tool_calls: int = 0
     tokens: int = 0
+    cost: float = 0.0
     last_calls: list[str] = field(default_factory=list)
     # budget reserved by running sub-agents (swarm.py), released when they finish
     reserved_steps: int = 0
@@ -70,6 +71,7 @@ class RunResult:
     tool_calls: int
     tokens: int
     messages: list[dict]
+    cost: float = 0.0
 
 
 Confirm = Callable[[str, str, dict, str], bool]
@@ -146,13 +148,15 @@ class Agent:
                 return self._stop(st, "llm_error", f"LLM error: {e}")
             st.steps += 1
             st.tokens += reply.total_tokens
+            st.cost += getattr(reply, "cost", 0.0) or 0.0
             msg = reply.message
             self.messages.append(msg)
             if msg.get("content"):
                 self.on_event("assistant", {"content": msg["content"], "final": not msg.get("tool_calls")})
             calls = msg.get("tool_calls") or []
             if not calls:
-                return RunResult(msg.get("content") or "", "final", st.steps, st.tool_calls, st.tokens, self.messages)
+                return RunResult(msg.get("content") or "", "final", st.steps, st.tool_calls, st.tokens, self.messages,
+                                 round(st.cost, 8))
             for call in calls:
                 sig = call["function"]["name"] + call["function"]["arguments"]
                 st.last_calls = (st.last_calls + [sig])[-b.max_repeats:]
@@ -165,7 +169,7 @@ class Agent:
     def _stop(self, st: RunState, reason: str, text: str) -> RunResult:
         self.on_event("stop", {"reason": reason})
         self.messages.append({"role": "assistant", "content": text})
-        return RunResult(text, reason, st.steps, st.tool_calls, st.tokens, self.messages)
+        return RunResult(text, reason, st.steps, st.tool_calls, st.tokens, self.messages, round(st.cost, 8))
 
     def _audit(self, **entry) -> None:
         if self.swarm is not None:

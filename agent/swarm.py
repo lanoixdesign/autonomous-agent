@@ -226,9 +226,10 @@ def run_child(parent: "Agent", task: str, max_steps: int | None = None,
                 st.steps += cs.steps
                 st.tool_calls += cs.tool_calls
                 st.tokens += cs.tokens
+                st.cost += cs.cost
     parent.audit.record(event="child_done", agent=child_id, depth=depth, parent=parent.agent_id,
                         stop_reason=res.stop_reason, steps=res.steps, tool_calls=res.tool_calls,
-                        tokens=res.tokens, result=res.answer)
+                        tokens=res.tokens, cost=res.cost, result=res.answer)
     return child_id, (f"[sub-agent {child_id}] stop={res.stop_reason} steps={res.steps} "
                       f"tool_calls={res.tool_calls} tokens={res.tokens}\n{res.answer}")
 

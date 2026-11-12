@@ -33,6 +33,8 @@ class LLMReply:
     message: dict          # OpenAI-style assistant message (content, tool_calls)
     prompt_tokens: int = 0
     completion_tokens: int = 0
+    cost: float = 0.0              # in the keys file currency, when the key router knows the pricing
+    key: str | None = None         # name of the key that served the call (key router)
 
     @property
     def total_tokens(self) -> int:
@@ -219,4 +221,5 @@ class RoutedLLM:
             if not pt and not ct:   # provider did not report usage: keep the estimate
                 pt, ct = est_prompt, len(json.dumps(reply.message)) // 3
             lease.commit(pt, ct)
+            reply.cost, reply.key = lease.entry.cost(pt, ct), lease.name
             return reply

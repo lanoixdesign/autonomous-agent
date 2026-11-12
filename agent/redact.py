@@ -17,6 +17,8 @@ SECRET_VALUE_PATTERNS = [
     re.compile(r"-----BEGIN [A-Z ]*PRIVATE KEY-----[\s\S]*?-----END [A-Z ]*PRIVATE KEY-----"),
 ]
 MASK = "***REDACTED***"
+# Numeric usage counters (tokens, max_tokens, prompt_tokens...) are not secrets: keep them readable.
+COUNTER_NAME_RE = re.compile(r"(?i)^[a-z_]*tokens$")
 
 
 def secret_env_values(env: dict[str, str] | None = None) -> list[str]:
@@ -29,10 +31,17 @@ def is_secret_name(name: str) -> bool:
     return bool(SECRET_NAME_RE.search(name))
 
 
+def _masked(key: Any, value: Any) -> bool:
+    if not value or not is_secret_name(str(key)):
+        return False
+    is_number = isinstance(value, (int, float)) and not isinstance(value, bool)
+    return not (is_number and COUNTER_NAME_RE.match(str(key)))
+
+
 def redact(text: Any, extra: list[str] | None = None) -> Any:
     """Redact secrets in a string, or recursively in dicts/lists."""
     if isinstance(text, dict):
-        return {k: (MASK if is_secret_name(str(k)) and v else redact(v, extra)) for k, v in text.items()}
+        return {k: (MASK if _masked(k, v) else redact(v, extra)) for k, v in text.items()}
     if isinstance(text, (list, tuple)):
         return [redact(v, extra) for v in text]
     if not isinstance(text, str):
