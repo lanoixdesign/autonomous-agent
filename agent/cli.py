@@ -177,6 +177,17 @@ def serve(args) -> int:
 
     idc_cfg = idc_config(args, perms)
 
+    from . import remote
+    remote_mode = args.remote or os.environ.get("AGENT_REMOTE", "").strip().lower() in ("1", "true", "yes", "on")
+    token = os.environ.get("AGENT_HARNESS_TOKEN") or None
+    where = None
+    if remote_mode:
+        had = (state / "remote-token").is_file()
+        token, where = remote.load_or_create_token(state)
+        new_token = where != "AGENT_HARNESS_TOKEN" and not had
+    auth = remote.Auth(token, remote=remote_mode,
+                       local_trusted=os.environ.get("AGENT_REMOTE_LOCAL_AUTH", "") not in ("1", "true", "yes"))
+
     store = None
     if not args.no_persist:
         from .store import Store
@@ -185,11 +196,14 @@ def serve(args) -> int:
                 workspace=ctx.workspace, max_upload_mb=args.max_upload_mb, max_message_mb=args.max_message_mb,
                 key_router=args._router, store=store, backend=backend_info(args), idc_config=idc_cfg,
                 lang=args.lang)
-    srv = make_server(h, args.host, args.port, os.environ.get("AGENT_HARNESS_TOKEN"))
+    srv = make_server(h, args.host, args.port, token, remote_mode=remote_mode, auth=auth)
     host, port = srv.server_address[:2]
     print(f"harness on http://{'127.0.0.1' if host == '127.0.0.1' else host}:{port}/  "
           f"(workspace {ctx.workspace}, {perms.source}"
-          f"{', token required' if os.environ.get('AGENT_HARNESS_TOKEN') else ''}) — Ctrl+C to stop", file=sys.stderr)
+          f"{', token required' if token else ''}) — Ctrl+C to stop", file=sys.stderr)
+    tunnel_proc = None
+    if remote_mode:
+        tunnel_proc = remote_banner(args, h, auth, host, port, where, new_token)
     import signal
 
     def _stop(signum, frame):
@@ -205,9 +219,49 @@ def serve(args) -> int:
     finally:
         h.shutdown()
         srv.server_close()
+        if tunnel_proc is not None:
+            tunnel_proc.terminate()
         if store is not None:
             store.close()
     return 0
+
+
+def remote_banner(args, h, auth, host: str, port: int, where: str, new_token: bool):
+    """Remote mode: public URL (flag, env, tunnel, LAN), one-time pairing QR code. Returns a tunnel process."""
+    from . import qr, remote
+    lang = args.lang
+    say = lambda key, **kw: print(i18n.t(lang, key, **kw), file=sys.stderr)   # noqa: E731
+    say("cli.remote.tokenNew" if new_token else "cli.remote.on", where=where)
+    local_connect = f"http://127.0.0.1:{port}/connect"
+    public = args.public_url or os.environ.get("AGENT_REMOTE_URL") or None
+    proc = None
+    tunnel = args.tunnel or os.environ.get("AGENT_TUNNEL") or None
+    if not public and tunnel:
+        try:
+            public, proc = remote.start_tunnel(tunnel, port)
+        except (RuntimeError, ValueError, OSError) as e:
+            say("cli.remote.tunnelFail", error=e)
+    if not public and host not in ("127.0.0.1", "localhost", "::1"):
+        ip = remote.lan_ip()
+        public = f"http://{ip}:{port}/" if ip else None
+    h.public_url = public.rstrip("/") + "/" if public else None
+    if h.public_url:
+        code, _ = auth.new_pairing()
+        url = h.public_url + "connect?pair=" + code
+        if not args.no_qr and os.environ.get("AGENT_QR", "1") not in ("0", "false", "no"):
+            if os.name == "nt":
+                os.system("")          # enable ANSI colours in the Windows console
+            say("cli.remote.scan")
+            print(qr.to_text(qr.encode(url)), file=sys.stderr)
+        say("cli.remote.url", url=url)
+        say("cli.remote.newCode", url=local_connect)
+    else:
+        found = remote.detect(port)
+        if found:
+            say("cli.remote.noUrl", cmd=found[0]["command"], url=local_connect)
+        else:
+            say("cli.remote.noTool", port=port)
+    return proc
 
 
 def backend_info(args) -> dict:
@@ -281,6 +335,13 @@ def main(argv: list[str] | None = None) -> int:
     p_srv.add_argument("--db", default=None,
                        help="SQLite file for conversations, events, schedules, rules (default <state-dir>/harness.sqlite3)")
     p_srv.add_argument("--no-persist", action="store_true", help="keep everything in memory only (lost on restart)")
+    p_srv.add_argument("--remote", action="store_true",
+                       help="use from other devices (phone): sign-in mandatory, pairing QR code (default: AGENT_REMOTE)")
+    p_srv.add_argument("--tunnel", choices=["tailscale", "cloudflared"], default=None,
+                       help="with --remote: start `tailscale serve` or a cloudflared quick tunnel (default: AGENT_TUNNEL)")
+    p_srv.add_argument("--public-url", default=None,
+                       help="with --remote: the address phones use, for the QR code (default: AGENT_REMOTE_URL)")
+    p_srv.add_argument("--no-qr", action="store_true", help="do not print the pairing QR code (AGENT_QR=0)")
     for p in (p_chat, p_run, p_mem, p_sk, p_perm, p_aud, p_srv, p_keys):
         common(p)
     args = ap.parse_args(argv)

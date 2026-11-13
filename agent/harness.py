@@ -23,6 +23,12 @@ API (JSON):
   GET  /health[?check=1]      status, keys (masked), backend reachability (network only with check=1)
   GET  /[?lang=fr|en]         chat page (approvals pop up as cards); pages are English/French
   GET  /dashboard             compact dashboard page
+  GET  /connect[?pair=CODE]   sign-in page (token or one-time pairing code from a QR code); pairing QR
+  POST /auth/login            {"token": ...} or {"pair": ...} -> session cookie (rate limited)
+  POST /auth/logout;  GET /auth/status;  POST /auth/pair (new one-time code + QR, signed in only)
+  POST /auth/revoke-all       sign every device out
+  GET  /manifest.webmanifest, /sw.js, /icon-*.png   installable web app (PWA); the service worker caches
+                              the page shell only, never API answers or approvals
 
 At most `max_tasks` turns run at once (default 4); the others wait in status "queued".
 
@@ -33,13 +39,14 @@ Approvals: each `ask` decision becomes a pending approval; the agent thread wait
 approves/denies it, the task is cancelled, or `approval_timeout` seconds pass. No answer = deny.
 
 Security: binds 127.0.0.1 by default. If AGENT_HARNESS_TOKEN is set, every API call needs
-`Authorization: Bearer <token>`. POSTs must be `application/json` and same-origin, and the Host header
+`Authorization: Bearer <token>` or a session cookie obtained with that token / a pairing code. Remote
+mode (`--remote`, see agent/remote.py) makes a strong token mandatory for everything that does not come
+directly from this computer; a non-local bind address without a token is refused. POSTs must be `application/json` and same-origin, and the Host header
 is checked when bound to localhost (protects against other web pages and DNS rebinding). This is NOT
 an authenticated multi-user server: do not expose it to a network you do not trust.
 """
 from __future__ import annotations
 
-import hmac
 import json
 import re
 import sys
@@ -54,6 +61,8 @@ from urllib.parse import parse_qs, urlparse
 from .audit import AuditLog, _short
 from .harness_page import PAGE
 from .harness_chat import CHAT_PAGE
+from .harness_connect import CONNECT_PAGE
+from . import pwa, qr, remote
 from .redact import redact
 from . import __version__, export, i18n, schedule, uploads
 from .idc import IDC, IDCConfig
@@ -65,6 +74,9 @@ _I18N_DATA = json.dumps(i18n.ui_strings(), ensure_ascii=False).replace("</", "<\
 def render_page(page: str, lang: str | None = None) -> bytes:
     """Insert the EN/FR dictionaries; `?lang=` also sets <html lang> (the page then remembers it)."""
     out = page.replace("/*I18N_DATA*/{}", _I18N_DATA)
+    out = out.replace('<meta charset="utf-8">', '<meta charset="utf-8">\n' + pwa.HEAD, 1)
+    out = out.replace("width=device-width, initial-scale=1", "width=device-width, initial-scale=1, viewport-fit=cover", 1)
+    out = out.replace("</script></body></html>", pwa.REGISTER_JS + "\n</script></body></html>", 1)
     if lang:
         out = out.replace('<html lang="en">', f'<html lang="{i18n.normalize(lang)}">', 1)
     return out.encode("utf-8")
@@ -413,6 +425,7 @@ class Harness:
         self.rules: dict[str, dict] = {}
         self.schedules: dict[str, dict] = {}
         self.settings: dict[str, Any] = {"idc": bool(self.idc_config.enabled)}
+        self.public_url: str | None = None   # remote mode: the URL a phone should open (tunnel, LAN...)
         self._restore()
         self._sched_thread = None
         if scheduler_tick:
@@ -900,7 +913,11 @@ SCHEDULE_RE = re.compile(r"^/schedules/([0-9a-f]+)(/run|/delete)?$")
 SSE_PING = 15.0
 
 
-def make_handler(h: Harness, token: str | None, local_only: bool):
+LOOPBACK = ("127.0.0.1", "::1", "::ffff:127.0.0.1")
+
+
+def make_handler(h: Harness, token: str | None, local_only: bool, auth: "remote.Auth | None" = None):
+    auth = auth or remote.Auth(token)
     class Handler(BaseHTTPRequestHandler):
         server_version = "autonomous-agent-harness"
         protocol_version = "HTTP/1.1"
@@ -912,13 +929,16 @@ def make_handler(h: Harness, token: str | None, local_only: bool):
                   ctype: str = "application/json; charset=utf-8", extra: dict | None = None) -> None:
             if body is None:
                 body = json.dumps(obj, ensure_ascii=False).encode("utf-8")
+            extra = dict(extra or {})
+            cache = extra.pop("Cache-Control-Override", "no-store")
             self.send_response(code)
             self.send_header("Content-Type", ctype)
-            for k, v in (extra or {}).items():
+            for k, v in extra.items():
                 self.send_header(k, v)
             self.send_header("Content-Length", str(len(body)))
-            self.send_header("Cache-Control", "no-store")
+            self.send_header("Cache-Control", cache)
             self.send_header("X-Content-Type-Options", "nosniff")
+            self.send_header("Referrer-Policy", "no-referrer")     # a ?pair= code never leaks via Referer
             self.end_headers()
             self.wfile.write(body)
 
@@ -928,29 +948,129 @@ def make_handler(h: Harness, token: str | None, local_only: bool):
             host = (self.headers.get("Host") or "").rsplit(":", 1)[0].strip("[]").lower()
             return host in LOCAL_HOSTS
 
-        def _auth_ok(self, query_token: str | None = None) -> bool:
-            if not token:
+        def _direct_local(self) -> bool:
+            """A request from this computer itself, not relayed by a proxy or tunnel."""
+            host = (self.headers.get("Host") or "").rsplit(":", 1)[0].strip("[]").lower()
+            return (self.client_address[0] in LOOPBACK and host in LOCAL_HOSTS
+                    and not any(self.headers.get(x) for x in remote.FORWARD_HEADERS))
+
+        def _secure(self) -> bool:
+            if self.client_address[0] not in LOOPBACK:
+                return False
+            fwd = (self.headers.get("X-Forwarded-Proto") or "").lower()
+            return fwd == "https" or "proto=https" in (self.headers.get("Forwarded") or "").lower()
+
+        def _client(self) -> str:
+            peer = self.client_address[0]
+            if peer in LOOPBACK:
+                relayed = (self.headers.get("Cf-Connecting-Ip") or
+                           (self.headers.get("X-Forwarded-For") or "").split(",")[0].strip())
+                if relayed:
+                    return "via-proxy:" + relayed
+            return peer
+
+        def _who(self, query_token: str | None = None) -> str | None:
+            """How this request is authenticated: token | cookie | local | open, or None (refused)."""
+            hdr = self.headers.get("Authorization", "")
+            if hdr.startswith("Bearer ") and auth.check_token(hdr[7:]):
+                return "token"
+            if query_token is not None and auth.check_token(query_token):   # EventSource: /stream only
+                return "token"
+            if auth.check_session(remote.cookie_value(self.headers.get("Cookie"))):
+                return "cookie"
+            if not auth.required:
+                return "open"
+            if auth.remote and auth.local_trusted and self._direct_local():
+                return "local"
+            return None
+
+        def _origin_ok(self) -> bool:
+            origin = self.headers.get("Origin")
+            if not origin:
                 return True
-            if query_token is not None:   # EventSource cannot send headers: ?access_token= for /stream only
-                return hmac.compare_digest(query_token.encode(), token.encode())
-            return hmac.compare_digest(self.headers.get("Authorization", "").encode(), f"Bearer {token}".encode())
+            hosts = {self.headers.get("Host"), self.headers.get("X-Forwarded-Host")}
+            if h.public_url:
+                hosts.add(urlparse(h.public_url).netloc)
+            return urlparse(origin).netloc in hosts
 
         def _guard(self, post: bool, query_token: str | None = None) -> bool:
             if not self._host_ok():
                 self._send(403, {"error": "bad Host header"})
                 return False
             if post:
-                origin = self.headers.get("Origin")
-                if origin and urlparse(origin).netloc != self.headers.get("Host"):
+                if not self._origin_ok():
                     self._send(403, {"error": "cross-origin request refused"})
                     return False
                 if not (self.headers.get("Content-Type") or "").startswith("application/json"):
                     self._send(415, {"error": "Content-Type must be application/json"})
                     return False
-            if not self._auth_ok(query_token):
-                self._send(401, {"error": "missing or bad bearer token (AGENT_HARNESS_TOKEN)"})
+            who = self._who(query_token)
+            if who is None:
+                self._send(401, {"error": "sign in required (token, or a pairing code at /connect)"})
+                return False
+            if post and who == "cookie" and not self.headers.get("Origin"):
+                self._send(403, {"error": "cross-origin request refused (no Origin)"})
                 return False
             return True
+
+        def _base_url(self) -> str:
+            if h.public_url:
+                return h.public_url.rstrip("/") + "/"
+            fh = self.headers.get("X-Forwarded-Host")
+            if fh and self.client_address[0] in LOOPBACK:
+                return f"{'https' if self._secure() else 'http'}://{fh}/"
+            return f"http://{self.headers.get('Host') or '127.0.0.1'}/"
+
+        def _auth_routes(self, path: str, data: dict) -> bool:
+            """POST /auth/*; returns False if `path` is not one of them."""
+            if path == "/auth/login":
+                if not self._origin_ok():
+                    self._send(403, {"error": "cross-origin request refused"})
+                    return True
+                if not (self.headers.get("Content-Type") or "").startswith("application/json"):
+                    self._send(415, {"error": "Content-Type must be application/json"})
+                    return True
+                if not auth.required:
+                    self._send(200, {"ok": True, "required": False})
+                    return True
+                try:
+                    sid = auth.login(self._client(), token=data.get("token"), pair=data.get("pair"))
+                except remote.RateLimited as e:
+                    self._send(429, {"error": str(e)}, extra={"Retry-After": str(e.retry_after)})
+                    return True
+                except remote.LoginError as e:
+                    self._send(401, {"error": str(e)})
+                    return True
+                h._audit(None, event="remote_login", via="pair" if data.get("pair") else "token",
+                         client=self._client())
+                self._send(200, {"ok": True}, extra={"Set-Cookie": auth.cookie(sid, self._secure())})
+                return True
+            if path == "/auth/logout":
+                if not self._origin_ok():
+                    self._send(403, {"error": "cross-origin request refused"})
+                    return True
+                auth.logout(remote.cookie_value(self.headers.get("Cookie")))
+                self._send(200, {"ok": True}, extra={"Set-Cookie": auth.clear_cookie(self._secure())})
+                return True
+            if path in ("/auth/pair", "/auth/revoke-all"):
+                if not self._guard(post=True):
+                    return True
+                if path == "/auth/revoke-all":
+                    n = auth.revoke_all()
+                    h._audit(None, event="remote_revoke_all", sessions=n)
+                    self._send(200, {"ok": True, "sessions": n},
+                               extra={"Set-Cookie": auth.clear_cookie(self._secure())})
+                    return True
+                if not auth.required:
+                    self._send(400, {"error": "no token is set: nothing to pair (use --remote)"})
+                    return True
+                code, exp = auth.new_pairing()
+                url = self._base_url() + "connect?pair=" + code
+                h._audit(None, event="remote_pairing_code", client=self._client())
+                self._send(200, {"code": code, "url": url, "expires_in": int(exp - auth.clock()),
+                                 "public_url": h.public_url, "svg": qr.to_svg(qr.encode(url), scale=6)})
+                return True
+            return False
 
         def _body(self) -> dict | None:
             n = int(self.headers.get("Content-Length") or 0)
@@ -1018,8 +1138,16 @@ def make_handler(h: Harness, token: str | None, local_only: bool):
         def do_GET(self) -> None:  # noqa: N802
             u = urlparse(self.path)
             path, q = u.path.rstrip("/") or "/", parse_qs(u.query)
-            if path in ("/", "/chat", "/dashboard"):
-                page = PAGE if path == "/dashboard" else CHAT_PAGE
+            asset = pwa.asset(path)
+            if asset is not None:
+                ctype, body, cache = asset
+                return self._send(200, body=body, ctype=ctype, extra={"Cache-Control-Override": cache})
+            if path == "/auth/status":
+                who = self._who()
+                return self._send(200, {"authenticated": who is not None, "via": who, "remote": auth.remote,
+                                        "required": auth.required, "public_url": h.public_url})
+            if path in ("/", "/chat", "/dashboard", "/connect"):
+                page = {"/dashboard": PAGE, "/connect": CONNECT_PAGE}.get(path, CHAT_PAGE)
                 if self._host_ok():
                     lang = (q.get("lang") or [None])[0]
                     self._send(200, body=render_page(page, lang), ctype="text/html; charset=utf-8")
@@ -1078,6 +1206,15 @@ def make_handler(h: Harness, token: str | None, local_only: bool):
 
         def do_POST(self) -> None:  # noqa: N802
             path = urlparse(self.path).path.rstrip("/")
+            if path.startswith("/auth/"):
+                if not self._host_ok():
+                    return self._send(403, {"error": "bad Host header"})
+                data = self._body()
+                if data is None:
+                    return
+                if self._auth_routes(path, data):
+                    return
+                return self._send(404, {"error": "not found"})
             if not self._guard(post=True):
                 return
             data = self._body()
@@ -1183,12 +1320,20 @@ def make_handler(h: Harness, token: str | None, local_only: bool):
 
 
 def make_server(h: Harness, host: str = "127.0.0.1", port: int = 8765,
-                token: str | None = None, warn: Callable[[str], None] | None = None) -> ThreadingHTTPServer:
+                token: str | None = None, warn: Callable[[str], None] | None = None,
+                remote_mode: bool = False, auth: "remote.Auth | None" = None) -> ThreadingHTTPServer:
+    """`remote_mode`: reachable through a tunnel/proxy; a token is mandatory (see agent/remote.py)."""
     warn = warn or (lambda msg: print(msg, file=sys.stderr))
     local = host in LOCAL_HOSTS
+    auth = auth or remote.Auth(token or None, remote=remote_mode)
+    if (remote_mode or not local) and not auth.required:
+        raise ValueError(f"refusing to serve {'in remote mode' if remote_mode else 'on ' + host} without a token: "
+                         "set AGENT_HARNESS_TOKEN (or use --remote, which creates one)")
     if not local:
-        warn(f"WARNING: harness bound to {host}, reachable from other machines. Anyone who can reach it "
-             "can run your agent" + ("." if token else " — and AGENT_HARNESS_TOKEN is NOT set."))
-    srv = ThreadingHTTPServer((host, port), make_handler(h, token or None, local_only=local))
+        warn(f"WARNING: harness bound to {host}: reachable from other machines over PLAIN HTTP (no TLS). "
+             "The token and your conversations travel unencrypted on that network. Prefer keeping 127.0.0.1 "
+             "and a tunnel that adds HTTPS (tailscale serve, cloudflared).")
+    srv = ThreadingHTTPServer((host, port), make_handler(h, token or None, local_only=local and not remote_mode,
+                                                         auth=auth))
     srv.daemon_threads = True
     return srv

@@ -22,7 +22,9 @@ from agent.permissions import CATEGORIES
 from test_harness import call, finished, server  # noqa: F401  (fixture)
 
 REPO = Path(__file__).resolve().parent.parent
-PAGES = {"chat": CHAT_PAGE, "dashboard": PAGE}
+from agent.harness_connect import CONNECT_PAGE  # noqa: E402
+
+PAGES = {"chat": CHAT_PAGE, "dashboard": PAGE, "connect": CONNECT_PAGE}
 
 
 def test_same_keys_and_placeholders_in_both_languages():
@@ -55,7 +57,7 @@ def test_every_key_used_by_the_pages_exists(name):
     assert len(used) > 25
     missing = sorted(k for k in used if k not in i18n.EN)
     assert not missing, missing
-    prefixes = set(re.findall(r'\btr\("([a-z]+)"', page))
+    prefixes = set(re.findall(r'\btr\("([a-z.]+)"', page))
     assert prefixes and all(any(k.startswith(p + ".") for k in i18n.EN) for p in prefixes)
 
 
@@ -86,7 +88,7 @@ def test_no_hardcoded_ui_text(name):
     page = PAGES[name]
     p = TextNodes()
     p.feed(page)
-    allowed = {"autonomous-agent", "EN", "FR", "⇩ MD", "⇩ JSON", "📎", "—"}
+    allowed = {"autonomous-agent", "EN", "FR", "⇩ MD", "⇩ JSON", "📎", "—", "☰"}
     assert set(p.texts) <= allowed, set(p.texts) - allowed
     assert not p.attrs                   # titles/placeholders all come from data-i18n-*
     js = page[page.index("<script>"):]
@@ -96,7 +98,7 @@ def test_no_hardcoded_ui_text(name):
     assert not re.findall(r'confirm\("[A-Za-z]', js)
 
 
-@pytest.mark.parametrize("path", ["/", "/chat", "/dashboard"])
+@pytest.mark.parametrize("path", ["/", "/chat", "/dashboard", "/connect"])
 def test_pages_served_in_both_languages_with_switch(server, path):  # noqa: F811
     base, _ = server(lambda: MockLLM())
     for lang, word in (("fr", "Nouvelle"), ("en", "New")):

@@ -102,11 +102,14 @@ def test_page_and_guards(server):
     assert call(base, "GET", "/tasks", headers={**auth, "Host": "evil.example"})[0] == 403
 
 
-def test_non_local_bind_warns(ctx, tmp_path):
+def test_non_local_bind_needs_a_token_and_warns(ctx, tmp_path):
+    h = Harness(lambda *a: None, tmp_path / "a.jsonl", scheduler_tick=None)
+    with pytest.raises(ValueError, match="without a token"):
+        make_server(h, "0.0.0.0", 0, None, warn=lambda m: None)
     warnings = []
-    srv = make_server(Harness(lambda *a: None, tmp_path / "a.jsonl"), "0.0.0.0", 0, None, warn=warnings.append)
+    srv = make_server(h, "0.0.0.0", 0, "x" * 32, warn=warnings.append)
     srv.server_close()
-    assert warnings and "NOT set" in warnings[0]
+    assert warnings and "PLAIN HTTP" in warnings[0]
 
 
 def test_approval_queue_approve_and_deny_with_agent_ids(server, ws):

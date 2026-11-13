@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "autonomous-agent"
-version = "0.2.0"
+version = "0.3.0"
 description = "Small open-source autonomous agent with tools, memory, skills and user-tunable permissions."
 readme = "README.md"
 license = { text = "MIT" }
