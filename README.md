@@ -16,8 +16,8 @@ with secrets redacted.
 
 ### Download (no command line)
 
-Not comfortable with the terminal? **Ready-to-run desktop builds exist** for Windows and macOS: no Python,
-no install, no commands. Download the file for your computer from the
+**No terminal needed, at any step.** Ready-to-run desktop builds exist for Windows and macOS: no Python,
+no install, no commands, no file to edit. Download the file for your computer from the
 **[Releases page](https://github.com/lanoixdesign/autonomous-agent/releases/latest)**:
 
 | File | For |
@@ -33,34 +33,71 @@ no install, no commands. Download the file for your computer from the
 **Windows**
 1. Double-click `AutonomousAgent-windows-x64.exe`.
 2. If a blue "Windows protected your PC" (SmartScreen) window appears: click **More info**, then **Run anyway**.
-3. A black console window opens (keep it open: it shows what happens) and the chat opens in your browser.
+3. The app opens in your browser. There is no console window (logs go to `AutonomousAgent\data\app.log`).
 
 **macOS**
 1. Unzip the file and move `AutonomousAgent.app` to **Applications**.
 2. The first time, **right-click** (or Control-click) the app → **Open** → **Open**.
    If macOS only offers "Move to Trash" / "Done": open **System Settings → Privacy & Security**, scroll
    down and click **Open Anyway** next to "AutonomousAgent", then confirm.
-3. Last resort, in Terminal: `xattr -dr com.apple.quarantine /Applications/AutonomousAgent.app`
-4. A Terminal window opens (keep it open) and the chat opens in your browser.
+3. The app opens in your browser and runs in the background (no window to keep open).
+
+**First run: a 3-step wizard in the browser.** ① pick your language (English / Français) → ② choose a
+provider (Groq, OpenAI, OpenRouter, Ollama), paste your API key, click **Test the key**, then **Save and
+continue**, *or* click **Try demo mode (no key)** → ③ done, open the chat.
+
+| Wizard | Settings → API keys |
+|---|---|
+| ![First-run wizard](docs/v5-wizard-en.png) | ![Settings, API keys](docs/v5-settings-keys-en.png) |
+
+**Everything else is in ⚙ Settings** (the tabs **Chat | Dashboard | Settings | Connect** are at the top
+of every page, and in the ☰ menu on a phone):
+- **API keys & models**: add, edit, delete and test keys, per use (text, code, images, speech,
+  transcription, embeddings), with limits (requests / tokens / cost per day or month) and a failover
+  order (↑ ↓: when a key hits a limit or fails, the next one takes over). Keys are shown **masked**
+  (`sk-d••••RET2`) with their usage. Changes apply to the next message, **no restart**.
+- **General**: language, workspace folder, conversations at once, approval timeout.
+- **Permissions**: allow / ask / deny per risk category. **send** and **spend** can never be set to
+  "allow".
+- **IDC mode**: on/off and its parameters.
+- **Phone access**: turn it on, pick Tailscale or Cloudflare, show the QR code, generate a new token.
+- **App**: version, **Restart** (shown when a change needs it) and **Quit** (stops the server cleanly;
+  also in the chat sidebar).
+
+**Where your keys go.** In your user folder, `AutonomousAgent/data/secrets.json`, a private file only
+your account can read (mode 0600), or in the system keychain if the Python `keyring` package is
+installed. Keys are never sent back to the browser after saving (only masked), never logged and never
+written to the audit log. Settings and keys can only be changed **from the computer running the agent**;
+a phone signed in remotely sees a 🔒 notice (see
+[Use from your phone](#use-from-your-phone) for `AGENT_REMOTE_SETTINGS=1`).
 
 **Where things go.** Everything is in one folder in your home directory, `AutonomousAgent`
-(`C:\Users\<you>\AutonomousAgent` or `/Users/<you>/AutonomousAgent`):
-`.env` (API keys), `permissions.yaml` (what the agent may do), `workspace/` (the only folder the agent's
-file tools can touch; chat attachments go there), `data/` (memory, audit log, conversations).
+(`C:\Users\<you>\AutonomousAgent` or `/Users/<you>/AutonomousAgent`): `workspace/` (the only folder the
+agent's file tools can touch; chat attachments go there), `data/` (settings, keys, memory, audit log,
+conversations), and the optional `.env` / `permissions.yaml` / `providers.yaml` for advanced users.
 
-**API keys.** Without a key the app starts in **demo mode** (offline mock model, canned answers). To use a
-real model, open `AutonomousAgent/.env` with a text editor, remove the `#` in front of one provider and
-paste your key (for example `AGENT_PROVIDER=groq` and `GROQ_API_KEY=...`), save, and restart the app.
-Environment variables work too. Several keys with limits: copy `providers.example.yaml` to
-`providers.yaml` in the same folder (see [Several API keys](#several-api-keys-by-category-with-limits)).
+**Stop:** click **Quit** (chat sidebar, or Settings → App). Double-clicking the app again while it runs just
+reopens the browser tab. **Language:** first-run choice, Settings → General, or the EN | FR switch.
 
-**Stop:** close the console window (or press Ctrl+C in it). **Language:** the page follows your browser and
-has an EN | FR switch; the console follows the system language (`AGENT_LANG=en|fr` in `.env` forces it).
+| Navigation (dashboard → "← Back to chat") | Phone menu |
+|---|---|
+| ![Dashboard with tabs](docs/v5-nav-dashboard-en.png) | ![Phone menu](docs/v5-mobile-nav-fr.png) |
 
-Notes: the server only listens on `127.0.0.1` (your computer); port 8765 if free, else another one (shown
-in the console). The macOS builds are separate for Apple Silicon and Intel. Build it yourself:
+**Work trace.** In the chat, the agent's work (sub-agents launched, tool calls and their results,
+approvals) is folded into one **"How the agent worked"** block under your message, **closed by default**,
+with a live summary ("3 agents · 8 actions · 1 pending approval"). Click it (or Enter / Space) to open it
+with ▸ / ▾; your choice is remembered. Approval cards always stay visible and clickable, and the final
+answer stays outside the block.
+
+| Trace closed | Trace open |
+|---|---|
+| ![Trace closed](docs/v5-trace-collapsed-en.png) | ![Trace open](docs/v5-trace-expanded-en.png) |
+
+Notes: the server only listens on `127.0.0.1` (your computer); port 8765 if free, else another one. The
+macOS builds are separate for Apple Silicon and Intel. Advanced: build it yourself with
 `pip install pyinstaller && pyinstaller packaging/autonomous-agent.spec` (output in `dist/`), or run
-`python -m agent.desktop` from a clone for the same behaviour without packaging.
+`python -m agent.desktop` from a clone (`AGENT_TERMINAL=1` on macOS reopens the app in Terminal to watch
+the logs).
 
 ### At a glance
 
@@ -94,14 +131,16 @@ in the console). The macOS builds are separate for Apple Silicon and Intel. Buil
 |---|---|
 | ![Chat (English)](docs/chat-en.png) | ![Chat (français)](docs/chat-fr.png) |
 
-**Quick start**
+**Quick start (advanced: command line)**
+
+The desktop app above needs none of this. From a clone:
 
 ```bash
 git clone https://github.com/lanoixdesign/autonomous-agent.git && cd autonomous-agent
 python -m agent run "List the files" --provider mock --offline   # no key, no network
 cp .env.example .env    # add GROQ_API_KEY / OPENAI_API_KEY / OPENROUTER_API_KEY, or use Ollama
 python -m agent chat --workspace ~/project
-python -m agent serve --workspace ~/project   # then open http://127.0.0.1:8765/ (?lang=fr)
+python -m agent serve --workspace ~/project   # then open http://127.0.0.1:8765/ : wizard + ⚙ Settings
 ```
 
 Several keys: `cp providers.example.yaml providers.yaml` (git-ignored). The file holds only the
@@ -595,6 +634,12 @@ cards) and can be installed as an app (PWA). To reach the harness from anywhere,
   localhost. `--host 0.0.0.0` (LAN) works but prints a loud **plain HTTP** warning: the token and the
   conversation travel unencrypted on that network. Prefer a tunnel.
 
+**Settings from a phone.** Phone access can be turned on from ⚙ Settings → Phone access (tunnel choice,
+QR code, new token; a restart applies it). Changing settings or API keys stays **reserved to the computer
+running the agent**: a remote device sees a 🔒 notice. To allow signed-in devices to change them, start the
+agent with `AGENT_REMOTE_SETTINGS=1`; every change then needs the sign-in token or session **and** an
+anti-CSRF token (`X-CSRF-Token`), and the page shows a warning banner.
+
 ### Tests
 
 ```bash
@@ -622,6 +667,11 @@ builds, each smoke-tested, attached to a GitHub Release.
   unsigned PyInstaller executables (false positives).
 - Remote access: sessions live in memory (a restart signs phones out); no TLS of its own (use a
   tunnel); not tested against every tunnel/proxy setup; the PWA works offline only for the page shell.
+- Settings page: on Windows the private key file relies on your user folder's permissions (0600 is a
+  POSIX mode); the system keychain is used only if the Python `keyring` package is installed (it is not
+  bundled in the desktop builds). **Test the key** only checks the provider's `/models` endpoint, not
+  access to a given model. Restarting from Settings cancels running tasks. Validation messages from the
+  server are in English.
 - This project is independent: it is **not** Grok Bot and does not reproduce it.
 
 ### License
@@ -645,9 +695,10 @@ secrets masqués.
 
 ### Télécharger (sans ligne de commande)
 
-Pas à l'aise avec le terminal ? **Des versions de bureau prêtes à l'emploi existent** pour Windows et
-macOS : ni Python, ni installation, ni commande. Téléchargez le fichier correspondant à votre ordinateur
-sur la **[page des versions (Releases)](https://github.com/lanoixdesign/autonomous-agent/releases/latest)** :
+**Aucun terminal nécessaire, à aucune étape.** Des versions de bureau prêtes à l'emploi existent pour
+Windows et macOS : ni Python, ni installation, ni commande, ni fichier à modifier. Téléchargez le fichier
+correspondant à votre ordinateur sur la
+**[page des versions (Releases)](https://github.com/lanoixdesign/autonomous-agent/releases/latest)** :
 
 | Fichier | Pour |
 |---|---|
@@ -663,8 +714,8 @@ sur la **[page des versions (Releases)](https://github.com/lanoixdesign/autonomo
 1. Double-cliquez sur `AutonomousAgent-windows-x64.exe`.
 2. Si une fenêtre bleue « Windows a protégé votre ordinateur » (SmartScreen) apparaît : cliquez sur
    **Informations complémentaires**, puis **Exécuter quand même**.
-3. Une fenêtre de console noire s'ouvre (laissez-la ouverte : elle montre ce qui se passe) et le chat
-   s'ouvre dans votre navigateur.
+3. L'application s'ouvre dans votre navigateur. Pas de fenêtre de console (le journal va dans
+   `AutonomousAgent\data\app.log`).
 
 **macOS**
 1. Décompressez le fichier et déplacez `AutonomousAgent.app` dans **Applications**.
@@ -672,29 +723,68 @@ sur la **[page des versions (Releases)](https://github.com/lanoixdesign/autonomo
    Si macOS ne propose que « Placer dans la corbeille » / « OK » : ouvrez **Réglages Système →
    Confidentialité et sécurité**, descendez et cliquez sur **Ouvrir quand même** à côté de
    « AutonomousAgent », puis confirmez.
-3. En dernier recours, dans Terminal : `xattr -dr com.apple.quarantine /Applications/AutonomousAgent.app`
-4. Une fenêtre Terminal s'ouvre (laissez-la ouverte) et le chat s'ouvre dans votre navigateur.
+3. L'application s'ouvre dans votre navigateur et tourne en arrière-plan (aucune fenêtre à garder ouverte).
+
+**Premier lancement : un assistant en 3 étapes dans le navigateur.** ① choisissez la langue (English /
+Français) → ② choisissez un fournisseur (Groq, OpenAI, OpenRouter, Ollama), collez votre clé d'API,
+cliquez sur **Tester la clé**, puis **Enregistrer et continuer**, *ou* cliquez sur **Essayer le mode démo
+(sans clé)** → ③ c'est prêt, ouvrez le chat.
+
+| Assistant | Réglages → Clés d'API |
+|---|---|
+| ![Assistant de premier lancement](docs/v5-wizard-fr.png) | ![Réglages, clés d'API](docs/v5-settings-keys-fr.png) |
+
+**Tout le reste est dans ⚙ Réglages** (les onglets **Chat | Tableau de bord | Réglages | Connexion** sont
+en haut de chaque page, et dans le menu ☰ sur téléphone) :
+- **Clés d'API et modèles** : ajouter, modifier, supprimer et tester des clés, par usage (texte, code,
+  images, voix, transcription, embeddings), avec des limites (requêtes / jetons / coût par jour ou par
+  mois) et un ordre de relais (↑ ↓ : quand une clé atteint une limite ou échoue, la suivante prend le
+  relais). Les clés sont affichées **masquées** (`sk-d••••RET2`) avec leur consommation. Les changements
+  s'appliquent au message suivant, **sans redémarrage**.
+- **Général** : langue, dossier de travail, conversations simultanées, délai de validation.
+- **Autorisations** : autoriser / demander / refuser par catégorie de risque. **envoi** et **dépense** ne
+  peuvent jamais être mis sur « autoriser ».
+- **Mode IDC** : activé/désactivé et ses paramètres.
+- **Accès téléphone** : l'activer, choisir Tailscale ou Cloudflare, afficher le QR code, générer un nouveau jeton.
+- **Application** : version, **Redémarrer** (proposé quand un changement l'exige) et **Quitter** (arrête
+  proprement le serveur ; aussi dans la barre latérale du chat).
+
+**Où vont vos clés.** Dans votre dossier utilisateur, `AutonomousAgent/data/secrets.json`, un fichier
+privé lisible par votre seul compte (mode 0600), ou dans le trousseau du système si le paquet Python
+`keyring` est installé. Après l'enregistrement, les clés ne sont jamais renvoyées au navigateur (seulement
+masquées), jamais écrites dans les journaux ni dans l'audit. Les réglages et les clés ne se modifient
+**que depuis l'ordinateur qui fait tourner l'agent** ; un téléphone connecté à distance voit un avis 🔒
+(voir [Utiliser depuis le mobile](#utiliser-depuis-le-mobile) pour `AGENT_REMOTE_SETTINGS=1`).
 
 **Où vont les fichiers.** Tout est dans un seul dossier de votre répertoire personnel, `AutonomousAgent`
-(`C:\Users\<vous>\AutonomousAgent` ou `/Users/<vous>/AutonomousAgent`) : `.env` (clés d'API),
-`permissions.yaml` (ce que l'agent a le droit de faire), `workspace/` (le seul dossier que les outils de
-fichiers de l'agent peuvent toucher ; les pièces jointes du chat y vont), `data/` (mémoire, journal d'audit,
-conversations).
+(`C:\Users\<vous>\AutonomousAgent` ou `/Users/<vous>/AutonomousAgent`) : `workspace/` (le seul dossier
+que les outils de fichiers de l'agent peuvent toucher ; les pièces jointes du chat y vont), `data/`
+(réglages, clés, mémoire, journal d'audit, conversations), et les fichiers facultatifs `.env` /
+`permissions.yaml` / `providers.yaml` pour les utilisateurs avancés.
 
-**Clés d'API.** Sans clé, l'application démarre en **mode démo** (modèle mock hors ligne, réponses toutes
-faites). Pour un vrai modèle, ouvrez `AutonomousAgent/.env` avec un éditeur de texte, enlevez le `#` devant
-un fournisseur et collez votre clé (par exemple `AGENT_PROVIDER=groq` et `GROQ_API_KEY=...`), enregistrez,
-puis relancez l'application. Les variables d'environnement fonctionnent aussi. Plusieurs clés avec limites :
-copiez `providers.example.yaml` en `providers.yaml` dans le même dossier (voir
-[Plusieurs clés d'API](#plusieurs-clés-dapi-par-catégorie-avec-limites)).
+**Arrêter :** cliquez sur **Quitter** (barre latérale du chat, ou Réglages → Application). Un nouveau
+double-clic pendant que l'app tourne rouvre simplement l'onglet du navigateur. **Langue :** choix du
+premier lancement, Réglages → Général, ou le sélecteur EN | FR.
 
-**Arrêter :** fermez la fenêtre de console (ou Ctrl+C dedans). **Langue :** la page suit votre navigateur
-et a un sélecteur EN | FR ; la console suit la langue du système (`AGENT_LANG=en|fr` dans `.env` pour forcer).
+| Navigation (tableau de bord → « ← Retour au chat ») | Menu sur téléphone |
+|---|---|
+| ![Tableau de bord avec onglets](docs/v5-nav-dashboard-fr.png) | ![Menu téléphone](docs/v5-mobile-nav-fr.png) |
 
-Remarques : le serveur n'écoute que sur `127.0.0.1` (votre ordinateur) ; port 8765 s'il est libre, sinon un
-autre (affiché dans la console). Les versions macOS sont distinctes pour puce Apple et Intel. Compiler
-soi-même : `pip install pyinstaller && pyinstaller packaging/autonomous-agent.spec` (résultat dans
-`dist/`), ou lancer `python -m agent.desktop` depuis un clone pour le même comportement sans empaquetage.
+**Trace de travail.** Dans le chat, le travail de l'agent (sous-agents lancés, appels d'outils et leurs
+résultats, validations) est replié dans un bloc **« Comment l'agent a travaillé »** sous votre message,
+**fermé par défaut**, avec un résumé en direct (« 3 agents · 8 actions · 1 validation en attente »).
+Cliquez dessus (ou Entrée / Espace) pour l'ouvrir avec ▸ / ▾ ; votre choix est mémorisé. Les cartes de
+validation restent toujours visibles et cliquables, et la réponse finale reste hors du bloc.
+
+| Trace fermée | Trace ouverte |
+|---|---|
+| ![Trace fermée](docs/v5-trace-collapsed-fr.png) | ![Trace ouverte](docs/v5-trace-expanded-fr.png) |
+
+Remarques : le serveur n'écoute que sur `127.0.0.1` (votre ordinateur) ; port 8765 s'il est libre, sinon
+un autre. Les versions macOS sont distinctes pour puce Apple et Intel. Avancé : compiler soi-même avec
+`pip install pyinstaller && pyinstaller packaging/autonomous-agent.spec` (résultat dans `dist/`), ou
+lancer `python -m agent.desktop` depuis un clone (`AGENT_TERMINAL=1` sur macOS rouvre l'app dans
+Terminal pour voir le journal).
 
 ### En bref
 
@@ -730,14 +820,16 @@ soi-même : `pip install pyinstaller && pyinstaller packaging/autonomous-agent.s
 |---|---|
 | ![Chat (English)](docs/chat-en.png) | ![Chat (français)](docs/chat-fr.png) |
 
-**Démarrage rapide**
+**Démarrage rapide (avancé : ligne de commande)**
+
+L'application de bureau ci-dessus n'en a pas besoin. Depuis un clone :
 
 ```bash
 git clone https://github.com/lanoixdesign/autonomous-agent.git && cd autonomous-agent
 python -m agent run "Liste les fichiers" --provider mock --offline   # sans clé ni réseau
 cp .env.example .env    # ajoutez GROQ_API_KEY / OPENAI_API_KEY / OPENROUTER_API_KEY, ou Ollama
 python -m agent chat --workspace ~/projet
-python -m agent serve --workspace ~/projet   # puis ouvrir http://127.0.0.1:8765/?lang=fr
+python -m agent serve --workspace ~/projet   # puis http://127.0.0.1:8765/ : assistant + ⚙ Réglages
 ```
 
 Plusieurs clés : `cp providers.example.yaml providers.yaml` (ignoré par git). Le fichier ne contient
@@ -1260,6 +1352,13 @@ rend la connexion obligatoire.
   localhost. `--host 0.0.0.0` (réseau local) fonctionne mais affiche un avertissement **HTTP en clair** :
   le jeton et la conversation circulent sans chiffrement sur ce réseau. Préférez un tunnel.
 
+**Réglages depuis un téléphone.** L'accès téléphone s'active dans ⚙ Réglages → Accès téléphone (choix du
+tunnel, QR code, nouveau jeton ; un redémarrage l'applique). Modifier les réglages ou les clés d'API reste
+**réservé à l'ordinateur qui fait tourner l'agent** : un appareil distant voit un avis 🔒. Pour autoriser
+les appareils connectés à les modifier, lancez l'agent avec `AGENT_REMOTE_SETTINGS=1` ; chaque changement
+exige alors le jeton ou la session **et** un jeton anti-CSRF (`X-CSRF-Token`), et la page affiche un
+bandeau d'avertissement.
+
 ### Tests
 
 ```bash
@@ -1290,6 +1389,11 @@ de bout en bout hors ligne avec le backend mock, et une compilation de l'applica
 - Accès distant : les sessions sont en mémoire (un redémarrage déconnecte les téléphones) ; pas de TLS
   intégré (utilisez un tunnel) ; pas testé avec toutes les configurations de tunnel/proxy ; hors ligne,
   la PWA n'affiche que l'enveloppe des pages.
+- Page Réglages : sous Windows, le fichier privé des clés repose sur les droits de votre dossier
+  utilisateur (0600 est un mode POSIX) ; le trousseau du système n'est utilisé que si le paquet Python
+  `keyring` est installé (il n'est pas inclus dans les versions de bureau). **Tester la clé** ne vérifie
+  que le point `/models` du fournisseur, pas l'accès à un modèle précis. Redémarrer depuis Réglages
+  annule les tâches en cours. Les messages de validation du serveur sont en anglais.
 - Ce projet est indépendant : ce n'est **pas** Grok Bot et il ne le reproduit pas.
 
 ### Licence

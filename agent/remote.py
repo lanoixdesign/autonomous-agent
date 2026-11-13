@@ -65,6 +65,19 @@ def load_or_create_token(state_dir: Path, env: dict | None = None) -> tuple[str,
     return tok, str(path)
 
 
+def rotate_token(state_dir: Path) -> str:
+    """A new random master token in <state-dir>/remote-token (0600); the old one stops working."""
+    path = Path(state_dir) / "remote-token"
+    path.parent.mkdir(parents=True, exist_ok=True)
+    tok = secrets.token_urlsafe(32)
+    tmp = path.with_name(".remote-token.tmp")
+    fd = os.open(tmp, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600)
+    with os.fdopen(fd, "w", encoding="utf-8") as f:
+        f.write(tok + "\n")
+    os.replace(tmp, path)
+    return tok
+
+
 class Auth:
     """Token, cookie sessions, one-time pairing codes and login rate limits (all in memory)."""
 

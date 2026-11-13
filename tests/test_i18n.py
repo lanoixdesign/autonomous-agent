@@ -24,7 +24,10 @@ from test_harness import call, finished, server  # noqa: F401  (fixture)
 REPO = Path(__file__).resolve().parent.parent
 from agent.harness_connect import CONNECT_PAGE  # noqa: E402
 
-PAGES = {"chat": CHAT_PAGE, "dashboard": PAGE, "connect": CONNECT_PAGE}
+from agent.harness_settings import SETTINGS_PAGE, WELCOME_PAGE  # noqa: E402
+
+PAGES = {"chat": CHAT_PAGE, "dashboard": PAGE, "connect": CONNECT_PAGE, "settings": SETTINGS_PAGE,
+         "welcome": WELCOME_PAGE}
 
 
 def test_same_keys_and_placeholders_in_both_languages():
@@ -98,7 +101,7 @@ def test_no_hardcoded_ui_text(name):
     assert not re.findall(r'confirm\("[A-Za-z]', js)
 
 
-@pytest.mark.parametrize("path", ["/", "/chat", "/dashboard", "/connect"])
+@pytest.mark.parametrize("path", ["/", "/chat", "/dashboard", "/connect", "/welcome"])
 def test_pages_served_in_both_languages_with_switch(server, path):  # noqa: F811
     base, _ = server(lambda: MockLLM())
     for lang, word in (("fr", "Nouvelle"), ("en", "New")):

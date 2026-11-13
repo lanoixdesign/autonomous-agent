@@ -223,3 +223,42 @@ class RoutedLLM:
             lease.commit(pt, ct)
             reply.cost, reply.key = lease.entry.cost(pt, ct), lease.name
             return reply
+
+
+class SwitchLLM:
+    """The chat backend chosen at EACH call from the Settings page (no restart needed):
+    demo mode -> offline mock; keys saved in the Settings page for this category -> key router;
+    otherwise the backend picked at start (.env key, providers.yaml, or the mock)."""
+
+    def __init__(self, control: Any, category: str, fallback_factory: Any):
+        self.control, self.category, self.fallback_factory = control, category, fallback_factory
+        self._fallback = None
+        self._mock = None
+        self._routed = None
+        self._lock = threading.Lock()
+
+    @property
+    def model(self) -> str:
+        mode = self.control.backend_mode(self.category)
+        return {"demo": "mock", "ui": f"settings:{self.category}"}.get(mode) or getattr(self._get_fallback(), "model", "?")
+
+    def _get_fallback(self) -> Any:
+        with self._lock:
+            if self._fallback is None:
+                self._fallback = self.fallback_factory()
+            return self._fallback
+
+    def current(self) -> Any:
+        mode = self.control.backend_mode(self.category)
+        if mode == "demo":
+            with self._lock:
+                self._mock = self._mock or MockLLM()
+                return self._mock
+        if mode == "ui":
+            with self._lock:
+                self._routed = self._routed or RoutedLLM(self.control.router, self.category)
+                return self._routed
+        return self._get_fallback()
+
+    def chat(self, messages: list[dict], tools: list[dict] | None = None) -> LLMReply:
+        return self.current().chat(messages, tools)

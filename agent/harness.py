@@ -29,6 +29,15 @@ API (JSON):
   POST /auth/login            {"token": ...} or {"pair": ...} -> session cookie (rate limited)
   POST /auth/logout;  GET /auth/status;  POST /auth/pair (new one-time code + QR, signed in only)
   POST /auth/revoke-all       sign every device out
+  GET  /settings (browser)    Settings page;  GET /welcome  first-run wizard
+  GET  /app/status            first run?, demo mode, restart needed, may this device change settings, CSRF token
+  GET  /app/settings          every setting (no secret);  POST /app/settings {section: value, ...}
+  GET  /app/providers         API keys entered in the UI, MASKED, with usage;  POST /app/providers (add)
+  POST /app/providers/{id}    edit ("key" empty/absent = keep);  POST /app/providers/{id}/delete | /test
+  POST /app/providers/test    test a key typed in the form (not saved);  POST /app/providers/order {"ids"}
+  POST /app/setup             first-run wizard {"lang", "demo", "done"};  POST /app/remote/token (new token)
+  POST /app/restart, /app/quit   stop the server cleanly (restart: the launcher starts it again)
+      /app/* changes: only from this computer, unless AGENT_REMOTE_SETTINGS=1 (then sign-in + X-CSRF-Token)
   GET  /manifest.webmanifest, /sw.js, /icon-*.png   installable web app (PWA); the service worker caches
                               the page shell only, never API answers or approvals
 
@@ -64,6 +73,7 @@ from .audit import AuditLog, _short
 from .harness_page import PAGE
 from .harness_chat import CHAT_PAGE
 from .harness_connect import CONNECT_PAGE
+from .harness_settings import SETTINGS_PAGE, WELCOME_PAGE
 from . import pwa, qr, remote
 from .redact import redact
 from . import __version__, export, i18n, schedule, uploads
@@ -73,9 +83,12 @@ LOCAL_HOSTS = ("127.0.0.1", "localhost", "::1")
 _I18N_DATA = json.dumps(i18n.ui_strings(), ensure_ascii=False).replace("</", "<\\/")
 
 
-def render_page(page: str, lang: str | None = None) -> bytes:
-    """Insert the EN/FR dictionaries; `?lang=` also sets <html lang> (the page then remembers it)."""
+def render_page(page: str, lang: str | None = None, default_lang: str | None = None) -> bytes:
+    """Insert the EN/FR dictionaries; `?lang=` also sets <html lang> (the page then remembers it).
+    `default_lang` (Settings page choice) is used by a browser that has no saved choice yet."""
     out = page.replace("/*I18N_DATA*/{}", _I18N_DATA)
+    if default_lang in i18n.LANGS:
+        out = out.replace("const I18N_DEFAULT = null;", f'const I18N_DEFAULT = "{default_lang}";', 1)
     out = out.replace('<meta charset="utf-8">', '<meta charset="utf-8">\n' + pwa.HEAD, 1)
     out = out.replace("width=device-width, initial-scale=1", "width=device-width, initial-scale=1, viewport-fit=cover", 1)
     out = out.replace("</script></body></html>", pwa.REGISTER_JS + "\n</script></body></html>", 1)
@@ -474,6 +487,7 @@ class Harness:
         self.schedules: dict[str, dict] = {}
         self.settings: dict[str, Any] = {"idc": bool(self.idc_config.enabled)}
         self.public_url: str | None = None   # remote mode: the URL a phone should open (tunnel, LAN...)
+        self.control: Any = None             # userconfig.AppControl: Settings page, keys from the UI, restart / quit
         self._restore()
         self._sched_thread = None
         if scheduler_tick:
@@ -771,6 +785,13 @@ class Harness:
             raise
         return ap, rule
 
+    def active_router(self) -> Any:
+        """Keys entered in the Settings page when there are some, else the providers.yaml router (or None)."""
+        c = self.control
+        if c is not None and c.router.entries and not c.demo():
+            return c.router
+        return self.key_router
+
     # -- usage
     def usage(self) -> dict:
         with self._lock:
@@ -781,7 +802,8 @@ class Harness:
             _add(total, rep["total"])
             convs.append({"id": t.id, "task": t.text[:120], "status": t.status, "turns": t.turns,
                           "source": t.source, **rep})
-        keys = self.key_router.status() if self.key_router is not None else None
+        r = self.active_router()
+        keys = r.status() if r is not None else None
         return {"total": total, "conversations": convs, "keys": keys}
 
     # -- export
@@ -900,12 +922,17 @@ class Harness:
             for t in self._tasks.values():
                 counts[t.status] = counts.get(t.status, 0) + 1
             n_sched = sum(1 for s in self.schedules.values() if s["enabled"])
-        if self.key_router is not None:
-            st = self.key_router.status()
-            keys = {"mode": "router", "keys": [{f: k.get(f) for f in ("name", "provider", "key", "key_env",
-                                                                  "categories", "available", "cooldown_s")}
-                                                for k in st.get("keys", [])]}
-            urls = sorted({k.base_url for k in self.key_router.entries if getattr(k, "base_url", None)})
+        router = self.active_router()
+        if self.control is not None and self.control.demo():
+            keys = {"mode": "demo", "provider": "mock", "model": "mock", "key": None}
+            urls = []
+        elif router is not None:
+            st = router.status()
+            keys = {"mode": "settings" if router is not self.key_router else "router",
+                    "keys": [{f: k.get(f) for f in ("name", "provider", "key", "key_env",
+                                                    "categories", "available", "cooldown_s")}
+                             for k in st.get("keys", [])]}
+            urls = sorted({k.base_url for k in router.entries if getattr(k, "base_url", None)})
         else:
             keys = {"mode": "single-key (.env)", "provider": self.backend.get("provider"),
                     "model": self.backend.get("model"), "key": self.backend.get("key")}
@@ -961,6 +988,13 @@ TASK_RE = re.compile(r"^/tasks/([0-9a-f]+)(/events|/cancel|/messages|/stream|/ex
 APPROVAL_RE = re.compile(r"^/approvals/([0-9a-f]+)$")
 RULE_RE = re.compile(r"^/rules/([0-9a-f]+)/revoke$")
 SCHEDULE_RE = re.compile(r"^/schedules/([0-9a-f]+)(/run|/delete)?$")
+PROVIDER_RE = re.compile(r"^/app/providers/([0-9a-f]+)(/delete|/test)?$")
+CSRF_HEADER = "X-CSRF-Token"
+
+
+def remote_settings_enabled() -> bool:
+    import os
+    return os.environ.get("AGENT_REMOTE_SETTINGS", "").strip().lower() in ("1", "true", "yes", "on")
 SSE_PING = 15.0
 
 
@@ -1043,6 +1077,80 @@ def make_handler(h: Harness, token: str | None, local_only: bool, auth: "remote.
             if h.public_url:
                 hosts.add(urlparse(h.public_url).netloc)
             return urlparse(origin).netloc in hosts
+
+        def _settings_allowed(self) -> bool:
+            """Settings / keys / restart: this computer only, unless AGENT_REMOTE_SETTINGS=1 and signed in."""
+            if self._direct_local():
+                return True
+            return remote_settings_enabled() and self._who() in ("token", "cookie")
+
+        def _csrf(self) -> str:
+            import hashlib
+            import hmac as _hmac
+            who = self._who() or "none"
+            subject = remote.cookie_value(self.headers.get("Cookie")) if who == "cookie" else who
+            return _hmac.new(h.control.csrf_secret, (subject or "").encode(), hashlib.sha256).hexdigest()[:40]
+
+        def _app_get(self, path: str) -> None:
+            c = h.control
+            if path == "/app/status":
+                if c is None:
+                    return self._send(200, {"available": False, "editable": False, "first_run": False})
+                return self._send(200, {"available": True, **c.status(), "editable": self._settings_allowed(),
+                                        "local": self._direct_local(), "remote_settings": remote_settings_enabled(),
+                                        "csrf": self._csrf()})
+            if c is None:
+                return self._send(404, {"error": "settings are not available in this mode"})
+            if not self._settings_allowed():
+                return self._send(403, {"error": "settings can only be changed from the computer running the agent "
+                                                 "(set AGENT_REMOTE_SETTINGS=1 to allow signed-in devices)", "locked": True})
+            if path == "/app/settings":
+                return self._send(200, c.view())
+            if path == "/app/providers":
+                return self._send(200, {"providers": c.providers_view(), "storage": c.secrets.backend,
+                                        "currency": c.router.currency})
+            return self._send(404, {"error": "not found"})
+
+        def _app_post(self, path: str, data: dict) -> None:
+            import hmac as _hmac
+            c = h.control
+            if c is None:
+                return self._send(404, {"error": "settings are not available in this mode"})
+            if not self._settings_allowed():
+                return self._send(403, {"error": "settings can only be changed from the computer running the agent "
+                                                 "(set AGENT_REMOTE_SETTINGS=1 to allow signed-in devices)", "locked": True})
+            if not _hmac.compare_digest(str(self.headers.get(CSRF_HEADER) or ""), self._csrf()):
+                return self._send(403, {"error": "missing or invalid CSRF token (reload the page)", "csrf": True})
+            try:
+                if path == "/app/settings":
+                    return self._send(200, c.update(data))
+                if path == "/app/setup":
+                    return self._send(200, c.setup(data))
+                if path == "/app/providers":
+                    return self._send(201, c.save_provider(data))
+                if path == "/app/providers/test":
+                    return self._send(200, c.test_provider(data=data))
+                if path == "/app/providers/order":
+                    return self._send(200, {"providers": c.reorder(data.get("ids"))})
+                if path == "/app/remote/token":
+                    return self._send(200, c.new_token())
+                if path in ("/app/restart", "/app/quit"):
+                    if not c.request_stop(path == "/app/restart"):
+                        return self._send(409, {"error": "restart / quit is not available in this mode"})
+                    return self._send(202, {"ok": True, "restart": path == "/app/restart"})
+                m = PROVIDER_RE.match(path)
+                if m:
+                    pid, action = m.group(1), m.group(2)
+                    if action == "/delete":
+                        return self._send(200, c.delete_provider(pid))
+                    if action == "/test":
+                        return self._send(200, c.test_provider(pid))
+                    return self._send(200, c.save_provider(data, pid))
+            except KeyError:
+                return self._send(404, {"error": "unknown key"})
+            except ValueError as e:
+                return self._send(400, {"error": str(e)})
+            return self._send(404, {"error": "not found"})
 
         def _guard(self, post: bool, query_token: str | None = None) -> bool:
             if not self._host_ok():
@@ -1218,11 +1326,14 @@ def make_handler(h: Harness, token: str | None, local_only: bool, auth: "remote.
                 who = self._who()
                 return self._send(200, {"authenticated": who is not None, "via": who, "remote": auth.remote,
                                         "required": auth.required, "public_url": h.public_url})
-            if path in ("/", "/chat", "/dashboard", "/connect"):
-                page = {"/dashboard": PAGE, "/connect": CONNECT_PAGE}.get(path, CHAT_PAGE)
+            html_settings = path == "/settings" and "text/html" in (self.headers.get("Accept") or "")
+            if path in ("/", "/chat", "/dashboard", "/connect", "/welcome") or html_settings:
+                page = {"/dashboard": PAGE, "/connect": CONNECT_PAGE, "/settings": SETTINGS_PAGE,
+                        "/welcome": WELCOME_PAGE}.get(path, CHAT_PAGE)
                 if self._host_ok():
                     lang = (q.get("lang") or [None])[0]
-                    self._send(200, body=render_page(page, lang), ctype="text/html; charset=utf-8")
+                    default = h.control.cfg.get("lang") if h.control is not None else None
+                    self._send(200, body=render_page(page, lang, default), ctype="text/html; charset=utf-8")
                 else:
                     self._send(403, {"error": "bad Host header"})
                 return
@@ -1232,6 +1343,8 @@ def make_handler(h: Harness, token: str | None, local_only: bool, auth: "remote.
                 return
             if path == "/tasks":
                 return self._send(200, {"tasks": h.list()})
+            if path.startswith("/app/"):
+                return self._app_get(path)
             if path == "/health":
                 return self._send(200, h.health(check_backend=(q.get("check") or ["0"])[0] in ("1", "true", "yes")))
             if path == "/usage":
@@ -1243,9 +1356,10 @@ def make_handler(h: Harness, token: str | None, local_only: bool, auth: "remote.
             if path == "/settings":
                 return self._send(200, h.get_settings())
             if path == "/keys":
-                if h.key_router is None:
+                router = h.active_router()
+                if router is None:
                     return self._send(200, {"mode": "single-key (.env)", "keys": [], "categories": {}})
-                return self._send(200, {"mode": "router", **h.key_router.status()})
+                return self._send(200, {"mode": "settings" if router is not h.key_router else "router", **router.status()})
             if path == "/config":
                 lim = h.upload_limits
                 return self._send(200, {"uploads": h.workspace is not None,
@@ -1296,6 +1410,8 @@ def make_handler(h: Harness, token: str | None, local_only: bool, auth: "remote.
             data = self._body()
             if data is None:
                 return
+            if path.startswith("/app/"):
+                return self._app_post(path, data)
             if path == "/tasks":
                 text = self._text(data, "task")
                 if text is None:
