@@ -61,6 +61,16 @@ ENV_TEMPLATE = """# autonomous-agent — API keys / clés d'API
 # Mode IDC (délibération finie, engagements en ajout seul) activé par défaut pour les nouvelles conversations
 # AGENT_IDC=1
 
+# Use it from your phone (remote mode: sign-in required, pairing QR code in this window and at /connect)
+# L'utiliser depuis le téléphone (mode distant : connexion obligatoire, QR code ici et sur /connect)
+# AGENT_REMOTE=1
+# Tunnel started for you / tunnel lancé pour vous : tailscale (recommended / recommandé) | cloudflared
+# AGENT_TUNNEL=tailscale
+# Or the address you already expose / ou l'adresse que vous exposez déjà :
+# AGENT_REMOTE_URL=https://my-computer.my-tailnet.ts.net/
+# Fixed access token (24+ characters; otherwise one is generated in data/remote-token)
+# AGENT_HARNESS_TOKEN=
+
 # Language of this console (en | fr) / langue de cette console
 # AGENT_LANG=fr
 """
@@ -211,7 +221,7 @@ def main(argv: list[str] | None = None) -> int:
         print(L("desktop.keysFile", path=paths["providers"]), file=sys.stderr)
     elif mode == "demo":
         print(L("desktop.demo", env=paths["env"], home=home), file=sys.stderr)
-    if os.environ.get("AGENT_HARNESS_TOKEN"):
+    if os.environ.get("AGENT_HARNESS_TOKEN") and os.environ.get("AGENT_REMOTE", "") not in ("1", "true", "yes", "on"):
         print(L("desktop.token"), file=sys.stderr)
     print(L("desktop.url", url=url), file=sys.stderr)
     print(L("desktop.stop"), file=sys.stderr)

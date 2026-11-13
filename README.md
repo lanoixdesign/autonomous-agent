@@ -132,6 +132,7 @@ with keys masked.
 | **Skills** | `skills/<name>/SKILL.md` with `name` / `description` frontmatter; only the index is in the prompt, bodies are loaded on demand. Examples: `research`, `code-review`, `release-notes`. |
 | **LLM** | any OpenAI-compatible API: Groq, OpenAI, OpenRouter, Ollama (local), custom URL; `mock` backend for offline tests |
 | **Harness** | `python -m agent serve`: local chat with approval cards, attachments, several API keys with quotas, live updates (SSE), conversations persisted in SQLite, emergency stop, remembered approvals (never for send/spend), usage per agent, Markdown/JSON export, scheduled prompts, `/health` |
+| **Mobile** | responsive chat/dashboard, installable PWA, `--remote` with QR pairing, Tailscale / Cloudflare tunnels |
 
 ### Install
 
@@ -468,8 +469,9 @@ curl -s -X POST localhost:8765/approvals/<id> -H 'Content-Type: application/json
 
 - **No answer = deny**: an approval waits `--approval-timeout` seconds (default 300), then is refused.
 - Binds **127.0.0.1** by default. With `AGENT_HARNESS_TOKEN` set, every API call needs
-  `Authorization: Bearer <token>` (paste it in the page's token field). Binding another host prints a
-  warning. POSTs must be JSON and same-origin, and the `Host` header is checked on localhost.
+  `Authorization: Bearer <token>` (paste it in the page's token field). Binding another host needs a
+  token and prints a loud plain-HTTP warning; for phone access use `--remote` (see *Use from your phone*).
+  POSTs must be JSON and same-origin, and the `Host` header is checked on localhost.
 - Same `permissions.yaml`, memory and `audit.jsonl` as the CLI (harness lines carry a `task_id`).
   Terminal mode (`run`, `chat`) is unchanged.
 - Not a multi-user server: no accounts, no TLS. Ctrl+C / SIGTERM cancel running turns and remove
@@ -520,6 +522,68 @@ and the `keys` output.
   (**masked**), or the `.env` provider and model. No network by default. `?check=1` sends a
   `GET <base_url>/models` **without any API key** to each backend and reports whether it is reachable.
 
+### Use from your phone
+
+<p><img src="docs/mobile-approval-fr.png" width="240" alt="Approval card on a phone"> <img src="docs/mobile-connect-fr.png" width="240" alt="Connect page with a pairing QR code"></p>
+
+The chat and the dashboard work on a phone (drawer sidebar, big approval buttons, bottom-sheet approval
+cards) and can be installed as an app (PWA). To reach the harness from anywhere, keep it on
+`127.0.0.1` and put a **private HTTPS tunnel** in front of it. `--remote` makes sign-in mandatory.
+
+**1. Tailscale (recommended: private to your devices, HTTPS)**
+
+1. Install Tailscale on the computer and on the phone, sign in to the same account on both
+   (https://tailscale.com/download). Enable HTTPS certificates in the admin console (DNS → HTTPS).
+2. Start the harness with the tunnel:
+   ```bash
+   python -m agent serve --remote --tunnel tailscale
+   ```
+   This runs `tailscale serve --bg 8765` and prints `https://<machine>.<tailnet>.ts.net/`, plus a
+   **QR code** in the console. (Manual equivalent: `tailscale serve --bg 8765`, then
+   `python -m agent serve --remote --public-url https://<machine>.<tailnet>.ts.net`.)
+   To stop sharing later: `tailscale serve --https=443 off`.
+3. Scan the QR code with the phone camera: it opens `/connect?pair=…` and signs the phone in.
+
+**2. Cloudflare Tunnel (no account needed for a quick tunnel, public URL)**
+
+1. Install `cloudflared` (https://developers.cloudflare.com/cloudflare-one/connections/connect-networks/downloads/).
+2. `python -m agent serve --remote --tunnel cloudflared` starts
+   `cloudflared tunnel --url http://127.0.0.1:8765`, reads the random `https://….trycloudflare.com` URL
+   and prints the QR code. The tunnel stops with the harness. The URL is **public** (anyone who has it
+   reaches the sign-in page), so the token and the rate limits are what protect you. For a permanent
+   hostname, use a named tunnel in your Cloudflare account, ideally with Cloudflare Access in front.
+
+**Sign in, QR codes, install**
+
+- The QR code holds the URL and a **one-time pairing code** (valid 10 minutes, used once). After
+  scanning, the phone keeps a session cookie (HttpOnly, SameSite=Strict, Secure over HTTPS, 30 days).
+  No QR at hand? Open `/connect` on the phone and paste the token.
+- New code for another device: open `http://127.0.0.1:8765/connect` on the computer → **Show a new QR
+  code**. The same page can **sign out every device**.
+- The token: `AGENT_HARNESS_TOKEN` (at least 24 characters), else one is generated in
+  `<state-dir>/remote-token` (file mode 0600) and its location is printed (never the token itself).
+- Install the app: iPhone/iPad → Safari → Share → **Add to Home Screen**. Android → Chrome → ⋮ →
+  **Install app** / **Add to Home screen**. The service worker only caches the page shell (HTML, icons,
+  manifest), never the API, conversations or approvals; it needs HTTPS (a tunnel) or localhost.
+- Desktop app: set the same options in its `.env` (`AGENT_REMOTE=1`, `AGENT_TUNNEL=tailscale` or
+  `cloudflared`, optionally `AGENT_REMOTE_URL`, `AGENT_HARNESS_TOKEN`).
+- Without a tunnel tool, `serve --remote` prints which one to install (or the command to run if
+  one is found). `--no-qr` / `AGENT_QR=0` hides the QR code.
+
+**Security model**
+
+- In remote mode every API call needs the token (Bearer), a session cookie, or must come straight
+  from this computer (loopback, `localhost` Host, no proxy headers; `AGENT_REMOTE_LOCAL_AUTH=1` turns
+  that trust off). Anything relayed by a tunnel must sign in.
+- Logins are rate limited (10 failures per client and 50 in total per 5 minutes → HTTP 429).
+- POSTs must be JSON and same-origin; a cookie-authenticated POST without `Origin` is refused.
+  Pages send `Referrer-Policy: no-referrer`; API answers are `Cache-Control: no-store`.
+- Send/spend approvals are still never auto-approved, and sub-agent creation still asks by default:
+  the phone only shows the same approval cards.
+- The harness refuses to start without a token in remote mode or when bound to another address than
+  localhost. `--host 0.0.0.0` (LAN) works but prints a loud **plain HTTP** warning: the token and the
+  conversation travel unencrypted on that network. Prefer a tunnel.
+
 ### Tests
 
 ```bash
@@ -545,6 +609,8 @@ builds, each smoke-tested, attached to a GitHub Release.
 - The desktop builds are **unsigned** (SmartScreen / Gatekeeper warnings), large (the Python runtime is
   inside, ~10–30 MB) and separate for Apple Silicon and Intel Macs. Antivirus software sometimes flags
   unsigned PyInstaller executables (false positives).
+- Remote access: sessions live in memory (a restart signs phones out); no TLS of its own (use a
+  tunnel); not tested against every tunnel/proxy setup; the PWA works offline only for the page shell.
 - This project is independent: it is **not** Grok Bot and does not reproduce it.
 
 ### License
@@ -693,6 +759,7 @@ quotas restants, clés masquées.
 | **Compétences** | `skills/<nom>/SKILL.md` avec frontmatter `name` / `description` ; seul l'index est dans le prompt, le contenu est chargé à la demande. Exemples : `research`, `code-review`, `release-notes`. |
 | **LLM** | toute API compatible OpenAI : Groq, OpenAI, OpenRouter, Ollama (local), URL personnalisée ; backend `mock` pour les tests hors ligne |
 | **Harness** | `python -m agent serve` : chat local avec cartes de validation, pièces jointes, plusieurs clés d'API avec quotas, direct (SSE), conversations enregistrées dans SQLite, arrêt d'urgence, validations retenues (jamais pour send/spend), consommation par agent, export Markdown/JSON, prompts planifiés, `/health` |
+| **Mobile** | chat et tableau de bord adaptés au téléphone, PWA installable, `--remote` avec appairage par QR code, tunnels Tailscale / Cloudflare |
 
 ### Installation
 
@@ -1043,7 +1110,9 @@ curl -s -X POST localhost:8765/approvals/<id> -H 'Content-Type: application/json
 - **Pas de réponse = refus** : une validation attend `--approval-timeout` secondes (300 par défaut), puis est refusée.
 - Écoute sur **127.0.0.1** par défaut. Si `AGENT_HARNESS_TOKEN` est défini, chaque appel d'API exige
   `Authorization: Bearer <jeton>` (à coller dans le champ « token » de la page). Écouter sur une autre
-  adresse affiche un avertissement. Les POST doivent être en JSON et de même origine, et l'en-tête
+  adresse exige un jeton et affiche un avertissement « HTTP en clair » ; pour le téléphone, utilisez
+  `--remote` (voir *Utiliser depuis le mobile*).
+  Les POST doivent être en JSON et de même origine, et l'en-tête
   `Host` est vérifié en local.
 - Mêmes `permissions.yaml`, mémoire et `audit.jsonl` que la CLI (les lignes du harness portent un
   `task_id`). Le mode terminal (`run`, `chat`) ne change pas.
@@ -1104,6 +1173,70 @@ question de validation (`[o]ui / [n]on / [t]oujours`) et la sortie de `keys`.
   `?check=1` envoie un `GET <base_url>/models` **sans aucune clé d'API** à chaque backend et indique
   s'il répond.
 
+### Utiliser depuis le mobile
+
+<p><img src="docs/mobile-approval-fr.png" width="240" alt="Carte de validation sur téléphone"> <img src="docs/mobile-connect-fr.png" width="240" alt="Page de connexion avec QR code d'appairage"></p>
+
+Le chat et le tableau de bord s'utilisent sur téléphone (barre latérale en tiroir, gros boutons de
+validation, cartes de validation en bas d'écran) et s'installent comme une appli (PWA). Pour y accéder
+de partout, laissez le harness sur `127.0.0.1` et placez devant un **tunnel HTTPS privé**. `--remote`
+rend la connexion obligatoire.
+
+**1. Tailscale (recommandé : privé à vos appareils, HTTPS)**
+
+1. Installez Tailscale sur l'ordinateur et sur le téléphone, connectez-vous au même compte
+   (https://tailscale.com/download). Activez les certificats HTTPS dans la console (DNS → HTTPS).
+2. Lancez le harness avec le tunnel :
+   ```bash
+   python -m agent serve --remote --tunnel tailscale
+   ```
+   Cela exécute `tailscale serve --bg 8765` et affiche `https://<machine>.<tailnet>.ts.net/` ainsi
+   qu'un **QR code** dans la console. (Équivalent manuel : `tailscale serve --bg 8765`, puis
+   `python -m agent serve --remote --public-url https://<machine>.<tailnet>.ts.net`.)
+   Pour arrêter le partage : `tailscale serve --https=443 off`.
+3. Scannez le QR code avec l'appareil photo du téléphone : il ouvre `/connect?pair=…` et connecte le téléphone.
+
+**2. Cloudflare Tunnel (sans compte pour un tunnel rapide, URL publique)**
+
+1. Installez `cloudflared` (https://developers.cloudflare.com/cloudflare-one/connections/connect-networks/downloads/).
+2. `python -m agent serve --remote --tunnel cloudflared` lance
+   `cloudflared tunnel --url http://127.0.0.1:8765`, lit l'URL aléatoire `https://….trycloudflare.com`
+   et affiche le QR code. Le tunnel s'arrête avec le harness. L'URL est **publique** (quiconque l'a voit
+   la page de connexion) : c'est le jeton et les limites de tentatives qui vous protègent. Pour un nom
+   permanent, utilisez un tunnel nommé dans votre compte Cloudflare, idéalement derrière Cloudflare Access.
+
+**Connexion, QR codes, installation**
+
+- Le QR code contient l'URL et un **code d'appairage à usage unique** (valable 10 minutes, une seule
+  fois). Ensuite le téléphone garde un cookie de session (HttpOnly, SameSite=Strict, Secure en HTTPS,
+  30 jours). Pas de QR sous la main ? Ouvrez `/connect` sur le téléphone et collez le jeton.
+- Nouveau code pour un autre appareil : ouvrez `http://127.0.0.1:8765/connect` sur l'ordinateur →
+  **Afficher un nouveau QR code**. La même page permet de **déconnecter tous les appareils**.
+- Le jeton : `AGENT_HARNESS_TOKEN` (24 caractères minimum), sinon un jeton est généré dans
+  `<state-dir>/remote-token` (fichier en mode 0600) et son emplacement est affiché (jamais le jeton).
+- Installer l'appli : iPhone/iPad → Safari → Partager → **Sur l'écran d'accueil**. Android → Chrome →
+  ⋮ → **Installer l'application** / **Ajouter à l'écran d'accueil**. Le service worker ne met en cache que
+  l'enveloppe des pages (HTML, icônes, manifeste), jamais l'API, les conversations ni les validations ;
+  il exige HTTPS (un tunnel) ou localhost.
+- Application de bureau : mêmes options dans son `.env` (`AGENT_REMOTE=1`, `AGENT_TUNNEL=tailscale` ou
+  `cloudflared`, éventuellement `AGENT_REMOTE_URL`, `AGENT_HARNESS_TOKEN`).
+- Sans outil de tunnel, `serve --remote` indique lequel installer (ou la commande à lancer s'il en
+  trouve un). `--no-qr` / `AGENT_QR=0` masque le QR code.
+
+**Modèle de sécurité**
+
+- En mode distant, chaque appel d'API exige le jeton (Bearer), un cookie de session, ou doit venir
+  directement de cet ordinateur (loopback, Host `localhost`, aucun en-tête de proxy ;
+  `AGENT_REMOTE_LOCAL_AUTH=1` retire cette confiance). Tout ce qui passe par un tunnel doit se connecter.
+- Les connexions sont limitées (10 échecs par client et 50 au total par 5 minutes → HTTP 429).
+- Les POST doivent être en JSON et de même origine ; un POST authentifié par cookie sans `Origin` est
+  refusé. Les pages envoient `Referrer-Policy: no-referrer` ; les réponses d'API sont `Cache-Control: no-store`.
+- Les envois et dépenses ne sont toujours jamais validés automatiquement, et la création de sous-agents
+  demande toujours par défaut : le téléphone affiche simplement les mêmes cartes de validation.
+- Le harness refuse de démarrer sans jeton en mode distant ou s'il écoute sur une autre adresse que
+  localhost. `--host 0.0.0.0` (réseau local) fonctionne mais affiche un avertissement **HTTP en clair** :
+  le jeton et la conversation circulent sans chiffrement sur ce réseau. Préférez un tunnel.
+
 ### Tests
 
 ```bash
@@ -1131,6 +1264,9 @@ de bout en bout hors ligne avec le backend mock, et une compilation de l'applica
 - Les versions de bureau ne sont **pas signées** (avertissements SmartScreen / Gatekeeper), assez lourdes
   (Python est inclus, ~10–30 Mo) et distinctes pour Mac puce Apple et Intel. Certains antivirus signalent
   à tort les exécutables PyInstaller non signés (faux positifs).
+- Accès distant : les sessions sont en mémoire (un redémarrage déconnecte les téléphones) ; pas de TLS
+  intégré (utilisez un tunnel) ; pas testé avec toutes les configurations de tunnel/proxy ; hors ligne,
+  la PWA n'affiche que l'enveloppe des pages.
 - Ce projet est indépendant : ce n'est **pas** Grok Bot et il ne le reproduit pas.
 
 ### Licence

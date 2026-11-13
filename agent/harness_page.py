@@ -32,8 +32,17 @@ PAGE = r"""<!doctype html>
  .sched{border:1px solid #dde1e6;border-radius:6px;padding:6px;margin:6px 0} .off{opacity:.55}
 /*LANG_CSS*/
  #lang{border-color:#5a6270}
+ header a.c{color:#9fb4ff;font-size:12px}
+ @media (max-width:900px){
+  header{flex-wrap:wrap;padding:10px 12px;padding-top:max(10px,env(safe-area-inset-top))}
+  header h1{flex:1 1 100%} header label{flex:1 1 100%;display:flex;flex-direction:column;gap:4px;align-items:stretch;white-space:normal;font-size:12px} header input{width:100%;box-sizing:border-box;min-width:0;font-size:16px;padding:6px}
+  main{grid-template-columns:1fr;padding:8px;gap:8px} section{grid-column:auto!important}
+  #events{max-height:40vh} table{display:block;overflow-x:auto;white-space:nowrap}
+  button{min-height:40px;padding:6px 12px} .ap button{min-width:44%;min-height:44px;font-size:15px}
+  textarea,input[type=text],select{font-size:16px}
+ }
 </style></head><body>
-<header><h1><span data-i18n="dash.heading"></span> <a href="/" style="color:#9fb4ff;font-size:12px" data-i18n="link.chat"></a></h1>
+<header><h1><span data-i18n="dash.heading"></span> <a href="/" class="c" data-i18n="link.chat"></a> <a href="/connect" class="c" data-i18n="chat.connect"></a></h1>
  /*LANG_SWITCH*/
  <button id="stopall" data-i18n="btn.stopall" data-i18n-title="title.stopall"></button>
  <label><span data-i18n="token.label"></span> <input id="token" type="password" data-i18n-placeholder="token.placeholder"></label></header>
@@ -63,6 +72,7 @@ PAGE = r"""<!doctype html>
 const $ = id => document.getElementById(id);
 const tok = $("token"); tok.value = sessionStorage.getItem("harnessToken") || "";
 tok.onchange = () => sessionStorage.setItem("harnessToken", tok.value);
+fetch("/auth/status").then(r=>r.json()).then(s=>{ if(s.required && !s.authenticated && !tok.value) location.replace("/connect"); }).catch(()=>{});
 let cur = null, since = 0, evcache = [];
 function el(tag, cls, text){const e=document.createElement(tag); if(cls) e.className=cls; if(text!=null) e.textContent=text; return e;}
 function fail(e){ $("msg").textContent = t("err.prefix",{msg:e.message}); }

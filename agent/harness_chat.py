@@ -77,6 +77,29 @@ CHAT_PAGE = r"""<!doctype html>
  #idcpanel li{margin:2px 0} #idcpanel li .k{font-weight:600} #idcpanel li .u{color:#b3261e} #idcpanel li .s{color:#1f7a45}
  .step.idc{color:#5b3d8f} .step.idcbad{color:#b3261e}
  #idcdefrow{display:flex;align-items:center;gap:6px;margin-top:8px;cursor:pointer} #idcdefrow input{width:auto;margin:0}
+ #menu{display:none;background:#e7ecfa!important;color:#2f4aa0!important;font-size:18px;padding:4px 10px!important}
+ #connectlink{display:block;margin-top:8px} #scrim{display:none}
+ #err a{color:#2f4aa0;font-weight:600}
+ /* ---- phones and small tablets: drawer sidebar, bottom-sheet approval cards, big touch targets */
+ @media (max-width:760px){
+  body{height:100vh;height:100dvh}
+  aside{position:fixed;top:0;bottom:0;left:0;width:84vw;max-width:320px;z-index:30;transform:translateX(-102%);transition:transform .2s ease;padding-top:env(safe-area-inset-top)}
+  body.nav aside{transform:none;box-shadow:0 0 40px rgba(0,0,0,.4)}
+  body.nav #scrim{display:block;position:fixed;inset:0;background:rgba(0,0,0,.35);z-index:25}
+  #menu{display:inline-block}
+  #top{flex-wrap:wrap;padding:8px 10px;padding-top:max(8px,env(safe-area-inset-top));gap:6px}
+  #title{flex:1 1 60%;font-size:15px} #mode,#expmd,#expjson{display:none!important}
+  #top button{padding:8px 10px;min-height:36px}
+  #log{padding:10px 10px 16px} .bubble{max-width:88%} .step{margin-left:2px;font-size:11.5px;word-break:break-word}
+  #popups{left:8px;right:8px;top:auto;bottom:calc(76px + env(safe-area-inset-bottom));width:auto;max-height:62vh}
+  .card{padding:12px 14px} .card button{padding:12px;font-size:15px;min-height:46px} .card .remember button{min-height:40px;font-size:13px}
+  .card pre{max-height:22vh}
+  #composer{padding:8px;padding-bottom:max(8px,env(safe-area-inset-bottom))} #composer textarea{font-size:16px;height:48px}
+  #composer button{min-width:60px;padding:0 12px} #attach{padding:0 10px!important}
+  #idcpanel{padding:6px 10px} #idcpanel ol{max-height:16vh}
+  aside button.new{padding:12px} .conv{padding:12px 14px} #idcdefrow input{width:20px;height:20px}
+ }
+ @media (max-width:760px) and (prefers-reduced-motion: reduce){aside{transition:none}}
 /*LANG_CSS*/
 </style></head><body>
 <aside><h1>autonomous-agent</h1>
@@ -84,10 +107,11 @@ CHAT_PAGE = r"""<!doctype html>
  <div id="convs"></div>
  <div id="quota"></div>
  <footer><span data-i18n="token.label"></span><input id="token" type="password">
+  <a id="connectlink" href="/connect" data-i18n="chat.connect"></a>
   <label id="idcdefrow" data-i18n-title="idc.default.title"><input type="checkbox" id="idcdef"><span data-i18n="idc.default"></span></label>
   <div style="margin-top:6px;display:flex;justify-content:space-between;align-items:center"><a href="/dashboard" data-i18n="link.dashboard"></a>/*LANG_SWITCH*/</div></footer></aside>
 <main>
- <div id="top"><span id="title"></span><span id="status"></span><span id="mode"></span>
+ <div id="top"><button id="menu" class="lite" data-i18n-title="chat.menu">☰</button><span id="title"></span><span id="status"></span><span id="mode"></span>
   <label id="idcbox"><input type="checkbox" id="idc"><span data-i18n="idc.label"></span></label>
   <button id="cancel" style="display:none" data-i18n="chat.stop"></button>
   <button id="expmd" class="lite" style="display:none" data-i18n-title="chat.expmd.title">⇩ MD</button>
@@ -104,6 +128,7 @@ CHAT_PAGE = r"""<!doctype html>
  <div id="drop" data-i18n="chat.drop"></div>
 </main>
 <div id="popups"></div>
+<div id="scrim"></div>
 <script>
 /*I18N_JS*/
 const $ = id => document.getElementById(id);
@@ -136,12 +161,20 @@ function add(c, evs){
   if(fresh.some(e=>e.kind==="idc"||e.kind==="idc_toggle")) idcUI();
 }
 function el(tag, cls, text){ const e=document.createElement(tag); if(cls) e.className=cls; if(text!=null) e.textContent=text; return e; }
-function fail(e){ $("err").textContent=t("err.prefix",{msg:e.message}); }
+function fail(e){
+  if(e.status===401){ const b=$("err"); b.replaceChildren(t("err.signin")+" "); const a=el("a",null,t("err.signinLink")); a.href="/connect"; b.append(a); return; }
+  $("err").textContent=t("err.prefix",{msg:e.message}); }
 async function api(method, path, body){
   const h={"Content-Type":"application/json"}; if(tok.value) h.Authorization="Bearer "+tok.value;
   const r=await fetch(path,{method,headers:h,body:body?JSON.stringify(body):undefined});
-  const j=await r.json().catch(()=>({})); if(!r.ok) throw new Error(j.error||("HTTP "+r.status)); return j;
+  const j=await r.json().catch(()=>({})); if(!r.ok){ const e=new Error(j.error||("HTTP "+r.status)); e.status=r.status; throw e; } return j;
 }
+// ---- mobile: the sidebar is a drawer
+function nav(open){ document.body.classList.toggle("nav", open); }
+$("menu").onclick=()=>nav(!document.body.classList.contains("nav"));
+$("scrim").onclick=()=>nav(false);
+// remote mode: a device that is not signed in goes to /connect
+fetch("/auth/status").then(r=>r.json()).then(s=>{ if(s.required && !s.authenticated && !tok.value) location.replace("/connect"); }).catch(()=>{});
 function depth(id){ return id ? id.split(".").length-1 : 0; }
 function short(v,n){ const s = typeof v==="string" ? v : JSON.stringify(v); return s && s.length>n ? s.slice(0,n)+"…" : (s||""); }
 function badge(s){ return el("span","badge "+s,tr("status",s)); }
@@ -198,7 +231,7 @@ async function poll(){
     tasks=(await api("GET","/tasks")).tasks; const box=$("convs"); box.replaceChildren();
     tasks.slice().reverse().forEach(x=>{ const d=el("div","conv"+(x.id===cur?" sel":""));
       d.append(el("div","t",x.task)); const s=el("small",null,t("chat.turns",{n:x.turns})+" "); s.append(badge(x.status));
-      d.append(s); d.onclick=()=>pick(x.id); box.append(d); });
+      d.append(s); d.onclick=()=>{ nav(false); pick(x.id); }; box.append(d); });
     const c=tasks.find(x=>x.id===cur);
     $("title").textContent = c ? c.task : t("chat.newTitle");
     $("status").replaceChildren(c ? badge(c.status) : "");
@@ -263,7 +296,7 @@ async function send(){
 }
 $("send").onclick=send;
 $("input").addEventListener("keydown",e=>{ if(e.key==="Enter"&&!e.shiftKey){ e.preventDefault(); send(); } });
-$("new").onclick=()=>{ pick(null); $("input").focus(); };
+$("new").onclick=()=>{ nav(false); pick(null); $("input").focus(); };
 $("cancel").onclick=async()=>{ if(cur) try{ await api("POST","/tasks/"+cur+"/cancel",{}); poll(); }catch(e){} };
 $("stopall").onclick=async()=>{ if(!confirm(t("confirm.stopall"))) return;
   try{ const r=await api("POST","/stop-all",{disable_schedules:true});
@@ -322,7 +355,11 @@ function idcUI(){
     ol.append(li); }); d.append(ol); }
   p.append(row,bar,d);
 }
-onLang = () => { render(); mode(); poll(); quotas(); chips(); idcUI(); };
+const narrow = matchMedia("(max-width:760px)");
+function placeholder(){ $("input").placeholder = t(narrow.matches ? "chat.input.short" : "chat.input.placeholder"); }
+narrow.addEventListener && narrow.addEventListener("change", placeholder);
+placeholder();
+onLang = () => { placeholder(); render(); mode(); poll(); quotas(); chips(); idcUI(); };
 render(); loadConfig(); loadSettings(); setInterval(poll,1000); stream(); poll(); setInterval(quotas,5000); quotas();
 </script></body></html>
 """

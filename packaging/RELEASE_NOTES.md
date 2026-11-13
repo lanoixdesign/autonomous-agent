@@ -1,3 +1,10 @@
+**New in 0.3.0 / Nouveautés de la 0.3.0 — use it from your phone / utilisable depuis le téléphone**
+
+- Mobile-friendly chat and dashboard, installable as an app (PWA). / Chat et tableau de bord adaptés au téléphone, installables comme une appli (PWA).
+- `--remote` (desktop app: `AGENT_REMOTE=1` in `.env`): mandatory sign-in, QR code with a one-time pairing code, sessions, rate-limited login. / connexion obligatoire, QR code à usage unique, sessions, tentatives limitées.
+- Private HTTPS via Tailscale (`AGENT_TUNNEL=tailscale`) or Cloudflare Tunnel (`AGENT_TUNNEL=cloudflared`). See the README: *Use from your phone / Utiliser depuis le mobile*.
+- Optional IDC mode (since 0.2.0). / Mode IDC facultatif (depuis la 0.2.0).
+
 **Desktop builds — no command line needed / Versions de bureau — sans ligne de commande**
 
 | File / Fichier | For / Pour |
