@@ -1,6 +1,7 @@
 """The /connect page: sign in with the token or a one-time pairing code (QR), and show a pairing QR code
 for a phone. Plain HTML + JS, no external resources, EN/FR."""
 from .i18n_js import I18N_JS, LANG_CSS, LANG_SWITCH
+from .theme import BASE_CSS, CONNECT_CSS
 
 CONNECT_PAGE = r"""<!doctype html>
 <html lang="en"><head><meta charset="utf-8">
@@ -21,6 +22,7 @@ CONNECT_PAGE = r"""<!doctype html>
  .ok{color:#1f7a45;font-weight:600} .err{color:#b3261e;font-weight:600} .warn{background:#fff6e0;border-radius:8px;padding:8px;font-size:14px}
  code{font-size:13px;background:#f0f2f5;padding:1px 4px;border-radius:4px} ol{padding-left:20px;margin:6px 0}
 /*LANG_CSS*/
+/*THEME*/
 </style></head><body>
 <header><h1 data-i18n="connect.heading"></h1><a href="/" data-i18n="link.chat"></a>/*LANG_SWITCH*/</header>
 <main>
@@ -85,3 +87,4 @@ onLang = () => refresh();
 </script></body></html>
 """
 CONNECT_PAGE = CONNECT_PAGE.replace("/*LANG_CSS*/", LANG_CSS).replace("/*LANG_SWITCH*/", LANG_SWITCH).replace("/*I18N_JS*/", I18N_JS)
+CONNECT_PAGE = CONNECT_PAGE.replace("/*THEME*/", BASE_CSS + CONNECT_CSS)

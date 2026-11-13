@@ -180,6 +180,7 @@ class Agent:
             st.steps += 1
             st.tokens += reply.total_tokens
             st.cost += getattr(reply, "cost", 0.0) or 0.0
+            self.on_event("step", {"steps": st.steps, "max_steps": b.max_steps})   # live progress (harness graph)
             if ctrl is not None:
                 ctrl.on_step(reply.total_tokens)
             msg = reply.message
