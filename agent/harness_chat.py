@@ -2,7 +2,7 @@
 Dark "neon" theme (agent/theme.py), live swarm graph (GET /tasks/{id}/graph). Live updates by Server-Sent Events (/tasks/{id}/stream), falling back to polling if the stream fails.
 Bilingual (EN/FR): every visible string comes from agent/i18n.py through t(); see agent/i18n_js.py."""
 from .i18n_js import I18N_JS, LANG_CSS, LANG_SWITCH
-from .theme import APPROVAL_JS, BASE_CSS
+from .theme import APPROVAL_JS, BASE_CSS, NAV_CSS, NAV_HTML, NAV_JS
 
 CHAT_PAGE = r"""<!doctype html>
 <html lang="en"><head><meta charset="utf-8">
@@ -147,6 +147,22 @@ CHAT_PAGE = r"""<!doctype html>
  .swfoot .acts{display:flex;gap:14px;justify-content:center;flex-wrap:wrap;margin-top:4px}
  .swfoot button.linkish{background:none;border:0;color:var(--blue);cursor:pointer;text-decoration:underline;padding:0}
  .bubble.flash{box-shadow:0 0 0 2px var(--ok),0 0 26px rgba(34,197,94,.45)}
+ /* collapsible work trace (tool calls, sub-agents, approvals) — the final answer stays outside */
+ .trace{margin:6px 0 8px;border:1px solid rgba(0,212,255,.22);border-radius:14px;background:rgba(12,12,20,.6)}
+ .trhead{display:flex;align-items:center;gap:10px;width:100%;padding:8px 12px;border:0;background:none;color:var(--soft);cursor:pointer;
+  font:600 12.5px var(--font);text-align:left;border-radius:14px;min-height:38px}
+ .trhead:hover{background:rgba(0,212,255,.06)} .trhead .chev{color:var(--blue);width:12px;display:inline-block;font-size:12px}
+ .trhead .trtitle{color:var(--text)} .trhead .trsum{color:var(--muted);font-weight:500;flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+ .trhead .trpend{color:#FCD34D;font-weight:700;white-space:nowrap} .trhead .trpend:empty{display:none}
+ .trhead .live{width:8px;height:8px;border-radius:50%;background:var(--blue);box-shadow:0 0 8px var(--blue);animation:pulse 1.2s ease-in-out infinite;flex-shrink:0}
+ .trace:not(.running) .live{display:none}
+ .trbody{padding:2px 10px 10px;border-top:1px solid rgba(0,212,255,.12)} .trbody[hidden]{display:none}
+ .trbody .row{margin:4px 0} .trbody .bubble{font-size:13px}
+ #demobadge{font:600 11.5px var(--font);color:#E9D5FF;background:rgba(157,0,255,.16);border:1px solid rgba(157,0,255,.45);border-radius:999px;padding:4px 10px;text-decoration:none;white-space:nowrap}
+ #demobadge[hidden]{display:none}
+ aside nav.tabs{display:none}
+ #quitlink{background:none;border:0;color:#FCA5A5;cursor:pointer;font:600 12px var(--font);padding:0}
+ #quitlink[hidden]{display:none}
  /* phones and small tablets: drawer sidebar, bottom-sheet approval cards, big touch targets, vertical swarm */
  @media (max-width:760px){
   body{height:100vh;height:100dvh}
@@ -166,6 +182,11 @@ CHAT_PAGE = r"""<!doctype html>
   #idcpanel{padding:6px 12px} #idcpanel ol{max-height:16vh}
   aside button.new{padding:12px} .conv{padding:12px 14px} #idcdefrow input{width:20px;height:20px}
   #swarm{margin:8px 10px 0}
+  #top nav.tabs{display:none}
+  aside nav.tabs{display:flex;flex-direction:column;border-radius:16px;margin:0 12px 12px;order:0;flex:0 0 auto;overflow:visible}
+  aside nav.tabs a{text-align:left;padding:11px 14px;font-size:14px}
+  #demobadge{order:4}
+  .trhead{min-height:44px}
   .swbody{display:flex;flex-direction:column;align-items:stretch;gap:12px;padding:12px 12px 14px 12px;max-height:40vh}
   .swcenter{order:-1;flex-direction:row;align-items:center;gap:12px;align-self:flex-start}
   .hub{width:64px;height:64px;border-width:5px} .hub .inner{width:42px;height:42px} .hub .core{width:22px;height:22px;border-radius:5px} .hub .core svg{width:15px;height:15px}
@@ -173,18 +194,20 @@ CHAT_PAGE = r"""<!doctype html>
   .swcol{margin-left:52px;gap:10px}
   #swarm.merged .swcenter{align-self:center;flex-direction:column} #swarm.merged.reveal .swcol{display:flex}
  }
+/*NAV_CSS*/
 /*LANG_CSS*/
-</style></head><body>
+</style></head><body data-page="chat">
 <aside><h1>autonomous-agent</h1>
+ /*NAV*/
  <button class="new" id="new" data-i18n="chat.new"></button>
  <div id="convs"></div>
  <div id="quota"></div>
  <footer><span data-i18n="token.label"></span><input id="token" type="password">
   <a id="connectlink" href="/connect" data-i18n="chat.connect"></a>
   <label id="idcdefrow" data-i18n-title="idc.default.title"><input type="checkbox" id="idcdef"><span data-i18n="idc.default"></span></label>
-  <div style="margin-top:6px;display:flex;justify-content:space-between;align-items:center"><a href="/dashboard" data-i18n="link.dashboard"></a>/*LANG_SWITCH*/</div></footer></aside>
+  <div style="margin-top:6px;display:flex;justify-content:space-between;align-items:center"><button id="quitlink" type="button" hidden data-i18n="nav.quit"></button>/*LANG_SWITCH*/</div></footer></aside>
 <main>
- <div id="top"><button id="menu" class="ibtn" data-i18n-title="chat.sidebar" aria-controls="convs">☰</button><span id="brand" data-i18n="chat.brand"></span><span id="title"></span><span id="status"></span><span id="mode"></span>
+ <div id="top"><button id="menu" class="ibtn" data-i18n-title="chat.sidebar" aria-controls="convs">☰</button><span id="brand" data-i18n="chat.brand"></span>/*NAV*/<a id="demobadge" href="/settings#keys" hidden data-i18n="chat.demoBadge" data-i18n-title="chat.demoTitle"></a><span id="title"></span><span id="status"></span><span id="mode"></span>
   <label id="idcbox"><input type="checkbox" id="idc"><span data-i18n="idc.label"></span></label>
   <button id="cancel" class="tbtn" style="display:none" data-i18n="chat.stop"></button>
   <button id="expmd" class="tbtn" style="display:none" data-i18n-title="chat.expmd.title">⇩ MD</button>
@@ -207,16 +230,24 @@ CHAT_PAGE = r"""<!doctype html>
 <div id="scrim"></div>
 <script>
 /*I18N_JS*/
+/*NAV_JS*/
 /*APPROVAL_JS*/
 const $ = id => document.getElementById(id);
 const tok = $("token"); tok.value = sessionStorage.getItem("harnessToken") || "";
 tok.onchange = () => { sessionStorage.setItem("harnessToken", tok.value); loadConfig(); };
-let cur = location.hash.slice(1) || null, tasks = [];
+let cur = location.hash.slice(1) || (()=>{ try{ return sessionStorage.getItem("chatCur"); }catch(e){ return null; } })() || null, tasks = [];
 const cache = {};            // task id -> {since, events: []}
 const answering = new Set(); // approval ids being answered
 if(cur) cache[cur]={since:0,events:[]};
-function pick(id){ cur=id; history.replaceState(null,"",(id?"#"+id:location.pathname+location.search)); if(id) cache[id]=cache[id]||{since:0,events:[]};
+function pick(id, fromHistory){ const changed=id!==cur; cur=id;
+  try{ if(id) sessionStorage.setItem("chatCur",id); else sessionStorage.removeItem("chatCur"); }catch(e){}
+  const url=id?"#"+id:location.pathname+location.search;
+  if(!fromHistory){ if(changed) history.pushState({c:id},"",url); else history.replaceState({c:id},"",url); }
+  if(id) cache[id]=cache[id]||{since:0,events:[]};
   graph=null; greveal=false; drawSwarm(); render(); stream(); poll(); loadGraph(); }
+// back / forward between conversations
+window.addEventListener("popstate",()=>{ const id=location.hash.slice(1)||null; if(id!==cur) pick(id,true); });
+if(cur && !location.hash) history.replaceState({c:cur},"","#"+cur);
 // ---- live events: EventSource first, polling as a fallback
 let es=null, esFor=null, live=false, retryAt=0;
 function stream(){
@@ -234,7 +265,7 @@ function add(c, evs){
   const fresh=evs.filter(e=>e.seq>=c.since); if(!fresh.length) return;
   const log=$("log"), atEnd = log.scrollTop+log.clientHeight >= log.scrollHeight-40, first=!c.events.length;
   c.events.push(...fresh); c.since=fresh[fresh.length-1].seq+1;
-  if(first) render(); else fresh.forEach(e=>{ const n=node(e); if(n) log.append(n); });
+  if(first) render(); else fresh.forEach(e=>place(log,e));
   if(atEnd) log.scrollTop=log.scrollHeight;
   if(fresh.some(e=>e.kind==="idc"||e.kind==="idc_toggle")) idcUI();
   if(fresh.some(e=>e.kind==="approval")) popups().then(thinking).catch(()=>{});
@@ -253,6 +284,14 @@ async function api(method, path, body){
 function nav(open){ document.body.classList.toggle("nav", open); }
 $("menu").onclick=()=>{ if(narrow.matches) nav(!document.body.classList.contains("nav")); else { document.body.classList.toggle("collapsed"); requestAnimationFrame(lines); } };
 $("scrim").onclick=()=>nav(false);
+// first launch on this computer: welcome wizard; demo badge; Quit button (this computer only)
+let APP={};
+async function appStatus(){ try{ APP=await api("GET","/app/status"); }catch(e){ return; }
+  if(APP.first_run && APP.editable){ location.replace("/welcome"); return; }
+  $("demobadge").hidden=APP.mode!=="demo"; $("quitlink").hidden=!APP.editable; }
+$("quitlink").onclick=async()=>{ if(!confirm(t("set.confirmQuit"))) return;
+  try{ await fetch("/app/quit",{method:"POST",headers:{"Content-Type":"application/json","X-CSRF-Token":APP.csrf||""},body:"{}"}); }catch(e){}
+  document.body.replaceChildren(el("div","sys",t("set.stopped"))); };
 // remote mode: a device that is not signed in goes to /connect
 fetch("/auth/status").then(r=>r.json()).then(s=>{ if(s.required && !s.authenticated && !tok.value) location.replace("/connect"); }).catch(()=>{});
 function clock(ts){ const d=new Date(String(ts||"").replace(/([+-]\d\d)(\d\d)$/,"$1:$2")); return isNaN(d) ? "" : d.toLocaleTimeString(LANG,{hour:"2-digit",minute:"2-digit"}); }
@@ -262,8 +301,45 @@ function badge(s){ return el("span","badge "+s,tr("status",s)); }
 function render(){
   const log=$("log"); log.replaceChildren();
   if(!cur){ log.append(el("div","sys",t("chat.intro"))); return; }
-  for(const e of cache[cur].events) { const n=node(e); if(n) log.append(n); }
+  tcur=null; for(const e of cache[cur].events) place(log,e);
   log.scrollTop = log.scrollHeight;
+}
+// ---- collapsible work trace: tool calls, sub-agents, approvals of one turn go in one block (closed by default);
+// the user's message, the final answer and the end-of-turn line stay outside. Approval cards (#popups) never hide.
+let tcur=null;
+let traceOpen=(()=>{ try{ return localStorage.getItem("traceOpen")==="1"; }catch(e){ return false; } })();
+function traceKind(e){
+  if(e.kind==="user") return "turn";
+  if(e.kind==="message") return (e.final && depth(e.agent)===0) ? "out" : "trace";
+  if(e.kind==="audit" || e.kind==="approval" || e.kind==="idc") return "trace";
+  return "out";
+}
+function traceSummary(st){ const p=[t(st.agents===1?"trace.agent1":"trace.agents",{n:st.agents}), t(st.actions===1?"trace.action1":"trace.actions",{n:st.actions})];
+  return p.join(" · "); }
+function traceCount(st,e){
+  if(e.kind==="audit" && e.event==="spawn") st.agents++;
+  if(e.kind==="audit" && e.tool) st.actions++;
+  if(e.kind==="approval" && e.approval){ if(e.status==="pending") st.pending.add(e.approval); else st.pending.delete(e.approval); }
+}
+function newTrace(log){ const box=el("div","trace"), head=el("button","trhead"), body=el("div","trbody"), id="tr"+Math.random().toString(36).slice(2,9);
+  head.type="button"; head.setAttribute("aria-controls",id); head.setAttribute("aria-expanded",String(traceOpen)); head.title=t("trace.toggle");
+  head.append(el("span","chev",traceOpen?"▾":"▸"), el("span","trtitle"), el("span","trsum"), el("span","trpend"), el("i","live"));
+  body.id=id; body.hidden=!traceOpen; box.append(head,body); box._st={agents:0,actions:0,pending:new Set(),ended:false};
+  head.onclick=()=>{ traceOpen=!traceOpen; try{ localStorage.setItem("traceOpen",traceOpen?"1":"0"); }catch(e){} document.querySelectorAll("#log .trace").forEach(traceSet); };
+  log.append(box); return box; }
+function traceSet(box){ const head=box.querySelector(".trhead"); head.setAttribute("aria-expanded",String(traceOpen));
+  head.querySelector(".chev").textContent=traceOpen?"▾":"▸"; box.querySelector(".trbody").hidden=!traceOpen; }
+function traceHead(box){ const st=box._st, h=box.querySelector(".trhead");
+  box.classList.toggle("running",!st.ended);
+  h.querySelector(".trtitle").textContent=t(st.ended?"trace.titleDone":"trace.title");
+  h.querySelector(".trsum").textContent=traceSummary(st);
+  const n=st.ended?0:st.pending.size; h.querySelector(".trpend").textContent=n?t(n===1?"trace.pending1":"trace.pending",{n}):""; }
+function place(log,e){
+  const k=traceKind(e), n=node(e);
+  if(k==="turn"){ if(tcur){ tcur._st.ended=true; traceHead(tcur); } tcur=null; if(n) log.append(n); return; }
+  if(k==="trace"){ if(!tcur) tcur=newTrace(log); traceCount(tcur._st,e); if(n) tcur.querySelector(".trbody").append(n); traceHead(tcur); return; }
+  if(e.kind==="status" && tcur){ tcur._st.ended=["done","stopped","cancelled","error","interrupted"].includes(e.status); traceHead(tcur); }
+  if(n) log.append(n);
 }
 function node(e){
   if(e.kind==="user"){ const r=el("div","row user"), b=el("div","bubble",e.text);
@@ -539,8 +615,9 @@ function placeholder(){ $("input").placeholder = t(narrow.matches ? "chat.input.
 narrow.addEventListener && narrow.addEventListener("change", placeholder);
 placeholder();
 onLang = () => { placeholder(); render(); mode(); poll(); quotas(); chips(); idcUI(); drawSwarm(); thinking(); };
-render(); loadConfig(); loadSettings(); setInterval(poll,1000); stream(); poll(); loadGraph(); setInterval(quotas,5000); quotas();
+render(); appStatus(); setInterval(appStatus,15000); loadConfig(); loadSettings(); setInterval(poll,1000); stream(); poll(); loadGraph(); setInterval(quotas,5000); quotas();
 </script></body></html>
 """
 CHAT_PAGE = CHAT_PAGE.replace("/*THEME*/", BASE_CSS).replace("/*APPROVAL_JS*/", APPROVAL_JS)
+CHAT_PAGE = CHAT_PAGE.replace("/*NAV_CSS*/", NAV_CSS).replace("/*NAV*/", NAV_HTML).replace("/*NAV_JS*/", NAV_JS)
 CHAT_PAGE = CHAT_PAGE.replace("/*LANG_CSS*/", LANG_CSS).replace("/*LANG_SWITCH*/", LANG_SWITCH).replace("/*I18N_JS*/", I18N_JS)

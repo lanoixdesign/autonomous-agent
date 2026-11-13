@@ -14,8 +14,12 @@
   where to put a key.
 - Console messages follow the system language (AGENT_LANG=en|fr overrides). The web page follows the
   browser language and its EN|FR switch.
-- The console window stays open: it shows the address and the logs; close it or press Ctrl+C to stop.
-  On macOS, a double-clicked .app reopens itself in Terminal for that reason.
+- No terminal needed: the browser opens on the chat (first launch: a welcome wizard to pick the language and
+  paste an API key, or try demo mode). Everything is configured in the page (Settings); the ⏻ Quit button stops
+  the server cleanly, ↻ Restart applies the settings that need it.
+- Windows: no console window (windowed build); messages go to data/app.log. macOS: the .app runs in the
+  background (AGENT_TERMINAL=1 reopens it in Terminal to see the logs). Double-clicking again while it runs
+  just opens the browser on the running agent.
 """
 from __future__ import annotations
 
@@ -182,8 +186,10 @@ def open_when_ready(url: str, timeout: float = 30.0) -> None:
 
 
 def reopen_in_terminal() -> bool:
-    """macOS: a double-clicked .app has no console; reopen the same binary in Terminal (logs + Ctrl+C)."""
+    """macOS, only with AGENT_TERMINAL=1: reopen the double-clicked .app in Terminal to watch the logs."""
     if sys.platform != "darwin" or not getattr(sys, "frozen", False) or os.environ.get("AGENT_NO_TERMINAL") == "1":
+        return False
+    if os.environ.get("AGENT_TERMINAL") != "1":
         return False
     if sys.stdin is not None and sys.stdin.isatty():
         return False
@@ -194,19 +200,63 @@ def reopen_in_terminal() -> bool:
         return False
 
 
+def ensure_streams(log_path: Path) -> Path | None:
+    """Windowed build (no console): sys.stdout / sys.stderr are None; send messages to a log file."""
+    if sys.stdout is not None and sys.stderr is not None:
+        return None
+    log_path.parent.mkdir(parents=True, exist_ok=True)
+    f = open(log_path, "a", encoding="utf-8", buffering=1)   # noqa: SIM115 - lives as long as the process
+    if sys.stdout is None:
+        sys.stdout = f
+    if sys.stderr is None:
+        sys.stderr = f
+    return log_path
+
+
+def running_instance(port: int = PREFERRED_PORT, timeout: float = 1.5) -> str | None:
+    """URL of an autonomous-agent already listening on this port (double-click while it runs), else None."""
+    if os.environ.get("AGENT_PORT"):
+        return None
+    url = f"http://127.0.0.1:{port}/"
+    try:
+        with urllib.request.urlopen(url + "auth/status", timeout=timeout) as r:
+            server = r.headers.get("Server") or ""
+            data = r.read(4096)
+    except (urllib.error.URLError, OSError, ValueError):
+        return None
+    if "autonomous-agent" in server and b'"authenticated"' in data:
+        return url
+    return None
+
+
 def main(argv: list[str] | None = None) -> int:
     if reopen_in_terminal():
         return 0
     from .cli import load_dotenv, main as cli_main
+    from .userconfig import UserConfig
 
     home = home_dir()
+    logged = ensure_streams(home / "data" / "app.log")
     paths = prepare_home(home)
     load_dotenv(paths["env"])
-    explicit_lang = bool(os.environ.get("AGENT_LANG"))
+    cfg = UserConfig(paths["data"])
+    if cfg.get("lang") and not os.environ.get("AGENT_LANG"):
+        os.environ["AGENT_LANG"] = cfg.get("lang")          # chosen in the page (Settings / welcome wizard)
+    explicit_lang = bool(os.environ.get("AGENT_LANG")) and not cfg.get("lang")
     lang = system_lang()
     os.environ.setdefault("AGENT_LANG", lang)
     L = lambda key, **kw: i18n.t(lang, key, **kw)   # noqa: E731
     backend, mode = pick_provider(paths)
+    if logged:
+        print(L("desktop.logs", path=logged), file=sys.stderr)
+    already = running_instance()
+    if already:
+        print(L("desktop.already", url=already), file=sys.stderr)
+        if os.environ.get("AGENT_NO_BROWSER") != "1":
+            webbrowser.open(already)
+        return 0
+    if mode == "demo" and (cfg.providers or cfg.get("demo")):
+        mode = "settings"            # keys (or demo mode) chosen in the Settings page
     try:
         port = free_port()
     except OSError as e:

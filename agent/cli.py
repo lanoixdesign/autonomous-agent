@@ -130,11 +130,18 @@ def new_agent(args, perms: Permissions, ctx: ToolContext, audit: AuditLog, confi
               idc: bool | None = None) -> Agent:
     """`idc`: None = follow the configuration (env, file, CLI); True/False = force (harness, per conversation)."""
     router = getattr(args, "_router", None)
-    if router is not None:
-        from .llm import RoutedLLM
-        llm = RoutedLLM(router, args.category)
+
+    def base_llm():
+        if router is not None:
+            from .llm import RoutedLLM
+            return RoutedLLM(router, args.category)
+        return make_llm(args.provider, args.model)
+    control = getattr(args, "_control", None)
+    if control is not None:          # harness: keys and demo mode from the Settings page, read at each call
+        from .llm import SwitchLLM
+        llm = SwitchLLM(control, args.category, base_llm)
     else:
-        llm = make_llm(args.provider, args.model)
+        llm = base_llm()
     registry = default_registry(enable_web=not args.offline, enable_github=not args.offline)
     budget = Budget(max_steps=args.max_steps, max_tool_calls=args.max_tool_calls, max_tokens=args.max_tokens)
     swarm = (SwarmConfig(max_depth=args.max_depth, max_children=args.max_children,
@@ -165,20 +172,47 @@ def build(args) -> tuple[Agent, Permissions]:
     return agent, perms
 
 
-def serve(args) -> int:
-    from .harness import Harness, make_server
+SERVE_DEFAULTS = {"approval_timeout": 300.0, "max_tasks": 4}
 
+
+def serve(args) -> int:
+    """Returns 0 (stopped / Quit button) or userconfig.RESTART_CODE (Restart button)."""
+    from .harness import Harness, make_server
+    from . import userconfig
+
+    early_state = Path(args.state_dir).resolve() if args.state_dir else Path(args.workspace).resolve() / ".agent"
+    cfg = userconfig.UserConfig(early_state)
+    userconfig.apply_startup(args, cfg, SERVE_DEFAULTS)
     perms, ctx, state = parts(args)
-    if args._router is None:
-        make_llm(args.provider, args.model)   # fail fast on a missing key
+    if state != early_state:
+        cfg = userconfig.UserConfig(state)
+    userconfig.apply_permissions(perms, cfg)
+    secrets_store = userconfig.SecretStore(state / userconfig.SECRETS_FILE)
+    control = userconfig.AppControl(cfg, secrets_store, perms=perms, fallback=backend_info(args),
+                                    file_router=args._router, home=os.environ.get("AGENT_HOME") or str(state))
+    control.router.audit = AuditLog(state / "audit.jsonl")
+    args._control = control
+    if args._router is None and control.backend_mode("text") == "fallback":
+        try:
+            make_llm(args.provider, args.model)   # fail fast on a missing key
+        except LLMError:
+            if not control.router.entries:
+                raise
 
     def factory(task, audit, confirm, cancel, on_event):
         return new_agent(args, perms, ctx, audit, confirm, on_event, cancel, idc=False)   # the harness sets IDC
 
-    idc_cfg = idc_config(args, perms)
+    idc_cfg = userconfig.apply_idc(idc_config(args, perms), cfg, explicit=getattr(args, "idc", None) is not None)
 
     from . import remote
-    remote_mode = args.remote or os.environ.get("AGENT_REMOTE", "").strip().lower() in ("1", "true", "yes", "on")
+    saved_remote = cfg.get("remote") or {}
+    remote_mode = (args.remote or os.environ.get("AGENT_REMOTE", "").strip().lower() in ("1", "true", "yes", "on")
+                   or bool(saved_remote.get("enabled")))
+    if saved_remote.get("enabled"):
+        if not args.tunnel and not os.environ.get("AGENT_TUNNEL") and saved_remote.get("tunnel") in ("tailscale", "cloudflared"):
+            args.tunnel = saved_remote["tunnel"]
+        if not args.public_url and not os.environ.get("AGENT_REMOTE_URL") and saved_remote.get("public_url"):
+            args.public_url = saved_remote["public_url"]
     token = os.environ.get("AGENT_HARNESS_TOKEN") or None
     where = None
     if remote_mode:
@@ -196,7 +230,17 @@ def serve(args) -> int:
                 workspace=ctx.workspace, max_upload_mb=args.max_upload_mb, max_message_mb=args.max_message_mb,
                 key_router=args._router, store=store, backend=backend_info(args), idc_config=idc_cfg,
                 lang=args.lang)
+    control.h, control.auth, control.token_where = h, auth, where
+    control.boot = {"workspace": str(ctx.workspace), "max_tasks": h.max_tasks,
+                    "remote": {"enabled": remote_mode, "tunnel": args.tunnel or "none", "public_url": args.public_url or ""}}
+    h.control = control
     srv = make_server(h, args.host, args.port, token, remote_mode=remote_mode, auth=auth)
+    exit_code = [0]
+
+    def stop(restart: bool) -> None:     # Quit / Restart buttons (called from a timer thread)
+        exit_code[0] = userconfig.RESTART_CODE if restart else 0
+        srv.shutdown()
+    control.stop_cb = stop
     host, port = srv.server_address[:2]
     print(f"harness on http://{'127.0.0.1' if host == '127.0.0.1' else host}:{port}/  "
           f"(workspace {ctx.workspace}, {perms.source}"
@@ -223,7 +267,7 @@ def serve(args) -> int:
             tunnel_proc.terminate()
         if store is not None:
             store.close()
-    return 0
+    return exit_code[0]
 
 
 def remote_banner(args, h, auth, host: str, port: int, where: str, new_token: bool):
@@ -345,6 +389,7 @@ def main(argv: list[str] | None = None) -> int:
     for p in (p_chat, p_run, p_mem, p_sk, p_perm, p_aud, p_srv, p_keys):
         common(p)
     args = ap.parse_args(argv)
+    args._lang_explicit = bool(getattr(args, "lang", None))
     args.lang = i18n.normalize(args.lang) if getattr(args, "lang", None) else i18n.env_lang()
     if args.cmd in ("memory", "skills", "permissions", "audit"):
         args.provider = "mock"  # these commands never call a model
@@ -371,11 +416,19 @@ def main(argv: list[str] | None = None) -> int:
                              left=f"{v['remaining']:g}"))
         return 0
     if args.cmd == "serve":
-        try:
-            return serve(args)
-        except (LLMError, ValueError, FileNotFoundError, OSError) as e:
-            print(f"error: {e}", file=sys.stderr)
-            return 2
+        from .userconfig import RESTART_CODE
+        while True:
+            try:
+                code = serve(args)
+            except (LLMError, ValueError, FileNotFoundError, OSError) as e:
+                print(f"error: {e}", file=sys.stderr)
+                return 2
+            if code != RESTART_CODE:
+                return code
+            print(i18n.t(args.lang, "cli.restarting"), file=sys.stderr)
+            args = ap.parse_args(argv)          # same flags, saved settings read again
+            args._lang_explicit = bool(getattr(args, "lang", None))
+            args.lang = i18n.normalize(args.lang) if getattr(args, "lang", None) else i18n.env_lang()
     try:
         agent, perms = build(args)
     except (LLMError, ValueError, FileNotFoundError) as e:

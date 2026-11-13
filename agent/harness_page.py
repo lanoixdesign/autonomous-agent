@@ -1,7 +1,7 @@
 """The harness compact dashboard (served at /dashboard; the chat page is harness_chat.py).
 Plain HTML + JS, no external resources. Bilingual (EN/FR): strings come from agent/i18n.py."""
 from .i18n_js import I18N_JS, LANG_CSS, LANG_SWITCH
-from .theme import APPROVAL_JS, BASE_CSS, DASH_CSS
+from .theme import APPROVAL_JS, BASE_CSS, DASH_CSS, NAV_CSS, NAV_HTML, NAV_JS
 
 DASH_EXTRA = r"""
  .prog{height:6px;background:#0D0D14;border:1px solid #2A2A35;border-radius:4px;overflow:hidden;margin:4px 0 2px}
@@ -17,7 +17,7 @@ PAGE = r"""<!doctype html>
 <style>
  body{font:14px/1.4 system-ui,sans-serif;margin:0;background:#f6f7f9;color:#1d2127}
  header{background:#1d2127;color:#fff;padding:10px 16px;display:flex;gap:12px;align-items:center}
- header h1{font-size:16px;margin:0;flex:1} header input{width:220px}
+ header h1{font-size:16px;margin:0} header input{width:200px}
  main{display:grid;grid-template-columns:320px 1fr 360px;gap:12px;padding:12px}
  section{background:#fff;border:1px solid #dde1e6;border-radius:8px;padding:10px;min-width:0}
  h2{font-size:13px;text-transform:uppercase;letter-spacing:.04em;color:#5a6270;margin:0 0 8px}
@@ -43,15 +43,15 @@ PAGE = r"""<!doctype html>
  header a.c{color:#9fb4ff;font-size:12px}
  @media (max-width:900px){
   header{flex-wrap:wrap;padding:10px 12px;padding-top:max(10px,env(safe-area-inset-top))}
-  header h1{flex:1 1 100%} header label{flex:1 1 100%;display:flex;flex-direction:column;gap:4px;align-items:stretch;white-space:normal;font-size:12px} header input{width:100%;box-sizing:border-box;min-width:0;font-size:16px;padding:6px}
+  header h1{flex:1} header label{flex:1 1 100%;display:flex;flex-direction:column;gap:4px;align-items:stretch;white-space:normal;font-size:12px} header input{width:100%;box-sizing:border-box;min-width:0;font-size:16px;padding:6px}
   main{grid-template-columns:1fr;padding:8px;gap:8px} section{grid-column:auto!important}
   #events{max-height:40vh} table{display:block;overflow-x:auto;white-space:nowrap}
   button{min-height:40px;padding:6px 12px} .ap button{min-width:44%;min-height:44px;font-size:15px}
   textarea,input[type=text],select{font-size:16px}
  }
 /*THEME*/
-</style></head><body>
-<header><h1><span data-i18n="dash.heading"></span> <a href="/" class="c" data-i18n="link.chat"></a> <a href="/connect" class="c" data-i18n="chat.connect"></a></h1>
+</style></head><body data-page="dashboard">
+<header class="apphead"><a class="back" href="/" data-i18n="nav.back"></a><h1 data-i18n="dash.heading"></h1>/*NAV*/<span class="sp"></span>
  /*LANG_SWITCH*/
  <button id="stopall" data-i18n="btn.stopall" data-i18n-title="title.stopall"></button>
  <label><span data-i18n="token.label"></span> <input id="token" type="password" data-i18n-placeholder="token.placeholder"></label></header>
@@ -78,6 +78,7 @@ PAGE = r"""<!doctype html>
 </main>
 <script>
 /*I18N_JS*/
+/*NAV_JS*/
 /*APPROVAL_JS*/
 const $ = id => document.getElementById(id);
 const tok = $("token"); tok.value = sessionStorage.getItem("harnessToken") || "";
@@ -200,4 +201,5 @@ setInterval(refresh, 1000); refresh(); setInterval(slow, 5000); slow();
 </script></body></html>
 """
 PAGE = PAGE.replace("/*LANG_CSS*/", LANG_CSS).replace("/*LANG_SWITCH*/", LANG_SWITCH).replace("/*I18N_JS*/", I18N_JS)
-PAGE = PAGE.replace("/*THEME*/", BASE_CSS + DASH_CSS + DASH_EXTRA).replace("/*APPROVAL_JS*/", APPROVAL_JS)
+PAGE = PAGE.replace("/*THEME*/", BASE_CSS + DASH_CSS + DASH_EXTRA + NAV_CSS).replace("/*APPROVAL_JS*/", APPROVAL_JS)
+PAGE = PAGE.replace("/*NAV*/", NAV_HTML).replace("/*NAV_JS*/", NAV_JS)

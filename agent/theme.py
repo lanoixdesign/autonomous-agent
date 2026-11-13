@@ -79,3 +79,36 @@ function reasonText(r){
   return r;
 }
 """
+
+
+# Navigation shared by every page: Chat | Dashboard | Settings | Connect. Plain links, so the browser's
+# back / forward buttons and history work as usual. The current page is marked from <body data-page>.
+NAV_HTML = ('<nav class="tabs" data-i18n-aria="nav.label">'
+            '<a href="/" data-nav="chat" data-i18n="nav.chat"></a>'
+            '<a href="/dashboard" data-nav="dashboard" data-i18n="nav.dashboard"></a>'
+            '<a href="/settings" data-nav="settings" data-i18n="nav.settings"></a>'
+            '<a href="/connect" data-nav="connect" data-i18n="nav.connect"></a></nav>')
+
+NAV_CSS = r"""
+ nav.tabs{display:inline-flex;gap:3px;padding:3px;border:1px solid var(--line);border-radius:999px;background:rgba(13,13,20,.85);flex-shrink:0}
+ nav.tabs a{padding:6px 14px;border-radius:999px;color:var(--soft)!important;text-decoration:none;font:600 13px var(--font);white-space:nowrap;line-height:1.3}
+ nav.tabs a:hover{color:#fff!important;background:#1E1E24}
+ nav.tabs a.on{color:#fff!important;background:linear-gradient(90deg,var(--blue2),var(--purple));box-shadow:0 0 14px rgba(37,99,235,.35)}
+ .apphead{display:flex;align-items:center;gap:12px;padding:10px 16px;padding-top:max(10px,env(safe-area-inset-top));flex-wrap:wrap;
+  background:rgba(10,10,16,.8)!important;border-bottom:1px solid var(--line);backdrop-filter:blur(10px);position:sticky;top:0;z-index:20}
+ .apphead .brand{font:700 15px var(--font);color:var(--text);white-space:nowrap}
+ .apphead .sp{flex:1}
+ a.back{display:inline-flex;align-items:center;gap:6px;padding:6px 12px;border-radius:999px;border:1px solid rgba(0,212,255,.45);color:var(--blue)!important;
+  text-decoration:none;font:600 13px var(--font);white-space:nowrap;background:rgba(0,212,255,.08)}
+ a.back:hover{background:rgba(0,212,255,.16)}
+ @media (max-width:760px){
+  nav.tabs{display:flex;overflow-x:auto;max-width:100%;order:10;flex:1 1 100%;justify-content:space-between}
+  nav.tabs a{padding:9px 10px;min-height:38px;flex:1;text-align:center;font-size:13px}
+  .apphead{gap:8px;padding:8px 10px}
+ }
+"""
+
+NAV_JS = r"""
+document.querySelectorAll("nav.tabs a").forEach(a => { const on = a.dataset.nav === document.body.dataset.page;
+  a.classList.toggle("on", on); if(on) a.setAttribute("aria-current", "page"); else a.removeAttribute("aria-current"); });
+"""

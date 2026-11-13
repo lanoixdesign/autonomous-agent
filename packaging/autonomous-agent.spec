@@ -1,7 +1,8 @@
 # PyInstaller spec for the unsigned desktop builds.
 #   pyinstaller --noconfirm --clean packaging/autonomous-agent.spec
-# Windows / Linux: one file (dist/AutonomousAgent[.exe]) with a console window (logs + Ctrl+C).
-# macOS: dist/AutonomousAgent.app (onedir inside the bundle); the launcher reopens itself in Terminal.
+# Windows: one file (dist/AutonomousAgent.exe), NO console window (logs in ~/AutonomousAgent/data/app.log;
+#   stop it with the ⏻ Quit button in the page). Linux: one file with a console.
+# macOS: dist/AutonomousAgent.app (onedir inside the bundle), runs in the background (AGENT_TERMINAL=1: Terminal).
 # Target architecture on macOS = the machine's (build on arm64 and on Intel separately).
 import os
 import sys
@@ -36,9 +37,9 @@ if sys.platform == "darwin":
               argv_emulation=False, target_arch=None, codesign_identity=None)
     coll = COLLECT(exe, a.binaries, a.datas, name=NAME)
     app = BUNDLE(coll, name=f"{NAME}.app", bundle_identifier="io.github.lanoixdesign.autonomous-agent",
-                 info_plist={"CFBundleShortVersionString": os.environ.get("APP_VERSION", "0.4.0"),
+                 info_plist={"CFBundleShortVersionString": os.environ.get("APP_VERSION", "0.5.0"),
                              "CFBundleDisplayName": "Autonomous Agent", "LSMinimumSystemVersion": "11.0",
                              "NSHighResolutionCapable": True})
 else:
-    exe = EXE(pyz, a.scripts, a.binaries, a.datas, [], name=NAME, console=True, upx=False,
+    exe = EXE(pyz, a.scripts, a.binaries, a.datas, [], name=NAME, console=sys.platform != "win32", upx=False,
               runtime_tmpdir=None)

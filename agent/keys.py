@@ -68,12 +68,25 @@ class KeyEntry:
     priority: int = 100
     limits: dict[str, float] = field(default_factory=dict)
     pricing: dict[str, float] = field(default_factory=dict)  # input_per_1m, output_per_1m, per_image, per_audio_minute
+    # Keys entered in the Settings page: the secret comes from the local secret store (agent/userconfig.py),
+    # read at call time, never from this object's fields (so it never ends up in a repr, a log or the audit).
+    secret_fn: Callable[[], str | None] | None = field(default=None, repr=False, compare=False)
+    source: str = "file"                 # "file" (providers.yaml) | "ui" (Settings page)
 
     def secret(self) -> str | None:
+        if self.secret_fn is not None:
+            return self.secret_fn() or None
         return os.environ.get(self.key_env) if self.key_env else None
 
+    @property
+    def needs_key(self) -> bool:
+        return bool(self.key_env) or self.secret_fn is not None
+
     def available(self) -> bool:
-        return not self.key_env or bool(self.secret())
+        return not self.needs_key or bool(self.secret())
+
+    def missing_reason(self) -> str:
+        return f"environment variable {self.key_env} is not set" if self.key_env else "no key saved"
 
     def model_for(self, category: str) -> str | None:
         return self.models.get(category) or self.models.get("*")
@@ -233,6 +246,16 @@ class KeyRouter:
         entries, currency = load_file(path)
         return cls(entries, usage_path, audit, currency)
 
+    def replace_entries(self, entries: list[KeyEntry], currency: str | None = None) -> None:
+        """Swap the key list while running (Settings page): usage counters are kept by key name, requests
+        already in flight finish on the key they reserved."""
+        with self._lock:
+            self.entries = sorted(entries, key=lambda e: e.priority)
+            for e in self.entries:
+                self._pending.setdefault(e.name, {})
+            if currency is not None:
+                self.currency = currency
+
     # ---------------- persistence
     def _load(self) -> None:
         if self.usage_path and self.usage_path.is_file():
@@ -275,7 +298,7 @@ class KeyRouter:
             now = self.clock()
             for e in self.keys_for(category):
                 if not e.available():
-                    reasons[e.name] = f"environment variable {e.key_env} is not set"
+                    reasons[e.name] = e.missing_reason()
                     continue
                 cool = self._usage.get(e.name, {}).get("cooldown_until", 0)
                 if cool > now:
@@ -345,7 +368,7 @@ class KeyRouter:
             lease.done = True
             now = self.clock()
             name = lease.entry.name
-            pend = self._pending[name]
+            pend = self._pending.setdefault(name, {})
             for k, v in lease.reserved.items():
                 pend[k] = max(0.0, pend.get(k, 0) - v)
             u = self._u(name, now)
@@ -374,11 +397,12 @@ class KeyRouter:
                 limits = {f: {"limit": v, "used": round(used[f], 6), "remaining": round(max(0.0, v - used[f]), 6)}
                           for f, v in e.limits.items()}
                 keys.append({"name": e.name, "provider": e.provider, "base_url": e.base_url,
-                             "key": mask(e.secret()) if e.key_env else "(no key)", "key_env": e.key_env,
+                             "key": mask(e.secret()) if e.needs_key else "(no key)", "key_env": e.key_env,
+                             "source": e.source,
                              "categories": e.categories, "priority": e.priority, "models": e.models,
                              "available": e.available(),
                              "cooldown_s": max(0, math.ceil(u.get("cooldown_until", 0) - now)),
-                             "limits": limits})
+                             "limits": limits, "used": {f: round(v, 6) for f, v in used.items()}})
             cats = sorted({c for e in self.entries for c in e.categories})
             return {"currency": self.currency, "keys": keys,
                     "categories": {c: [e.name for e in self.keys_for(c)] for c in cats}}

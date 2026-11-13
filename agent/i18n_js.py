@@ -7,11 +7,13 @@ Static text: data-i18n (textContent), data-i18n-title, data-i18n-placeholder. Dy
 I18N_JS = r"""
 const I18N = /*I18N_DATA*/{};
 const LANGS = Object.keys(I18N), LANG_KEY = "harnessLang";
+const I18N_DEFAULT = null;
 function pickLang(){
   const q = (new URLSearchParams(location.search).get("lang") || "").toLowerCase().slice(0,2);
   if(LANGS.includes(q)){ try{ localStorage.setItem(LANG_KEY,q); }catch(e){} return q; }
   let s=null; try{ s=localStorage.getItem(LANG_KEY); }catch(e){}
   if(LANGS.includes(s)) return s;
+  if(I18N_DEFAULT) return I18N_DEFAULT;
   return (navigator.language||"").toLowerCase().startsWith("fr") ? "fr" : "en";
 }
 let LANG = pickLang();
@@ -19,12 +21,13 @@ function t(k, v){
   let s = (I18N[LANG] && I18N[LANG][k] != null) ? I18N[LANG][k] : (I18N.en[k] != null ? I18N.en[k] : k);
   return v ? s.replace(/\{(\w+)\}/g, (m,n) => (n in v ? String(v[n]) : m)) : s;
 }
-function tr(prefix, val){ const k = prefix+"."+val; return (I18N.en[k] != null) ? t(k) : String(val == null ? "" : val); }
+function tr(prefix, val, v){ const k = prefix+"."+val; return (I18N.en[k] != null) ? t(k, v) : String(val == null ? "" : val); }
 function applyStatic(){
   document.documentElement.lang = LANG;
   document.querySelectorAll("[data-i18n]").forEach(e => { e.textContent = t(e.dataset.i18n); });
   document.querySelectorAll("[data-i18n-title]").forEach(e => { e.title = t(e.dataset.i18nTitle); });
   document.querySelectorAll("[data-i18n-placeholder]").forEach(e => { e.placeholder = t(e.dataset.i18nPlaceholder); });
+  document.querySelectorAll("[data-i18n-aria]").forEach(e => { e.setAttribute("aria-label", t(e.dataset.i18nAria)); });
   const ti = document.querySelector("title[data-i18n-doc]"); if(ti) document.title = t(ti.dataset.i18nDoc);
   document.querySelectorAll("#lang button").forEach(b => b.classList.toggle("on", b.dataset.lang === LANG));
 }
