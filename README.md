@@ -26,21 +26,58 @@ no install, no commands, no file to edit. Download the file for your computer fr
 | `AutonomousAgent-macos-arm64.zip` | Mac with Apple Silicon (M1, M2, M3, M4…) |
 | `AutonomousAgent-macos-intel.zip` | Mac with an Intel processor |
 
-> ⚠️ **These builds are not signed** (no paid Microsoft/Apple certificate), so your system warns you the
-> first time. That is expected; if you prefer, check the file against `SHA256SUMS.txt` or build it
-> yourself (below).
+#### Opening the unsigned app
 
-**Windows**
+> ⚠️ **These builds are not signed yet** (no paid Microsoft/Apple certificate), so Windows and macOS warn
+> you the first time you open them. That is expected for unsigned apps, and you only do this once.
+> **Code signing is planned for a later release.**
+
+**Windows (SmartScreen)**
 1. Double-click `AutonomousAgent-windows-x64.exe`.
-2. If a blue "Windows protected your PC" (SmartScreen) window appears: click **More info**, then **Run anyway**.
+2. A blue **"Windows protected your PC"** window appears: click **More info**, then **Run anyway**.
 3. The app opens in your browser. There is no console window (logs go to `AutonomousAgent\data\app.log`).
 
-**macOS**
+**macOS (Gatekeeper)**
 1. Unzip the file and move `AutonomousAgent.app` to **Applications**.
-2. The first time, **right-click** (or Control-click) the app → **Open** → **Open**.
-   If macOS only offers "Move to Trash" / "Done": open **System Settings → Privacy & Security**, scroll
-   down and click **Open Anyway** next to "AutonomousAgent", then confirm.
-3. The app opens in your browser and runs in the background (no window to keep open).
+2. The first time, **right-click** (or Control-click) the app → **Open**, then **Open** again in the dialog.
+3. If macOS only offers "Move to Trash" / "Done": open **System Settings → Privacy & Security**, scroll
+   down to the Security section and click **Open Anyway** next to "AutonomousAgent", then confirm
+   (password or Touch ID).
+4. The app opens in your browser and runs in the background (no window to keep open).
+
+<details>
+<summary><b>Advanced (optional): remove the quarantine flag on macOS</b></summary>
+
+Only if the steps above did not work, in Terminal:
+
+```bash
+xattr -dr com.apple.quarantine /Applications/AutonomousAgent.app
+```
+</details>
+
+<details>
+<summary><b>Advanced (optional): verify the download with SHA256SUMS.txt</b></summary>
+
+Each release includes `SHA256SUMS.txt`. Download it next to your file, compute the file's SHA-256 and
+check that it matches the line for that file.
+
+Windows (Command Prompt or PowerShell, in your Downloads folder):
+
+```bat
+certutil -hashfile AutonomousAgent-windows-x64.exe SHA256
+```
+
+macOS (Terminal, in your Downloads folder):
+
+```bash
+shasum -a 256 AutonomousAgent-macos-arm64.zip    # or AutonomousAgent-macos-intel.zip
+shasum -a 256 -c SHA256SUMS.txt --ignore-missing  # checks every downloaded file at once
+```
+
+The hash printed must be identical to the one in `SHA256SUMS.txt` (certutil prints it in lowercase with
+no spaces on recent Windows; compare the characters, not the case). If it differs, do not open the file:
+download it again from the Releases page.
+</details>
 
 **First run: a 3-step wizard in the browser.** ① pick your language (English / Français) → ② choose a
 provider (Groq, OpenAI, OpenRouter, Ollama), paste your API key, click **Test the key**, then **Save and
@@ -706,24 +743,61 @@ correspondant à votre ordinateur sur la
 | `AutonomousAgent-macos-arm64.zip` | Mac avec puce Apple (M1, M2, M3, M4…) |
 | `AutonomousAgent-macos-intel.zip` | Mac avec processeur Intel |
 
-> ⚠️ **Ces versions ne sont pas signées** (pas de certificat payant Microsoft/Apple) : votre système
-> affiche donc un avertissement la première fois. C'est normal ; si vous préférez, vérifiez le fichier avec
-> `SHA256SUMS.txt` ou compilez-le vous-même (voir plus bas).
+#### Ouvrir l'application non signée
 
-**Windows**
+> ⚠️ **Ces versions ne sont pas encore signées** (pas de certificat payant Microsoft/Apple) : Windows et
+> macOS affichent donc un avertissement à la première ouverture. C'est normal pour une application non
+> signée, et cela ne se fait qu'une fois. **La signature du code est prévue dans une version ultérieure.**
+
+**Windows (SmartScreen)**
 1. Double-cliquez sur `AutonomousAgent-windows-x64.exe`.
-2. Si une fenêtre bleue « Windows a protégé votre ordinateur » (SmartScreen) apparaît : cliquez sur
-   **Informations complémentaires**, puis **Exécuter quand même**.
+2. Une fenêtre bleue **« Windows a protégé votre ordinateur »** apparaît : cliquez sur
+   **Informations complémentaires**, puis sur **Exécuter quand même**.
 3. L'application s'ouvre dans votre navigateur. Pas de fenêtre de console (le journal va dans
    `AutonomousAgent\data\app.log`).
 
-**macOS**
+**macOS (Gatekeeper)**
 1. Décompressez le fichier et déplacez `AutonomousAgent.app` dans **Applications**.
-2. La première fois, faites un **clic droit** (ou Contrôle-clic) sur l'app → **Ouvrir** → **Ouvrir**.
-   Si macOS ne propose que « Placer dans la corbeille » / « OK » : ouvrez **Réglages Système →
-   Confidentialité et sécurité**, descendez et cliquez sur **Ouvrir quand même** à côté de
-   « AutonomousAgent », puis confirmez.
-3. L'application s'ouvre dans votre navigateur et tourne en arrière-plan (aucune fenêtre à garder ouverte).
+2. La première fois, faites un **clic droit** (ou Contrôle-clic) sur l'app → **Ouvrir**, puis encore
+   **Ouvrir** dans la fenêtre qui s'affiche.
+3. Si macOS ne propose que « Placer dans la corbeille » / « OK » : ouvrez **Réglages Système →
+   Confidentialité et sécurité**, descendez jusqu'à la partie Sécurité et cliquez sur **Ouvrir quand même**
+   à côté de « AutonomousAgent », puis confirmez (mot de passe ou Touch ID).
+4. L'application s'ouvre dans votre navigateur et tourne en arrière-plan (aucune fenêtre à garder ouverte).
+
+<details>
+<summary><b>Avancé (facultatif) : retirer l'attribut de quarantaine sur macOS</b></summary>
+
+Seulement si les étapes ci-dessus n'ont pas fonctionné, dans Terminal :
+
+```bash
+xattr -dr com.apple.quarantine /Applications/AutonomousAgent.app
+```
+</details>
+
+<details>
+<summary><b>Avancé (facultatif) : vérifier le téléchargement avec SHA256SUMS.txt</b></summary>
+
+Chaque version contient `SHA256SUMS.txt`. Téléchargez-le à côté de votre fichier, calculez l'empreinte
+SHA-256 du fichier et vérifiez qu'elle correspond à la ligne de ce fichier.
+
+Windows (Invite de commandes ou PowerShell, dans votre dossier Téléchargements) :
+
+```bat
+certutil -hashfile AutonomousAgent-windows-x64.exe SHA256
+```
+
+macOS (Terminal, dans votre dossier Téléchargements) :
+
+```bash
+shasum -a 256 AutonomousAgent-macos-arm64.zip    # ou AutonomousAgent-macos-intel.zip
+shasum -a 256 -c SHA256SUMS.txt --ignore-missing  # vérifie d'un coup tous les fichiers téléchargés
+```
+
+L'empreinte affichée doit être identique à celle de `SHA256SUMS.txt` (comparez les caractères, pas les
+majuscules/minuscules). Si elle diffère, n'ouvrez pas le fichier : téléchargez-le à nouveau depuis la page
+des versions.
+</details>
 
 **Premier lancement : un assistant en 3 étapes dans le navigateur.** ① choisissez la langue (English /
 Français) → ② choisissez un fournisseur (Groq, OpenAI, OpenRouter, Ollama), collez votre clé d'API,
