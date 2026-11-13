@@ -1,9 +1,10 @@
-**New in 0.3.0 / Nouveautés de la 0.3.0 — use it from your phone / utilisable depuis le téléphone**
+**New in 0.4.0 / Nouveautés de la 0.4.0 — a new look / un nouveau look**
 
-- Mobile-friendly chat and dashboard, installable as an app (PWA). / Chat et tableau de bord adaptés au téléphone, installables comme une appli (PWA).
-- `--remote` (desktop app: `AGENT_REMOTE=1` in `.env`): mandatory sign-in, QR code with a one-time pairing code, sessions, rate-limited login. / connexion obligatoire, QR code à usage unique, sessions, tentatives limitées.
-- Private HTTPS via Tailscale (`AGENT_TUNNEL=tailscale`) or Cloudflare Tunnel (`AGENT_TUNNEL=cloudflared`). See the README: *Use from your phone / Utiliser depuis le mobile*.
-- Optional IDC mode (since 0.2.0). / Mode IDC facultatif (depuis la 0.2.0).
+- Dark neon interface for the chat, the dashboard and the phone pages (purple glow, neon blue/purple accents, visible keyboard focus). / Interface néon sombre pour le chat, le tableau de bord et les pages mobiles (halo violet, accents bleu/violet néon, focus clavier visible).
+- Live swarm graph: sub-agents appear as cards around the coordinator, with real progress (steps / budget); when they finish they merge into a document with a link to the answer and the files written. / Graphe de l'essaim en direct : les sous-agents apparaissent en cartes autour du coordinateur, avec leur vraie progression ; à la fin ils fusionnent en un document qui mène à la réponse et aux fichiers écrits.
+- Approval cards ask a plain question ("Allow writing report.md?" / « Autoriser l'écriture de report.md ? »), with the reason translated; send/spend are still never remembered. / Les cartes de validation posent une question claire, avec la raison traduite ; envoi/dépense ne sont toujours jamais retenus.
+- "Agent is thinking…" indicator, timestamps on your messages. / Indicateur « L'agent réfléchit… », heure sur vos messages.
+- Since 0.3.0: use it from your phone (`--remote`, QR pairing, Tailscale / Cloudflare). / Depuis la 0.3.0 : utilisable depuis le téléphone.
 
 **Desktop builds — no command line needed / Versions de bureau — sans ligne de commande**
 

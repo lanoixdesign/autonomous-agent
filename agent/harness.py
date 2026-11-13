@@ -10,6 +10,8 @@ API (JSON):
   GET  /tasks                                            -> {"tasks": [...]}
   GET  /tasks/{id}            task + agent tree (root, root.1, ...) + status + result
   GET  /tasks/{id}/events?since=N                        -> {"events": [...], "next": M}  (polling)
+  GET  /tasks/{id}/graph      live swarm graph of the current turn: agents, progress (steps / budget),
+                              merges, files written;  GET /tasks/{id}/file?path=P  one of those files
   POST /tasks/{id}/cancel
   GET  /tasks/{id}/stream     Server-Sent Events (same events, pushed; ?access_token= if a token is set)
   GET  /tasks/{id}/export?format=json|md[&lang=fr]       conversation + its audit trail (redacted)
@@ -307,13 +309,59 @@ class Task:
             if ev == "spawn":
                 self.agents[entry["child"]] = {"id": entry["child"], "parent": entry.get("agent"),
                                                "depth": entry.get("child_depth"), "task": entry.get("task"),
-                                               "status": "running", "answer": None}
+                                               "status": "running", "answer": None, "steps": 0,
+                                               "max_steps": (entry.get("budget") or {}).get("max_steps"),
+                                               "isolated": bool(entry.get("isolated"))}
             elif ev == "child_done" and entry.get("agent") in self.agents:
                 a = self.agents[entry["agent"]]
                 a["status"] = "done" if entry.get("stop_reason") == "final" else entry.get("stop_reason")
                 a["answer"] = entry.get("result")
+                if entry.get("steps") is not None:
+                    a["steps"] = entry["steps"]
                 u = self.agent_usage.setdefault(entry["agent"], {"parent": entry.get("parent"), **_zero()})
                 _add(u, entry)
+
+    def on_progress(self, agent: str, steps: Any, max_steps: Any) -> None:
+        """One model step done by `agent` (live progress for the swarm graph)."""
+        with self._lock:
+            a = self.agents.get(agent)
+            if a is not None:
+                a["steps"], a["max_steps"] = steps, max_steps
+        self.add_event("progress", agent=agent, steps=steps, max_steps=max_steps)
+
+    def graph(self) -> dict:
+        """The current turn's agent tree with live progress, plus what was merged / written (swarm graph)."""
+        with self._lock:
+            agents = [dict(a) for a in self.agents.values()]
+            start = max((i for i, e in enumerate(self.events) if e.get("kind") == "user"), default=0)
+            evs = [e for e in self.events[start:] if e.get("kind") == "audit"]
+            status, turn = self.status, self.turns
+        out = []
+        for a in agents:
+            st, mx = a.get("steps") or 0, a.get("max_steps") or 0
+            done = a.get("status") not in (None, "queued", "running", "cancelling")
+            prog = 1.0 if done else (min(1.0, st / mx) if mx else 0.0)
+            out.append({"id": a["id"], "parent": a.get("parent"), "depth": a.get("depth") or 0,
+                        "task": (a.get("task") or "")[:300], "status": a.get("status"), "steps": st,
+                        "max_steps": mx or None, "progress": round(prog, 3),
+                        "isolated": bool(a.get("isolated")), "answer": (a.get("answer") or "")[:500] or None})
+        merges = [{"agent": e.get("agent"), "children": e.get("children") or [],
+                   "applied": e.get("applied") or [], "conflicts": e.get("conflicts") or [],
+                   "skipped": e.get("skipped")} for e in evs if e.get("event") == "merge"]
+        files: list[str] = []
+        for e in evs:
+            if e.get("tool") in ("write_file", "edit_file") and e.get("ok") and isinstance(e.get("args"), dict):
+                p = e["args"].get("path")
+                if p and p not in files:
+                    files.append(p)
+        for m in merges:
+            for a in m["applied"]:
+                if a.get("path") and a["path"] not in files:
+                    files.append(a["path"])
+        kids = [a for a in out if a["id"] != "root"]
+        return {"task": self.id, "turn": turn, "status": status, "agents": out, "merges": merges, "files": files,
+                "children": len(kids),
+                "children_done": bool(kids) and all(a["status"] not in ("running", "queued") for a in kids)}
 
     def finish_turn(self, res: Any) -> None:
         with self._lock:
@@ -562,6 +610,8 @@ class Harness:
                 task.add_event("stop", agent=data.get("agent", "root"), reason=data.get("reason"))
             elif kind == "idc":
                 task.add_event("idc", **{"agent": "root", **data})
+            elif kind == "step":
+                task.on_progress(data.get("agent", "root"), data.get("steps"), data.get("max_steps"))
 
         # wait for a free slot (max_tasks), unless cancelled while queued
         while not self._slots.acquire(timeout=0.1):
@@ -906,7 +956,8 @@ def _probe(url: str, timeout: float) -> dict:
 
 
 # ---------------------------------------------------------------------------- HTTP
-TASK_RE = re.compile(r"^/tasks/([0-9a-f]+)(/events|/cancel|/messages|/stream|/export|/idc)?$")
+FILE_VIEW_MAX = 2 * 1024 * 1024
+TASK_RE = re.compile(r"^/tasks/([0-9a-f]+)(/events|/cancel|/messages|/stream|/export|/idc|/graph|/file)?$")
 APPROVAL_RE = re.compile(r"^/approvals/([0-9a-f]+)$")
 RULE_RE = re.compile(r"^/rules/([0-9a-f]+)/revoke$")
 SCHEDULE_RE = re.compile(r"^/schedules/([0-9a-f]+)(/run|/delete)?$")
@@ -1135,6 +1186,27 @@ def make_handler(h: Harness, token: str | None, local_only: bool, auth: "remote.
             except (BrokenPipeError, ConnectionResetError, ConnectionAbortedError, OSError):
                 pass
 
+        def _task_file(self, task: Task, rel: str) -> None:
+            """A file written during the current turn of this conversation (swarm graph link), read-only."""
+            if h.workspace is None or not rel or rel not in task.graph()["files"]:
+                return self._send(404, {"error": "not a file written in this turn"})
+            root = Path(h.workspace).resolve()
+            path = (root / rel).resolve()
+            if root not in path.parents or not path.is_file():
+                return self._send(404, {"error": "file not found"})
+            if path.stat().st_size > FILE_VIEW_MAX:
+                return self._send(413, {"error": "file too large to view"})
+            data = path.read_bytes()
+            try:
+                data.decode("utf-8")
+                ctype = "text/plain; charset=utf-8"
+            except UnicodeDecodeError:
+                ctype = "application/octet-stream"
+            name = re.sub(r'[^A-Za-z0-9._-]', "_", path.name) or "file"
+            self._send(200, body=data, ctype=ctype,
+                       extra={"Content-Disposition": f'inline; filename="{name}"',
+                              "Content-Security-Policy": "sandbox; default-src 'none'"})
+
         def do_GET(self) -> None:  # noqa: N802
             u = urlparse(self.path)
             path, q = u.path.rstrip("/") or "/", parse_qs(u.query)
@@ -1181,10 +1253,14 @@ def make_handler(h: Harness, token: str | None, local_only: bool, auth: "remote.
                                         "max_message_bytes": lim.max_message_bytes})
             if path == "/approvals":
                 return self._send(200, {"approvals": h.approvals.list(pending_only="all" not in q)})
-            if m and m.group(2) in (None, "/events", "/stream", "/export"):
+            if m and m.group(2) in (None, "/events", "/stream", "/export", "/graph", "/file"):
                 task = h.get(m.group(1))
                 if task is None:
                     return self._send(404, {"error": "unknown task"})
+                if m.group(2) == "/graph":
+                    return self._send(200, task.graph())
+                if m.group(2) == "/file":
+                    return self._task_file(task, (q.get("path") or [""])[0])
                 if m.group(2) == "/stream":
                     return self._stream(task, q)
                 if m.group(2) == "/export":

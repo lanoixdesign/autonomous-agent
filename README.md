@@ -82,7 +82,8 @@ in the console). The macOS builds are separate for Apple Silicon and Intel. Buil
   commitments, and a forced "good enough now" answer; saying "I don't know" costs less than an
   unsupported claim. A hypothesis to test, see [IDC mode](#idc-mode-optional-off-by-default).
 - **Harness** (`python -m agent serve`):
-  - web chat with **pop-up approval cards** and several conversations running in parallel;
+  - dark neon web chat with **approval cards that ask a plain question** ("Allow writing report.md?"),
+    a **live swarm graph** of the sub-agents, and several conversations running in parallel;
   - **attachments**;
   - **several API keys per category with hard limits**;
   - **persistence** (SQLite), **live updates** (SSE) and **⛔ Stop all**;
@@ -410,6 +411,16 @@ ends, the changes are merged back:
 Budget reservations, the child counter, memory writes and the audit writer are thread-safe. In the
 example above the two children run in parallel in the shared workspace (read-only tools).
 
+**Live swarm graph (harness chat).** When an agent launches sub-agents, the chat shows them as a graph
+built from real data (`GET /tasks/{id}/graph`, refreshed by the `progress` / `spawn` / `child_done` /
+`merge` events): the coordinator in the centre, one card per sub-agent with its task, its status and a
+progress bar = steps used / step budget. When every sub-agent is finished, the cards merge into the
+centre and a document icon links to the answer, the Markdown export and the files written in this turn
+(`GET /tasks/{id}/file?path=…`, read-only, only those files). The panel can be collapsed; on a phone it
+becomes a vertical list; animations stop with *reduce motion*.
+
+<p><img src="docs/swarm-merged-en.png" width="560" alt="Swarm finished: merged result with the files written"> <img src="docs/mobile-swarm-en.png" width="200" alt="Swarm graph on a phone"></p>
+
 ### Harness (local server, chat, approvals)
 
 `python -m agent serve` starts a local harness: conversations run in background threads, sub-agents
@@ -706,7 +717,8 @@ soi-même : `pip install pyinstaller && pyinstaller packaging/autonomous-agent.s
   coûte moins cher qu'une affirmation non étayée. Une hypothèse à tester, voir
   [Mode IDC](#mode-idc-facultatif-désactivé-par-défaut).
 - **Harness** (`python -m agent serve`) :
-  - chat web avec **cartes de validation pop-up** et plusieurs conversations en parallèle ;
+  - chat web au thème néon sombre avec des **cartes de validation qui posent une question claire**
+    (« Autoriser l'écriture de report.md ? »), un **graphe de l'essaim en direct** et plusieurs conversations en parallèle ;
   - **pièces jointes** ;
   - **plusieurs clés d'API par catégorie avec limites strictes** ;
   - **persistance** (SQLite), **direct** (SSE) et **⛔ Tout arrêter** ;
@@ -1046,6 +1058,17 @@ au-delà, le lot s'exécute à la suite). À la fin du lot, les changements sont
 Les réservations de budget, le compteur d'enfants, les écritures mémoire et l'écriture de l'audit sont
 thread-safe. Dans l'exemple ci-dessus, les deux enfants tournent en parallèle dans l'espace partagé
 (outils en lecture seule).
+
+**Graphe de l'essaim en direct (chat du harness).** Quand un agent lance des sous-agents, le chat les
+affiche en graphe à partir des vraies données (`GET /tasks/{id}/graph`, rafraîchi par les événements
+`progress` / `spawn` / `child_done` / `merge`) : le coordinateur au centre, une carte par sous-agent avec
+sa tâche, son statut et une barre de progression = étapes utilisées / budget d'étapes. Quand tous les
+sous-agents ont fini, les cartes fusionnent vers le centre et une icône de document mène à la réponse, à
+l'export Markdown et aux fichiers écrits pendant ce tour (`GET /tasks/{id}/file?path=…`, lecture seule,
+uniquement ces fichiers). Le panneau se replie ; sur téléphone il devient une liste verticale ; les
+animations s'arrêtent avec « réduire les animations ».
+
+<p><img src="docs/swarm-merged-en.png" width="560" alt="Essaim terminé : résultat fusionné et fichiers écrits"> <img src="docs/mobile-swarm-en.png" width="200" alt="Graphe de l'essaim sur téléphone"></p>
 
 ### Harness (serveur local, chat, validations)
 

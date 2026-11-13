@@ -1,6 +1,14 @@
 """The harness compact dashboard (served at /dashboard; the chat page is harness_chat.py).
 Plain HTML + JS, no external resources. Bilingual (EN/FR): strings come from agent/i18n.py."""
 from .i18n_js import I18N_JS, LANG_CSS, LANG_SWITCH
+from .theme import APPROVAL_JS, BASE_CSS, DASH_CSS
+
+DASH_EXTRA = r"""
+ .prog{height:6px;background:#0D0D14;border:1px solid #2A2A35;border-radius:4px;overflow:hidden;margin:4px 0 2px}
+ .prog i{display:block;height:100%;background:linear-gradient(90deg,#00D4FF,#38BDF8);box-shadow:0 0 8px #00D4FF;transition:width .4s}
+ .ap .q{color:#fff;font-weight:700;font-size:15px;text-align:center;margin:2px 0 6px}
+ .ap button.ok{background:#2563EB!important;border-color:#2563EB!important;color:#fff} .ap button.no{background:#374151!important;border-color:#374151!important;color:#fff}
+"""
 
 PAGE = r"""<!doctype html>
 <html lang="en"><head><meta charset="utf-8">
@@ -41,6 +49,7 @@ PAGE = r"""<!doctype html>
   button{min-height:40px;padding:6px 12px} .ap button{min-width:44%;min-height:44px;font-size:15px}
   textarea,input[type=text],select{font-size:16px}
  }
+/*THEME*/
 </style></head><body>
 <header><h1><span data-i18n="dash.heading"></span> <a href="/" class="c" data-i18n="link.chat"></a> <a href="/connect" class="c" data-i18n="chat.connect"></a></h1>
  /*LANG_SWITCH*/
@@ -69,6 +78,7 @@ PAGE = r"""<!doctype html>
 </main>
 <script>
 /*I18N_JS*/
+/*APPROVAL_JS*/
 const $ = id => document.getElementById(id);
 const tok = $("token"); tok.value = sessionStorage.getItem("harnessToken") || "";
 tok.onchange = () => sessionStorage.setItem("harnessToken", tok.value);
@@ -111,19 +121,21 @@ async function refreshTask(){
   const tree=$("tree"); tree.className=""; tree.removeAttribute("data-i18n"); tree.replaceChildren();
   x.agents.forEach(a => { const d=el("div","agent"); d.style.marginLeft=(a.depth*18)+"px";
     d.append(el("b",null,a.id), badge(a.status||"?"), el("div",null,a.task||""));
+    if(a.max_steps){ const done=!["queued","running","cancelling"].includes(a.status), p=done?100:Math.min(100,100*(a.steps||0)/a.max_steps);
+      const pb=el("div","prog"), i=el("i"); i.style.width=p+"%"; pb.append(i); d.append(pb, el("small",null,t("swarm.steps",{s:a.steps||0,max:a.max_steps})+" ")); }
     if(a.answer) d.append(el("small",null,"→ "+String(a.answer).slice(0,300))); tree.append(d); });
   $("result").textContent = x.result==null ? "—" : "["+tr("status",x.stop_reason)+"] "+x.result;
   const ev = await api("GET","/tasks/"+cur+"/events?since="+since); since = ev.next; evcache.push(...ev.events);
-  const box=$("events"); ev.events.forEach(e => box.append(evLine(e)));
+  const box=$("events"); ev.events.filter(e => e.kind!=="progress").forEach(e => box.append(evLine(e)));
   if(ev.events.length) box.scrollTop = box.scrollHeight;
 }
 async function refreshApprovals(){
   const {approvals} = await api("GET","/approvals"); const box=$("approvals"); box.replaceChildren();
   box.className = approvals.length ? "" : "muted"; if(!approvals.length) box.textContent=t("dash.none");
   approvals.forEach(a => { const d=el("div","ap");
-    d.append(el("div","who",t("dash.agentTask",{agent:a.agent,task:a.task})), el("div",null,a.tool+" ["+tr("cat",a.category)+"]"),
-             el("pre",null,JSON.stringify(a.args,null,1)), el("div","muted",a.reason));
-    const ok=el("button",null,t("card.approve")), no=el("button",null,t("card.deny"));
+    d.append(el("div","q",askText(a)), el("div","who",t("dash.agentTask",{agent:a.agent,task:a.task})), el("div",null,a.tool+" ["+tr("cat",a.category)+"]"),
+             el("pre",null,JSON.stringify(a.args,null,1)), el("div","muted",reasonText(a.reason)));
+    const ok=el("button","ok",t("card.approve")), no=el("button","no",t("card.deny"));
     ok.onclick=()=>api("POST","/approvals/"+a.id,{decision:"approve"}).then(refreshApprovals).catch(()=>{});
     no.onclick=()=>api("POST","/approvals/"+a.id,{decision:"deny"}).then(refreshApprovals).catch(()=>{});
     d.append(ok, document.createTextNode(" "), no); box.append(d); });
@@ -188,3 +200,4 @@ setInterval(refresh, 1000); refresh(); setInterval(slow, 5000); slow();
 </script></body></html>
 """
 PAGE = PAGE.replace("/*LANG_CSS*/", LANG_CSS).replace("/*LANG_SWITCH*/", LANG_SWITCH).replace("/*I18N_JS*/", I18N_JS)
+PAGE = PAGE.replace("/*THEME*/", BASE_CSS + DASH_CSS + DASH_EXTRA).replace("/*APPROVAL_JS*/", APPROVAL_JS)
