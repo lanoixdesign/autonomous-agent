@@ -78,14 +78,16 @@ from .harness_chat import CHAT_PAGE
 from .harness_connect import CONNECT_PAGE
 from .harness_settings import SETTINGS_PAGE, WELCOME_PAGE
 from .harness_help import HELP_PAGE
+from .harness_dev import DEV_PAGE
 
 FILE_DOWNLOAD_MAX = 200 * 1024 * 1024   # "My files" downloads
 FILES_LIST_MAX = 500
 from . import pwa, qr, remote
 from .redact import redact
-from . import __version__, export, i18n, schedule, uploads
+from . import __version__, devmode, export, i18n, schedule, uploads
 from .idc import IDC, IDCConfig
 from .keys import role_task
+from . import sandbox as sandbox_mod
 from .theme import THEME_HEAD
 
 LOCAL_HOSTS = ("127.0.0.1", "localhost", "::1")
@@ -260,6 +262,7 @@ class Task:
         self.idc = False                # IDC mode for this conversation (set at creation, can be toggled)
         self.idc_ctrl: Any = None       # idc.IDC controller, kept while the conversation lives
         self.idc_saved: list[dict] = []  # commitments restored from the store (after a restart)
+        self.dev: str | None = None     # developer mode: project name (projects/<name>/), None otherwise
         self.store = store
         self._lock = threading.Condition(threading.RLock())   # also wakes SSE streams on new events
 
@@ -271,7 +274,7 @@ class Task:
                            "created": self.created, "finished": self.finished, "result": self.result,
                            "stop_reason": self.stop_reason, "usage": self.usage, "total": self.total,
                            "agent_usage": self.agent_usage, "agents": list(self.agents.values()),
-                           "turns": self.turns, "history": history, "idc": self.idc,
+                           "turns": self.turns, "history": history, "idc": self.idc, "dev": self.dev,
                            "idc_commitments": self.commitments()})
 
     def commitments(self) -> list[dict]:
@@ -291,6 +294,7 @@ class Task:
         t.total = {**_zero(), **(rec.get("total") or {})}
         t.agent_usage = rec.get("agent_usage") or {}
         t.idc = bool(rec.get("idc"))
+        t.dev = rec.get("dev") if isinstance(rec.get("dev"), str) else None
         t.idc_saved = [c for c in rec.get("idc_commitments") or [] if isinstance(c, dict)]
         t.agents = {a["id"]: a for a in rec.get("agents") or []} or t.agents
         t.events = events
@@ -437,6 +441,7 @@ class Task:
                  "finished": self.finished, "stop_reason": self.stop_reason, "result": self.result,
                  "turns": self.turns, "source": self.source}
             d["idc"] = self.idc
+            d["dev"] = self.dev
             if full:
                 d["idc_state"] = ({**self.idc_ctrl.snapshot(), "list": self.idc_ctrl.commitments}
                                   if self.idc_ctrl is not None else {"list": list(self.idc_saved)})
@@ -510,6 +515,8 @@ class Harness:
         self.settings: dict[str, Any] = {"idc": bool(self.idc_config.enabled)}
         self.public_url: str | None = None   # remote mode: the URL a phone should open (tunnel, LAN...)
         self.control: Any = None             # userconfig.AppControl: Settings page, keys from the UI, restart / quit
+        self.deny_paths: list[Path] = []     # private app data (state dir), never reachable from the sandbox
+        self._projects: Any = None
         self._restore()
         self._sched_thread = None
         if scheduler_tick:
@@ -578,6 +585,21 @@ class Harness:
                 agent.set_idc(task.idc_ctrl)
         elif agent.idc is not None:
             agent.set_idc(None)
+    def _sync_dev(self, task: "Task") -> None:
+        """Developer-mode rules (and the current sandbox state) in the agent's system prompt before a turn."""
+        agent = task.agent
+        if agent is None or not hasattr(agent, "refresh_system"):
+            return
+        extra = ""
+        if task.dev:
+            try:
+                kind = devmode.Projects.kind_of(self.projects().path(task.dev))
+            except devmode.DevError:
+                kind = None
+            extra = devmode.rules(task.dev, kind)
+        agent.extra_rules = extra
+        agent.refresh_system()
+
     def _audit(self, task: Task | None, **entry: Any) -> dict:
         return (TaskAudit(self.audit_path, task) if task is not None else AuditLog(self.audit_path)).record(**entry)
 
@@ -590,11 +612,27 @@ class Harness:
     def _save(self, task: Task, decoded: list[tuple[str, bytes]]) -> list[dict]:
         return uploads.save(self.workspace, task.id, decoded) if decoded else []
 
-    def submit(self, text: str, files: Any = None, source: str = "chat", idc: bool | None = None) -> Task:
+    def projects(self) -> "devmode.Projects":
+        """Developer mode projects (<work folder>/projects/), or DevError if there is no work folder."""
+        if self.workspace is None:
+            raise devmode.DevError("no_workspace", "developer mode needs a work folder")
+        with self._lock:
+            if self._projects is None or self._projects.ws != Path(self.workspace).resolve():
+                self._projects = devmode.Projects(self.workspace, deny=list(self.deny_paths))
+            return self._projects
+
+    def sandbox_on(self) -> bool:
+        return self.control.sandbox_on() if self.control is not None else False
+
+    def submit(self, text: str, files: Any = None, source: str = "chat", idc: bool | None = None,
+               dev: str | None = None) -> Task:
         if self.stopping.is_set():
             raise Busy("harness is shutting down")
         decoded = self._decode(files)          # validate everything before creating anything
+        if dev is not None:
+            self.projects().path(dev)          # DevError if the project does not exist
         task = Task(text, self.store, source)
+        task.dev = dev
         with self._lock:
             task.idc = bool(self.settings["idc"] if idc is None else idc)
         saved = self._save(task, decoded)
@@ -673,6 +711,7 @@ class Harness:
                         agent.messages = agent.messages[:1] + [m for m in task.history[1:] if isinstance(m, dict)]
                     task.agent = agent
                 self._sync_idc(task)
+                self._sync_dev(task)
                 res = task.agent.run(text)
                 task.result, task.stop_reason = res.answer, res.stop_reason
                 task.finish_turn(res)
@@ -1419,6 +1458,26 @@ def make_handler(h: Harness, token: str | None, local_only: bool, auth: "remote.
                        extra={"Content-Disposition": f'attachment; filename="{ascii_name}"; filename*=UTF-8\'\'{quote(name)}',
                               "Content-Security-Policy": "sandbox; default-src 'none'"})
 
+        def _preview(self, raw: str) -> None:
+            """/preview/<token>/<project>/<file>: a project file for the sandboxed preview iframe. The token
+            (HMAC of the project name with a per-run secret) is the authorization, so it also works in remote
+            mode; responses carry a CSP sandbox (opaque origin, no network, no form posts)."""
+            if not self._host_ok():
+                return self._send(403, {"error": "bad Host header"})
+            parts = raw.split("/", 4)          # "", "preview", token, project, rest
+            if len(parts) < 4:
+                return self._send(404, {"error": "not found"})
+            if len(parts) == 4:                # /preview/<tok>/<project> -> trailing slash for relative links
+                return self._send(301, {"moved": raw + "/"}, extra={"Location": raw + "/"})
+            try:
+                body, ctype = h.projects().preview_file(parts[2], parts[3], parts[4])
+            except devmode.DevError as e:
+                return self._send(404, body=b"Not found", ctype="text/plain; charset=utf-8",
+                                  extra={"Content-Security-Policy": "sandbox; default-src 'none'"}) if e.code != "too_big" else \
+                    self._send(413, {"error": str(e)})
+            self._send(200, body=body, ctype=ctype, extra={"Content-Security-Policy": devmode.PREVIEW_CSP,
+                                                         "X-Frame-Options": "SAMEORIGIN"})
+
         def do_GET(self) -> None:  # noqa: N802
             u = urlparse(self.path)
             path, q = u.path.rstrip("/") or "/", parse_qs(u.query)
@@ -1431,9 +1490,11 @@ def make_handler(h: Harness, token: str | None, local_only: bool, auth: "remote.
                 return self._send(200, {"authenticated": who is not None, "via": who, "remote": auth.remote,
                                         "required": auth.required, "public_url": h.public_url})
             html_settings = path == "/settings" and "text/html" in (self.headers.get("Accept") or "")
-            if path in ("/", "/chat", "/dashboard", "/connect", "/welcome", "/help") or html_settings:
+            if path.startswith("/preview/"):
+                return self._preview(u.path)
+            if path in ("/", "/chat", "/dashboard", "/connect", "/welcome", "/help", "/dev") or html_settings:
                 page = {"/dashboard": PAGE, "/connect": CONNECT_PAGE, "/settings": SETTINGS_PAGE,
-                        "/welcome": WELCOME_PAGE, "/help": HELP_PAGE}.get(path, CHAT_PAGE)
+                        "/welcome": WELCOME_PAGE, "/help": HELP_PAGE, "/dev": DEV_PAGE}.get(path, CHAT_PAGE)
                 if self._host_ok():
                     lang = (q.get("lang") or [None])[0]
                     default = h.control.cfg.get("lang") if h.control is not None else None
@@ -1474,9 +1535,24 @@ def make_handler(h: Harness, token: str | None, local_only: bool, auth: "remote.
                 return self._send(200, {"available": True, **h.list_files()})
             if path == "/files/download":
                 return self._workspace_file((q.get("path") or [""])[0])
+            if path == "/dev/projects":
+                try:
+                    return self._send(200, {"available": True, "projects": h.projects().list(),
+                                            "sandbox": h.sandbox_on(), "python": bool(sandbox_mod.python_exe())})
+                except devmode.DevError:
+                    return self._send(200, {"available": False, "projects": [], "sandbox": h.sandbox_on()})
+            if path == "/dev/zip":
+                try:
+                    body, name = h.projects().zip((q.get("project") or [""])[0])
+                except devmode.DevError as e:
+                    return self._send(404 if e.code in ("no_project", "bad_name") else 400, {"error": str(e), "code": e.code})
+                h._audit(None, event="dev_zip", project=name, bytes=len(body))
+                return self._send(200, body=body, ctype="application/zip",
+                                  extra={"Content-Disposition": f'attachment; filename="{name}"',
+                                         "Content-Security-Policy": "sandbox; default-src 'none'"})
             if path == "/config":
                 lim = h.upload_limits
-                return self._send(200, {"uploads": h.workspace is not None,
+                return self._send(200, {"uploads": h.workspace is not None, "sandbox": h.sandbox_on(),
                                         "max_upload_bytes": lim.max_file_bytes,
                                         "max_message_bytes": lim.max_message_bytes})
             if path == "/approvals":
@@ -1533,8 +1609,13 @@ def make_handler(h: Harness, token: str | None, local_only: bool, auth: "remote.
                     return
                 if data.get("idc") is not None and not isinstance(data.get("idc"), bool):
                     return self._send(400, {"error": "'idc' must be true or false"})
+                dev = data.get("dev")
+                if dev is not None and not isinstance(dev, str):
+                    return self._send(400, {"error": "'dev' must be a project name"})
                 try:
-                    return self._send(201, h.submit(text, data.get("files"), idc=data.get("idc")).snapshot())
+                    return self._send(201, h.submit(text, data.get("files"), idc=data.get("idc"), dev=dev).snapshot())
+                except devmode.DevError as e:
+                    return self._send(404, {"error": str(e), "code": e.code})
                 except uploads.UploadError as e:
                     return self._send(e.status, {"error": str(e)})
                 except Busy as e:
@@ -1561,6 +1642,19 @@ def make_handler(h: Harness, token: str | None, local_only: bool, auth: "remote.
                     return self._send(404, {"error": "unknown task"})
                 except Busy as e:
                     return self._send(409, {"error": str(e)})
+            if path in ("/dev/projects", "/dev/test"):
+                try:
+                    if path == "/dev/projects":
+                        info = h.projects().create(str(data.get("name") or ""), str(data.get("kind") or ""),
+                                                   str(data.get("lang") or h.lang))
+                        h._audit(None, event="dev_create", project=info["name"], kind=info["kind"])
+                        return self._send(201, info)
+                    res = h.projects().test(str(data.get("project") or ""))
+                    h._audit(None, event="dev_test", project=data.get("project"), ok=res["ok"], runner=res.get("runner"))
+                    return self._send(200, res)
+                except devmode.DevError as e:
+                    code = 404 if e.code in ("no_project",) else (409 if e.code == "exists" else 400)
+                    return self._send(code, {"error": str(e), "code": e.code})
             if path == "/files":
                 try:
                     return self._send(201, {"saved": h.add_files(data.get("files"))})

@@ -518,7 +518,8 @@ async function popups(){
     const det=el("details"); det.append(el("summary",null,t("card.tech")), el("div","tech",t("card.techTool",{tool:a.tool,category:tr("cat",a.category),agent:a.agent})),
       el("div","tech",reasonText(a.reason)), el("div","tech",t("card.conversation",{name:conv?short(conv.task,60):a.task})), el("pre",null,JSON.stringify(a.args,null,2)));
     c.append(top, q, el("div","q2",t("card.question")));
-    if(I18N.en["hint."+a.category]!=null) c.append(el("p","hint",tr("hint",a.category)));
+    if(I18N.en["hint."+a.category]!=null){ let sb=false; try{ sb=!!limits.sandbox; }catch(e){}
+    c.append(el("p","hint",(a.category==="execute" && sb) ? t("hint.executeSandbox") : tr("hint",a.category))); }
     c.append(det);
     const b=el("div","btns"), ok=el("button","ok",t("card.allow")), no=el("button","no",t("card.refuse"));
     const answer=async (d,remember)=>{ if(answering.has(a.id)) return; answering.add(a.id); ok.disabled=no.disabled=true;

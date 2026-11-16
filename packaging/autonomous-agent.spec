@@ -37,7 +37,7 @@ if sys.platform == "darwin":
               argv_emulation=False, target_arch=None, codesign_identity=None)
     coll = COLLECT(exe, a.binaries, a.datas, name=NAME)
     app = BUNDLE(coll, name=f"{NAME}.app", bundle_identifier="io.github.lanoixdesign.autonomous-agent",
-                 info_plist={"CFBundleShortVersionString": os.environ.get("APP_VERSION", "0.7.0"),
+                 info_plist={"CFBundleShortVersionString": os.environ.get("APP_VERSION", "0.8.0"),
                              "CFBundleDisplayName": "Autonomous Agent", "LSMinimumSystemVersion": "11.0",
                              "NSHighResolutionCapable": True})
 else:

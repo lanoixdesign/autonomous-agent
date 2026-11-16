@@ -122,6 +122,8 @@ SETTINGS_PAGE = r"""<!doctype html>
  #tokbox{word-break:break-all;font:13px var(--mono);background:var(--sunk);border:1px solid var(--line);border-radius:10px;padding:10px;margin-top:8px}
  #tokbox[hidden]{display:none}
  fieldset{border:0;padding:0;margin:0} fieldset:disabled{opacity:.6}
+ .sbx{margin:10px 0 6px;padding:10px 14px;border-radius:12px;font-weight:600;background:rgba(34,197,94,.12);border:1px solid rgba(34,197,94,.45);color:var(--t-ok)}
+ .sbx.off{background:rgba(248,113,113,.12);border-color:rgba(248,113,113,.55);color:var(--t-bad)} body:not(.simple) #sbxsimple{display:none}
  body.simple .xp{display:none!important} #simplebar{display:none} body.simple #simplebar{display:flex}
  .disp{display:grid;grid-template-columns:repeat(auto-fill,minmax(250px,1fr));gap:4px 18px;align-items:start}
  @media (max-width:760px){
@@ -142,7 +144,7 @@ SETTINGS_PAGE = r"""<!doctype html>
 <div id="restartbar" class="banner restart" hidden><span id="restartwhat"></span><button id="restart1" class="primary" data-i18n="set.restart"></button></div>
 <div class="wrap">
  <nav class="side" data-i18n-aria="set.heading">
-  <a href="#keys" data-i18n="set.sec.keys"></a><a href="#general" data-i18n="set.sec.general"></a><a href="#safety" class="xp" data-i18n="set.sec.safety"></a>
+  <a href="#keys" data-i18n="set.sec.keys"></a><a href="#general" data-i18n="set.sec.general"></a><a href="#sandbox" data-i18n="set.sec.sandbox"></a><a href="#safety" class="xp" data-i18n="set.sec.safety"></a>
   <a href="#idc" class="xp" data-i18n="set.sec.idc"></a><a href="#phone" data-i18n="set.sec.phone"></a><a href="#app" data-i18n="set.sec.app"></a></nav>
  <fieldset id="all" class="cols">
  <section id="keys" class="card"><h2 data-i18n="set.sec.keys"></h2>
@@ -202,6 +204,11 @@ SETTINGS_PAGE = r"""<!doctype html>
   <div class="row"><button id="gsave" class="blue" data-i18n="set.save"></button></div>
   </div>
  </section>
+ <section id="sandbox" class="card"><h2><span data-i18n="sbx.title"></span><button class="tip" data-tip="tip.sandbox"></button></h2><p class="muted" data-i18n="sbx.help"></p>
+  <div id="sbxstate" class="sbx" role="status"></div>
+  <p id="sbxsimple" class="muted" data-i18n="sbx.simple"></p>
+  <div class="xp"><label class="switch"><input type="checkbox" id="sbxon"><span data-i18n="sbx.switch"></span></label></div>
+  <details><summary data-i18n="sbx.allowedT"></summary><p class="muted" data-i18n="sbx.allowed"></p><p class="muted" id="sbxlim"></p></details></section>
  <section id="safety" class="card xp"><h2><span data-i18n="set.sec.safety"></span><button class="tip" data-tip="tip.safety"></button></h2><p class="muted" data-i18n="set.safety.help"></p>
   <table class="perm"><tbody id="perms"></tbody></table><p id="permtools" class="muted"></p>
   <div class="row"><button id="psave" class="blue" data-i18n="set.save"></button></div></section>
@@ -244,7 +251,7 @@ async function load(){
   try{ V=await api("GET","/app/settings"); P=(await api("GET","/app/providers")).providers; }catch(e){ return fail(e); }
   draw();
 }
-function draw(){ if(!V) return; document.body.classList.toggle("simple",V.ui_mode!=="expert"); drawKeys(); drawGeneral(); drawDisplay(); drawPerms(); drawIdc(); drawPhone(); drawApp(); drawRestart(); }
+function draw(){ if(!V) return; document.body.classList.toggle("simple",V.ui_mode!=="expert"); drawKeys(); drawGeneral(); drawDisplay(); drawPerms(); drawSandbox(); drawIdc(); drawPhone(); drawApp(); drawRestart(); }
 function drawRestart(){ const r=V.restart_needed||[], b=$("restartbar"); b.hidden=!r.length;
   $("restartwhat").textContent=t("set.restartNeeded")+" "+r.map(k=>tr("rf",k)).join(", "); $("restart1").disabled=$("restart2").disabled=!V.can_restart; }
 // ---------------- keys
@@ -360,6 +367,13 @@ document.querySelectorAll('input[name="uimode"]').forEach(i=>i.onchange=()=>setD
 document.querySelectorAll('input[name="trmode"]').forEach(i=>i.onchange=()=>setDisplay({trace:i.value}));
 $("toexpert").onclick=()=>setDisplay({ui_mode:"expert"});
 $("bigtext").onchange=e=>setBig(e.target.checked);
+// ---------------- sandbox (always on in Simple mode; Expert can turn it off after a clear warning)
+function drawSandbox(){ const sb=V.sandbox||{saved:true,effective:true,forced:true}, st=$("sbxstate");
+  st.textContent=t(sb.effective?"sbx.on":"sbx.off"); st.className="sbx"+(sb.effective?"":" off");
+  $("sbxon").checked=!!sb.saved; $("sbxlim").textContent=t("sbx.limits",{s:60}); }
+$("sbxon").onchange=async e=>{ const on=e.target.checked;
+  if(!on && !confirm(t("sbx.confirmOff"))){ e.target.checked=true; return; }
+  try{ V=await api("POST","/app/settings",{sandbox:on}); draw(); toast(t(on?"sbx.onSaved":"sbx.offSaved"), !on); }catch(err){ fail(err); draw(); } };
 // ---------------- permissions
 function drawPerms(){ const tb=$("perms"); tb.replaceChildren(); const pm=V.permissions;
   pm.categories.forEach(c=>{ const tr_=el("tr"), a=el("td"), b=el("td"); a.append(el("div","pc",tr("cat",c)), el("div","pd",tr("perm",c)));

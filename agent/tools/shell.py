@@ -3,12 +3,19 @@ from __future__ import annotations
 
 import subprocess
 
+from .. import sandbox
 from ..redact import scrubbed_env
 from . import Tool, ToolContext, ToolError, params, s
 
 
 def _shell(ctx: ToolContext, a: dict) -> str:
     cmd = a["command"]
+    if ctx.sandbox_on():
+        try:
+            return sandbox.run(ctx.workspace, cmd, int(a.get("timeout") or ctx.shell_timeout),
+                               ctx.max_output, ctx.deny_paths)
+        except sandbox.SandboxError as e:
+            raise ToolError(str(e))
     timeout = min(int(a.get("timeout") or ctx.shell_timeout), 600)
     try:
         r = subprocess.run(cmd, shell=True, cwd=ctx.workspace, capture_output=True, text=True,
@@ -22,7 +29,9 @@ def _shell(ctx: ToolContext, a: dict) -> str:
 
 
 TOOLS = [
-    Tool("shell", "Run a shell command in the workspace (bash/sh). Secret env vars are removed.", "execute",
+    Tool("shell", "Run a shell command in the workspace (bash/sh). Secret env vars are removed. "
+         "When the sandbox is on: one simple allowed command (ls, cat, grep, find, python file.py, pytest...), "
+         "paths inside the workspace only, no pipes/redirections, no network.", "execute",
          params(["command"], command=s("command line"), timeout={"type": "integer", "description": "seconds"}),
          _shell, "command", "command"),
 ]
