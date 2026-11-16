@@ -68,6 +68,44 @@ def swarm_mod_max_handoffs() -> int:
     return MAX_HANDOFFS
 
 
+# v0.9.4: a request too large for the key's per-minute token budget (Groq free: 8000) is shortened
+# step by step instead of failing: answer budget, then old tool outputs and history, then fewer tools.
+CORE_TOOLS = ("read_file", "list_files", "search_files", "write_file", "edit_file", "shell", "web_fetch",
+              "web_search", "memory_recall", "memory_save")
+SHRINK = ({"max_tokens": 1024, "tool_chars": 2000, "keep": None, "core": False},
+          {"max_tokens": 700, "tool_chars": 600, "keep": 8, "core": True},
+          {"max_tokens": 512, "tool_chars": 300, "keep": 2, "core": True, "system_chars": 2500})
+
+
+def compact_messages(msgs: list[dict], tool_chars: int, keep: int | None = None,
+                     system_chars: int | None = None) -> list[dict]:
+    """Shorter copy of a conversation: long tool outputs / old texts cut, only the last `keep` messages of
+    the history (never starting on an orphan tool answer), system prompt optionally cut."""
+    out: list[dict] = []
+    head = [m for m in msgs[:1] if m.get("role") == "system"]
+    rest = msgs[len(head):]
+    if keep is not None and len(rest) > keep:
+        last_user = max((i for i, m in enumerate(rest) if m.get("role") == "user"), default=0)
+        start = min(last_user, max(0, len(rest) - keep))
+        start = max(start, len(rest) - keep) if keep <= 2 else start
+        while start < len(rest) and rest[start].get("role") == "tool":
+            start += 1
+        if keep <= 2:                               # last resort: the user's request (+ what follows it)
+            start = last_user
+        rest = rest[start:]
+    for m in head:
+        c = m.get("content") or ""
+        out.append({**m, "content": c[:system_chars] + "\n…" if system_chars and len(c) > system_chars else c})
+    n = len(rest)
+    for i, m in enumerate(rest):
+        c = m.get("content")
+        lim = tool_chars if m.get("role") == "tool" else (tool_chars * 3 if i < n - 1 else None)
+        if isinstance(c, str) and lim and len(c) > lim:
+            m = {**m, "content": c[:lim] + f"\n… ({len(c) - lim} characters cut to fit the key's limit)"}
+        out.append(m)
+    return out
+
+
 FORMAT_RETRIES = 3     # a malformed tool call (provider 400 tool_use_failed) is retried this many times
 FORMAT_NOTE = ("Your previous reply was rejected because the tool call was malformed. Call ONE tool at a time, "
                "only with a tool from the list, with valid JSON arguments that match its schema (omit optional "
@@ -242,7 +280,10 @@ class Agent:
             except LLMError as e:
                 if self.cancel is not None and self.cancel.is_set():
                     return self._stop(st, "cancelled", "Stopped: cancelled.")
-                return self._stop(st, "llm_error", f"LLM error: {e}")
+                self._audit(event="llm_error", code=getattr(e, "code", None), status=getattr(e, "status", None),
+                            error=str(e)[:500])
+                from .llm import friendly
+                return self._stop(st, "llm_error", friendly(e, self.lang or self.ui_lang))
             st.steps += 1
             st.tokens += reply.total_tokens
             st.cost += getattr(reply, "cost", 0.0) or 0.0
@@ -346,10 +387,37 @@ class Agent:
         again up to FORMAT_RETRIES times, with a corrective note (not kept in the history) and a lower
         temperature, instead of ending the agent or the task."""
         note, temp = None, None
-        for attempt in range(FORMAT_RETRIES + 1):
+        level, msgs, tools, cap = 0, None, self.tool_schemas(), None
+        attempt = 0
+        while True:
             try:
-                return self._chat(self.tool_schemas(), note, temp)
+                return self._chat(tools, note, temp, messages=msgs, max_tokens=cap)
             except LLMError as e:
+                if getattr(e, "code", None) == "too_large" and level < len(SHRINK) and not (
+                        self.cancel is not None and self.cancel.is_set()):
+                    def size() -> int:
+                        return len(json.dumps([msgs if msgs is not None else self.messages, tools],
+                                              ensure_ascii=False, default=str)) + int(cap or 10 ** 6)
+                    before = size()
+                    while level < len(SHRINK):          # skip a level that would send the same request again
+                        sh = SHRINK[level]
+                        level += 1
+                        msgs = compact_messages(self.messages, sh["tool_chars"], sh["keep"], sh.get("system_chars"))
+                        if sh["keep"] is None or sh["keep"] > 2:
+                            self.messages[:] = msgs       # keep the shorter history: the next steps fit too
+                            msgs = None
+                        if sh["core"]:
+                            tools = [t for t in self.tool_schemas()
+                                     if (t.get("function") or {}).get("name") in CORE_TOOLS]
+                        cap = min(cap or sh["max_tokens"], sh["max_tokens"])
+                        if size() < before:
+                            break
+                    else:
+                        if size() >= before:
+                            raise
+                    self._audit(event="llm_retry", reason="too_large", level=level, error=str(e)[:300])
+                    self.on_event("keys", {"action": "shrink", "level": level})
+                    continue
                 if attempt >= FORMAT_RETRIES or not is_tool_format_error(e) or (
                         self.cancel is not None and self.cancel.is_set()):
                     raise
@@ -358,15 +426,18 @@ class Agent:
                 self.on_event("retry", {"attempt": attempt + 1, "max": FORMAT_RETRIES, "reason": "tool_format"})
                 note = {"role": "system", "content": FORMAT_NOTE + _provider_reason(e)}
                 temp = 0.0 if attempt else 0.1
-        raise AssertionError("unreachable")
+                attempt += 1
 
-    def _chat(self, tools: list[dict], note: dict | None = None, temperature: float | None = None) -> Any:
+    def _chat(self, tools: list[dict], note: dict | None = None, temperature: float | None = None,
+              messages: list[dict] | None = None, max_tokens: int | None = None) -> Any:
         token = CALLER.set({"holder": self.holder, "task": self.key_task, "label": self.agent_id,
                             "cancel": self.cancel,     # a pause waiting for a key wakes up on cancel
                             "notify": lambda kind, data: self.on_event("keys", {"action": kind, **data}),
-                            **({"temperature": temperature} if temperature is not None else {})})
+                            **({"temperature": temperature} if temperature is not None else {}),
+                            **({"max_tokens": max_tokens} if max_tokens else {})})
+        base = self.messages if messages is None else messages
         try:
-            return self.llm.chat(self.messages + [note] if note else self.messages, tools)
+            return self.llm.chat(base + [note] if note else base, tools)
         finally:
             CALLER.reset(token)
 
