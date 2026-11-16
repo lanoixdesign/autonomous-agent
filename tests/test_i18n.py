@@ -25,9 +25,10 @@ REPO = Path(__file__).resolve().parent.parent
 from agent.harness_connect import CONNECT_PAGE  # noqa: E402
 
 from agent.harness_settings import SETTINGS_PAGE, WELCOME_PAGE  # noqa: E402
+from agent.harness_help import HELP_PAGE  # noqa: E402
 
 PAGES = {"chat": CHAT_PAGE, "dashboard": PAGE, "connect": CONNECT_PAGE, "settings": SETTINGS_PAGE,
-         "welcome": WELCOME_PAGE}
+         "welcome": WELCOME_PAGE, "help": HELP_PAGE}
 
 
 def test_same_keys_and_placeholders_in_both_languages():
@@ -101,14 +102,14 @@ def test_no_hardcoded_ui_text(name):
     assert not re.findall(r'confirm\("[A-Za-z]', js)
 
 
-@pytest.mark.parametrize("path", ["/", "/chat", "/dashboard", "/connect", "/welcome"])
+@pytest.mark.parametrize("path", ["/", "/chat", "/dashboard", "/connect", "/welcome", "/help"])
 def test_pages_served_in_both_languages_with_switch(server, path):  # noqa: F811
     base, _ = server(lambda: MockLLM())
     for lang, word in (("fr", "Nouvelle"), ("en", "New")):
         html = urllib.request.urlopen(f"{base}{path}?lang={lang}").read().decode()
         assert f'<html lang="{lang}">' in html
         data = json.loads(re.search(r"const I18N = (\{.*?\});\n", html).group(1))
-        assert data["fr"]["card.approve"] == "Approuver" and data["en"]["card.approve"] == "Approve"
+        assert data["fr"]["card.approve"] == "Autoriser" and data["en"]["card.approve"] == "Allow"
         assert word in json.dumps(data, ensure_ascii=False)
         assert 'id="lang"' in html and 'data-lang="en"' in html and 'data-lang="fr"' in html
         # default from the browser, remembered choice, ?lang= override
@@ -120,7 +121,9 @@ def test_pages_served_in_both_languages_with_switch(server, path):  # noqa: F811
 
 
 def test_render_page_escapes_script_end():
-    assert b"</script>" not in render_page(CHAT_PAGE).split(b"<script>", 1)[1][:-len(b"</script></body></html>\n")]
+    page = render_page(CHAT_PAGE)
+    main = page.split(b"</head>", 1)[1].split(b"<script>", 1)[1]          # the page script (after the <head> theme script)
+    assert b"</script>" not in main[:-len(b"</script></body></html>\n")]
 
 
 def test_markdown_export_in_french(server, ws):  # noqa: F811

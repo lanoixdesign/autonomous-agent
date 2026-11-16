@@ -104,9 +104,9 @@ def test_approval_question_and_reason_are_human_and_translated(lang):
     d = getattr(i18n, lang.upper())
     js = ("const D=" + json.dumps(d) + ";\n"
           "function t(k,v){ let s=D[k]; if(s==null) return k; for(const n in (v||{})) s=s.split('{'+n+'}').join(v[n]); return s; }\n"
-          "function tr(p,v){ const k=p+'.'+v; return D[k]!=null ? t(k) : String(v); }\n" + APPROVAL_JS + "\n"
+          "function tr(p,v,x){ const k=p+'.'+v; return D[k]!=null ? t(k,x) : String(v); }\n" + APPROVAL_JS + "\n"
           "console.log(JSON.stringify([askText({tool:'write_file',category:'write',args:{path:'report.md'}}),"
-          "askText({tool:'spawn_agents',category:'delegate',args:{tasks:['a','b','c']}}),"
+          "askText({tool:'spawn_agents',category:'delegate',args:{tasks:['Researcher: find facts','Analyst: compare','Writer: draft']}}),"
           "askText({tool:'web_fetch',category:'network',args:{url:'https://example.com/x'}}),"
           "askText({tool:'mystery',category:'send',args:{}}),"
           "reasonText(\"category default 'write: ask'\"), reasonText(\"tool rule 'shell: ask'\"),"
@@ -114,13 +114,17 @@ def test_approval_question_and_reason_are_human_and_translated(lang):
           "reasonText('something else')]));")
     out = json.loads(subprocess.run(["node", "-e", js], capture_output=True, text=True, check=True).stdout)
     if lang == "en":
-        assert out[:4] == ["Allow writing report.md?", "Allow launching 3 sub-agents?",
-                           "Allow fetching a page from example.com?", "Allow mystery (send)?"]
+        assert out[:4] == ["The agent wants to write the file report.md",
+                           "The agent wants to create 3 helpers to work for you: Researcher, Analyst, Writer",
+                           "The agent wants to open a web page on example.com",
+                           "The agent wants to send something that other people will see"]
         assert out[4] == "Default for “write” actions: ask" and out[5] == "Rule for shell: ask"
         assert out[6].endswith("(--yolo does not apply to this category)")
     else:
-        assert out[:4] == ["Autoriser l'écriture de report.md ?", "Autoriser le lancement de 3 sous-agents ?",
-                           "Autoriser la lecture d'une page de example.com ?", "Autoriser mystery (envoi) ?"]
+        assert out[:4] == ["L'agent veut écrire le fichier report.md",
+                           "L'agent veut créer 3 assistants pour vous aider : Researcher, Analyst, Writer",
+                           "L'agent veut ouvrir une page web sur example.com",
+                           "L'agent veut envoyer quelque chose que d'autres personnes verront"]
         assert out[4] == "Règle par défaut pour les actions « écriture » : demander"
         assert "--yolo ne s'applique pas" in out[6]
     assert out[7] == "something else"

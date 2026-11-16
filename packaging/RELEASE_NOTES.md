@@ -1,4 +1,15 @@
-**New in 0.5.0 / Nouveautés de la 0.5.0 — no terminal at all / plus aucun terminal**
+**New in 0.6.0 / Nouveautés de la 0.6.0 — made for beginners, with a day mode / pensé pour les débutants, avec un mode jour**
+
+- ☀ **Day / ☾ Night theme**: a sun/moon button on every page (and in the phone menu); Settings → Theme: Day / Night / Automatic (default: follows your computer). The light theme meets WCAG AA contrast. / **Thème Jour / Nuit** : un bouton soleil/lune sur chaque page (et dans le menu du téléphone) ; Réglages → Thème : Jour / Nuit / Automatique (par défaut : suit votre ordinateur). Le thème clair respecte le contraste WCAG AA.
+- Questions in plain words: "The agent wants to write the file report.md. Do you allow it?" with big ✓ Allow / ✕ Refuse buttons; technical details folded. / Des questions en mots simples : « L'agent veut écrire le fichier report.md. Vous l'autorisez ? » avec de grands boutons ✓ Autoriser / ✕ Refuser.
+- The chat starts with example tasks and a short guided tour; a new **Help** tab explains everything in 4 steps. / Le chat s'ouvre sur des exemples et une courte visite guidée ; un nouvel onglet **Aide** explique tout en 4 étapes.
+- "What the agent did" in sentences (Technical view in Settings). / « Ce qu'a fait l'agent » en phrases (vue Technique dans Réglages).
+- 📁 **My files**: see, add and download your files; files the agent creates get a ⬇ Download button. / **Mes fichiers** : voir, ajouter et télécharger vos fichiers ; les fichiers créés par l'agent ont un bouton ⬇ Télécharger.
+- Wizard: "Try without a key" first, Groq recommended (free) with a step-by-step guide, the service is recognised from the key. / Assistant : « Essayer sans clé » en premier, Groq recommandé (gratuit) avec un guide pas à pas, service reconnu d'après la clé.
+- Settings in **Simple** or **Expert** mode, ❓ help on each setting, larger text option, error messages translated. / Réglages en mode **Simple** ou **Expert**, aide ❓ sur chaque réglage, texte plus grand, messages d'erreur traduits.
+- Unchanged safety: send/spend are always asked, keys stay masked and local. / Sécurité inchangée : envoi/dépense toujours demandés, clés masquées et locales.
+
+**Also in 0.5.0 / Aussi dans la 0.5.0 — no terminal at all / plus aucun terminal**
 
 - ⚙ **Settings page** (EN/FR): add, edit, delete and test API keys per use, with limits (requests / tokens / cost per day or month) and a failover order; keys shown masked with their usage; changes apply without a restart. / **Page Réglages** : ajouter, modifier, supprimer et tester les clés d'API par usage, avec limites et ordre de relais ; clés masquées avec leur consommation ; changements appliqués sans redémarrage.
 - Keys stored locally in a private file (0600) in `~/AutonomousAgent/data`, or the system keychain if available; never sent back to the browser, never logged, never in the audit. Settings can only be changed from the computer running the agent (`AGENT_REMOTE_SETTINGS=1` + sign-in + CSRF to allow phones). / Clés stockées localement dans un fichier privé (0600), ou dans le trousseau ; jamais renvoyées au navigateur, ni journalisées, ni dans l'audit. Réglages modifiables seulement depuis l'ordinateur de l'agent.
@@ -7,14 +18,6 @@
 - **Quit** and **Restart** buttons; double-clicking again just reopens the browser; no console window on Windows. / Boutons **Quitter** et **Redémarrer** ; un nouveau double-clic rouvre le navigateur ; plus de console sous Windows.
 - Navigation fixed: Chat | Dashboard | Settings | Connect tabs on every page (☰ menu on phones), "← Back to chat", browser back/forward. / Navigation corrigée : onglets sur chaque page, « ← Retour au chat », retour/avance du navigateur.
 - Collapsible work trace in the chat ("How the agent worked · 3 agents · 8 actions"), closed by default; approval cards stay visible. / Trace de travail repliable dans le chat, fermée par défaut ; les cartes de validation restent visibles.
-
-**Also in 0.4.0 / Aussi dans la 0.4.0 — a new look / un nouveau look**
-
-- Dark neon interface for the chat, the dashboard and the phone pages (purple glow, neon blue/purple accents, visible keyboard focus). / Interface néon sombre pour le chat, le tableau de bord et les pages mobiles (halo violet, accents bleu/violet néon, focus clavier visible).
-- Live swarm graph: sub-agents appear as cards around the coordinator, with real progress (steps / budget); when they finish they merge into a document with a link to the answer and the files written. / Graphe de l'essaim en direct : les sous-agents apparaissent en cartes autour du coordinateur, avec leur vraie progression ; à la fin ils fusionnent en un document qui mène à la réponse et aux fichiers écrits.
-- Approval cards ask a plain question ("Allow writing report.md?" / « Autoriser l'écriture de report.md ? »), with the reason translated; send/spend are still never remembered. / Les cartes de validation posent une question claire, avec la raison traduite ; envoi/dépense ne sont toujours jamais retenus.
-- "Agent is thinking…" indicator, timestamps on your messages. / Indicateur « L'agent réfléchit… », heure sur vos messages.
-- Since 0.3.0: use it from your phone (`--remote`, QR pairing, Tailscale / Cloudflare). / Depuis la 0.3.0 : utilisable depuis le téléphone.
 
 **Desktop builds — no command line needed / Versions de bureau — sans ligne de commande**
 

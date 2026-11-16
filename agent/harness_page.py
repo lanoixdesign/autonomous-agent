@@ -1,12 +1,12 @@
 """The harness compact dashboard (served at /dashboard; the chat page is harness_chat.py).
 Plain HTML + JS, no external resources. Bilingual (EN/FR): strings come from agent/i18n.py."""
 from .i18n_js import I18N_JS, LANG_CSS, LANG_SWITCH
-from .theme import APPROVAL_JS, BASE_CSS, DASH_CSS, NAV_CSS, NAV_HTML, NAV_JS
+from .theme import APPROVAL_JS, BASE_CSS, DASH_CSS, NAV_CSS, NAV_HTML, NAV_JS, THEME_BTN, TIP_CSS, TIP_JS
 
 DASH_EXTRA = r"""
- .prog{height:6px;background:#0D0D14;border:1px solid #2A2A35;border-radius:4px;overflow:hidden;margin:4px 0 2px}
+ .prog{height:6px;background:var(--sunk);border:1px solid var(--line);border-radius:4px;overflow:hidden;margin:4px 0 2px}
  .prog i{display:block;height:100%;background:linear-gradient(90deg,#00D4FF,#38BDF8);box-shadow:0 0 8px #00D4FF;transition:width .4s}
- .ap .q{color:#fff;font-weight:700;font-size:15px;text-align:center;margin:2px 0 6px}
+ .ap .q{color:var(--strong);font-weight:700;font-size:15px;text-align:center;margin:2px 0 6px}
  .ap button.ok{background:#2563EB!important;border-color:#2563EB!important;color:#fff} .ap button.no{background:#374151!important;border-color:#374151!important;color:#fff}
 """
 
@@ -16,7 +16,7 @@ PAGE = r"""<!doctype html>
 <title data-i18n-doc="dash.pageTitle">autonomous-agent harness</title>
 <style>
  body{font:14px/1.4 system-ui,sans-serif;margin:0;background:#f6f7f9;color:#1d2127}
- header{background:#1d2127;color:#fff;padding:10px 16px;display:flex;gap:12px;align-items:center}
+ header{background:var(--panel2);color:var(--strong);padding:10px 16px;display:flex;gap:12px;align-items:center}
  header h1{font-size:16px;margin:0} header input{width:200px}
  main{display:grid;grid-template-columns:320px 1fr 360px;gap:12px;padding:12px}
  section{background:#fff;border:1px solid #dde1e6;border-radius:8px;padding:10px;min-width:0}
@@ -79,6 +79,7 @@ PAGE = r"""<!doctype html>
 <script>
 /*I18N_JS*/
 /*NAV_JS*/
+/*TIP_JS*/
 /*APPROVAL_JS*/
 const $ = id => document.getElementById(id);
 const tok = $("token"); tok.value = sessionStorage.getItem("harnessToken") || "";
@@ -104,6 +105,7 @@ function select(id){ cur=id; since=0; evcache=[]; $("events").replaceChildren();
 function badge(s){ return el("span","st "+s,tr("status",s)); }
 async function refreshTasks(){
   const {tasks} = await api("GET","/tasks"); const box=$("tasks"); box.replaceChildren();
+  if(!tasks.length){ box.append(el("div","muted",t("dash.noTasks"))); return; }
   tasks.slice().reverse().forEach(x => { const d=el("div","task"+(x.id===cur?" sel":""));
     d.append(el("span",null,x.task.slice(0,60)), badge(x.status)); d.onclick=()=>select(x.id); box.append(d); });
 }
@@ -145,7 +147,9 @@ async function refresh(){ try{ await refreshTasks(); await refreshTask(); await 
   catch(e){ fail(e); } }
 async function refreshKeys(){
   let st; try{ st=await api("GET","/keys"); }catch(e){ return; }
-  const box=$("keys"); if(!st.keys.length) return; box.className=""; box.removeAttribute("data-i18n"); box.replaceChildren();
+  const box=$("keys");
+  if(!st.keys.length){ box.removeAttribute("data-i18n"); box.className="muted"; box.textContent=t(st.mode==="demo"?"dash.keysDemo":"dash.keysSingle"); return; }
+  box.className=""; box.removeAttribute("data-i18n"); box.replaceChildren();
   st.keys.forEach(k=>{ const d=el("div","ap"); d.append(el("div","who",k.name+"  "+k.key+(k.available?"":t("dash.keyNotSet"))+(k.cooldown_s?t("dash.keyCooldown",{s:k.cooldown_s}):"")),
       el("div","muted",t("quota.priority",{categories:k.categories.join(", "),p:k.priority})));
     Object.entries(k.limits).forEach(([f,v])=>d.append(el("div",null,t("dash.limitLine",{limit:tr("limit",f),used:num(v.used,4),max:num(v.limit,4),left:num(v.remaining,4)})))); box.append(d); });
@@ -188,7 +192,7 @@ async function refreshRules(){
     d.append(el("span",null,x.tool+" ["+tr("cat",x.category)+"] · "+tr("scope",x.scope)+(x.scope==="conversation"?" "+x.task_id:"")+" · "+t("rules.used",{n:x.uses})), b); box.append(d); });
 }
 async function refreshHealth(){ try{ const h=await api("GET","/health"); $("health").className="";
-  const keys = t(h.keys.mode==="router"?"keys.mode.router":"keys.mode.single")+(h.keys.keys?" "+h.keys.keys.map(k=>k.name+" "+k.key).join(", "):(h.keys.key?" "+h.keys.provider+" "+h.keys.key:""));
+  const keys = t(h.keys.mode==="router"?"keys.mode.router":(h.keys.mode==="demo"?"keys.mode.demo":"keys.mode.single"))+(h.keys.keys?" "+h.keys.keys.map(k=>k.name+" "+k.key).join(", "):(h.keys.key?" "+h.keys.provider+" "+h.keys.key:""));
   $("health").textContent=[t("health.line",{status:tr("status",h.status),up:num(Math.round(h.uptime_s),0),running:h.running,max:h.max_tasks,approvals:h.pending_approvals}),
     t("health.keys",{keys}), t("health.persistence",{p:h.persistence||t("health.memoryOnly")})].join("\n"); }catch(e){} }
 $("stopall").onclick=async()=>{ if(!confirm(t("confirm.stopall"))) return;
@@ -200,6 +204,6 @@ onLang = () => { const box=$("events"); box.replaceChildren(...evcache.map(evLin
 setInterval(refresh, 1000); refresh(); setInterval(slow, 5000); slow();
 </script></body></html>
 """
-PAGE = PAGE.replace("/*LANG_CSS*/", LANG_CSS).replace("/*LANG_SWITCH*/", LANG_SWITCH).replace("/*I18N_JS*/", I18N_JS)
-PAGE = PAGE.replace("/*THEME*/", BASE_CSS + DASH_CSS + DASH_EXTRA + NAV_CSS).replace("/*APPROVAL_JS*/", APPROVAL_JS)
-PAGE = PAGE.replace("/*NAV*/", NAV_HTML).replace("/*NAV_JS*/", NAV_JS)
+PAGE = PAGE.replace("/*LANG_CSS*/", LANG_CSS).replace("/*LANG_SWITCH*/", THEME_BTN + LANG_SWITCH).replace("/*I18N_JS*/", I18N_JS)
+PAGE = PAGE.replace("/*THEME*/", BASE_CSS + DASH_CSS + DASH_EXTRA + NAV_CSS + TIP_CSS).replace("/*APPROVAL_JS*/", APPROVAL_JS)
+PAGE = PAGE.replace("/*NAV*/", NAV_HTML).replace("/*NAV_JS*/", NAV_JS).replace("/*TIP_JS*/", TIP_JS)

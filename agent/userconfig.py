@@ -58,7 +58,35 @@ DEFAULTS: dict[str, Any] = {
     "version": 1, "setup_done": False, "lang": None, "demo": False, "idc": None, "permissions": {},
     "approval_timeout": None, "max_tasks": None, "workspace": None, "currency": "",
     "remote": {"enabled": False, "tunnel": "none", "public_url": ""},
+    "ui_mode": "simple", "trace": "simple", "theme": "auto",
 }
+
+
+UI_MODES = ("simple", "expert")
+TRACE_MODES = ("simple", "technical")
+THEMES = ("auto", "light", "dark")      # auto = follow the system (prefers-color-scheme)
+
+
+class SettingsError(ValueError):
+    """A validation error with a stable `code` (+ params) so the pages can show it in the user's language;
+    str(e) stays a plain English message for logs, the API and the CLI."""
+
+    def __init__(self, code: str, message: str = "", **params: Any):
+        super().__init__(message or code.replace("_", " "))
+        self.code, self.params = code, {k: str(v) for k, v in params.items()}
+
+
+# Recognisable key prefixes, most specific first (the wizard also does this in the browser).
+KEY_PREFIXES = (("sk-or-", "openrouter"), ("gsk_", "groq"), ("sk-ant-", None), ("sk-", "openai"))
+
+
+def detect_provider(secret: str | None) -> str | None:
+    """Which provider a pasted key belongs to, from its prefix; None if unknown (or unsupported)."""
+    s = (secret or "").strip()
+    for prefix, provider in KEY_PREFIXES:
+        if s.startswith(prefix):
+            return provider
+    return None
 
 
 def write_private(path: Path, data: Any) -> None:
@@ -235,13 +263,15 @@ def probe_key(base_url: str, secret: str | None, timeout: float = 8.0) -> dict:
 
 def _num(v: Any, name: str, lo: float = 0, hi: float | None = None, integer: bool = False) -> float | int:
     if isinstance(v, bool):
-        raise ValueError(f"{name}: a number is required")
+        raise SettingsError("num_required", f"{name}: a number is required", field=name)
     try:
         x = float(str(v).replace(",", "."))
     except (TypeError, ValueError):
-        raise ValueError(f"{name}: a number is required") from None
+        raise SettingsError("num_required", f"{name}: a number is required", field=name) from None
     if x != x or x < lo or (hi is not None and x > hi):
-        raise ValueError(f"{name}: must be between {lo:g} and {hi:g}" if hi is not None else f"{name}: must be >= {lo:g}")
+        if hi is not None:
+            raise SettingsError("num_range", f"{name}: must be between {lo:g} and {hi:g}", field=name, lo=f"{lo:g}", hi=f"{hi:g}")
+        raise SettingsError("num_min", f"{name}: must be >= {lo:g}", field=name, lo=f"{lo:g}")
     return int(x) if integer else x
 
 
@@ -359,18 +389,33 @@ class AppControl:
                        "active_url": getattr(h, "public_url", None), "token_from_env": self.token_where == "AGENT_HARNESS_TOKEN",
                        "tunnels": list(TUNNELS)},
             "currency": self.cfg.get("currency", ""),
+            "ui_mode": self.ui_mode(), "trace": self.trace_mode(), "theme": self.theme(),
             "restart_needed": self.restart_needed(),
             "storage": self.secrets.backend, "home": self.home or str(self.cfg.dir), "secrets_dir": str(self.cfg.dir),
-            "presets": {k: {f: v for f, v in p.items() if f != "prefix"} for k, p in PRESETS.items()},
+            "presets": {k: dict(p) for k, p in PRESETS.items()},
+            "key_prefixes": [[a, b] for a, b in KEY_PREFIXES],
             "categories": list(KNOWN_CATEGORIES), "limit_fields": list(LIMIT_FIELDS),
             "pricing_fields": list(PRICING_FIELDS),
             "fallback": {"provider": self.fallback.get("provider"), "file_keys": self.file_router is not None},
             "can_restart": self.stop_cb is not None,
         }
 
+    def ui_mode(self) -> str:
+        m = self.cfg.get("ui_mode")
+        return m if m in UI_MODES else "simple"
+
+    def theme(self) -> str:
+        m = self.cfg.get("theme")
+        return m if m in THEMES else "auto"
+
+    def trace_mode(self) -> str:
+        m = self.cfg.get("trace")
+        return m if m in TRACE_MODES else "simple"
+
     def status(self) -> dict:
         return {"first_run": self.first_run(), "mode": self.effective_mode(), "demo": self.demo(),
-                "restart_needed": self.restart_needed(), "lang": self.cfg.get("lang"), "version": __version__}
+                "restart_needed": self.restart_needed(), "lang": self.cfg.get("lang"), "version": __version__,
+                "ui_mode": self.ui_mode(), "trace": self.trace_mode(), "theme": self.theme()}
 
     # ---------------------------------------------------------------- providers
     def _find(self, pid: str) -> dict:
@@ -382,55 +427,55 @@ class AppControl:
     def _clean_provider(self, data: dict, old: dict | None) -> tuple[dict, str | None]:
         provider = str(data.get("provider") or (old or {}).get("provider") or "custom").lower()
         if provider not in PRESETS:
-            raise ValueError(f"provider must be one of {', '.join(PRESETS)}")
+            raise SettingsError("bad_provider", f"provider must be one of {', '.join(PRESETS)}")
         pre = PRESETS[provider]
         name = str(data.get("name") or (old or {}).get("name") or provider).strip()[:60]
         if not re.fullmatch(r"[\w .@+-]{1,60}", name):
-            raise ValueError("name: letters, digits, spaces and . _ - @ + only")
+            raise SettingsError("bad_name", "name: letters, digits, spaces and . _ - @ + only")
         if any(p["name"] == name and p["id"] != (old or {}).get("id") for p in self.cfg.providers):
-            raise ValueError(f"a key named {name!r} already exists")
+            raise SettingsError("name_taken", f"a key named {name!r} already exists", name=name)
         base = str(data.get("base_url") if data.get("base_url") is not None else (old or {}).get("base_url") or pre["base_url"] or "").strip()
         if not base:
             base = pre["base_url"] or ""
         if not re.match(r"^https?://[^\s/]+", base):
-            raise ValueError("base_url: an http(s) URL is required")
+            raise SettingsError("bad_url", "base_url: an http(s) URL is required", field="base_url")
         model = str(data.get("model") if data.get("model") is not None else (old or {}).get("model") or pre["model"] or "").strip()[:200]
         if not model:
             model = pre["model"] or ""
         if not model:
-            raise ValueError("model: required for a custom provider")
+            raise SettingsError("model_required", "model: required for a custom provider")
         cats = data.get("categories", (old or {}).get("categories") or ["text"])
         cats = [cats] if isinstance(cats, str) else cats
         if not isinstance(cats, list) or not cats:
-            raise ValueError("categories: choose at least one")
+            raise SettingsError("no_category", "categories: choose at least one")
         cats = [str(c).strip().lower() for c in cats if str(c).strip()]
         if any(not re.fullmatch(r"[a-z][a-z0-9_]{0,30}", c) for c in cats) or not cats:
-            raise ValueError("categories: lowercase words (text, code, image, audio_tts...)")
+            raise SettingsError("bad_category", "categories: lowercase words (text, code, image, audio_tts...)")
         limits = {}
         for f, v in (data.get("limits", (old or {}).get("limits")) or {}).items():
             if f not in LIMIT_FIELDS:
-                raise ValueError(f"unknown limit {f!r}")
+                raise SettingsError("unknown_field", f"unknown limit {f!r}", field=f)
             if v not in (None, ""):
                 limits[f] = _num(v, f, 0)
         pricing = {}
         for f, v in (data.get("pricing", (old or {}).get("pricing")) or {}).items():
             if f not in PRICING_FIELDS:
-                raise ValueError(f"unknown price {f!r}")
+                raise SettingsError("unknown_field", f"unknown price {f!r}", field=f)
             if v not in (None, ""):
                 pricing[f] = _num(v, f, 0)
         if any(f.startswith("cost_") for f in limits) and not any(pricing.values()):
-            raise ValueError("cost limits need a price (per 1M tokens)")
+            raise SettingsError("cost_needs_price", "cost limits need a price (per 1M tokens)")
         prio = _num(data.get("priority", (old or {}).get("priority", (len(self.cfg.providers) + 1) * 10)),
                     "priority", 0, 100000, integer=True)
         secret = data.get("key")
         if secret is not None:
             if not isinstance(secret, str):
-                raise ValueError("key must be text")
+                raise SettingsError("bad_key", "key must be text")
             secret = secret.strip()
             if secret and (len(secret) > MAX_SECRET or re.search(r"\s", secret)):
-                raise ValueError("key: no spaces, at most 500 characters")
+                raise SettingsError("key_spaces", "key: no spaces, at most 500 characters")
         if pre["key"] and not secret and not (old and self.secrets.has(old["id"])):
-            raise ValueError("key: required for this provider")
+            raise SettingsError("key_required", "key: required for this provider")
         rec = {"name": name, "provider": provider, "base_url": base, "model": model, "categories": cats,
                "priority": prio, "limits": limits, "pricing": pricing,
                "enabled": bool(data.get("enabled", (old or {}).get("enabled", True)))}
@@ -476,7 +521,7 @@ class AppControl:
         with self._lock:
             known = [p["id"] for p in self.cfg.providers]
             if not isinstance(ids, list) or sorted(map(str, ids)) != sorted(known):
-                raise ValueError("ids: every key id, once, in the new order")
+                raise SettingsError("bad_order", "ids: every key id, once, in the new order")
             for i, pid in enumerate(ids):
                 self._find(str(pid))["priority"] = (i + 1) * 10
             self.cfg.providers.sort(key=lambda p: int(p.get("priority", 100)))
@@ -496,7 +541,7 @@ class AppControl:
             data = data or {}
             provider = str(data.get("provider") or "custom").lower()
             if provider not in PRESETS:
-                raise ValueError(f"provider must be one of {', '.join(PRESETS)}")
+                raise SettingsError("bad_provider", f"provider must be one of {', '.join(PRESETS)}")
             base = str(data.get("base_url") or PRESETS[provider]["base_url"] or "")
             secret = str(data.get("key") or "").strip() or None
             if not secret and data.get("id"):
@@ -505,6 +550,9 @@ class AppControl:
         if need and not secret:
             return {"ok": False, "code": "missing"}
         if secret and not key_format_ok(provider, secret):
+            other = detect_provider(secret)
+            if other and other != provider:
+                return {"ok": False, "code": "wrong_provider", "detected": other}
             return {"ok": False, "code": "format"}
         if os.environ.get("AGENT_KEY_TEST", "").lower() == "offline":
             return {"ok": True, "code": "offline"}
@@ -516,22 +564,27 @@ class AppControl:
     # ---------------------------------------------------------------- settings
     def update(self, data: dict) -> dict:
         if not isinstance(data, dict) or not data:
-            raise ValueError("nothing to change")
+            raise SettingsError("nothing", "nothing to change")
         h, cfg = self.h, self.cfg
         changes: dict[str, Any] = {}
         # validate everything first, then apply
         if "lang" in data:
             if data["lang"] not in i18n.LANGS:
-                raise ValueError("lang must be en or fr")
+                raise SettingsError("bad_choice", "lang must be en or fr", field="lang")
             changes["lang"] = data["lang"]
         if "demo" in data:
             if not isinstance(data["demo"], bool):
-                raise ValueError("demo must be true or false")
+                raise SettingsError("bad_bool", "demo must be true or false", field="demo")
             changes["demo"] = data["demo"]
+        for k, allowed in (("ui_mode", UI_MODES), ("trace", TRACE_MODES), ("theme", THEMES)):
+            if k in data:
+                if data[k] not in allowed:
+                    raise SettingsError("bad_choice", f"{k} must be one of {', '.join(allowed)}", field=k)
+                changes[k] = data[k]
         if "currency" in data:
             cur = str(data["currency"] or "").strip()[:8]
             if cur and not re.fullmatch(r"[A-Za-z€$£¥ ]{1,8}", cur):
-                raise ValueError("currency: up to 8 letters")
+                raise SettingsError("bad_currency", "currency: up to 8 letters")
             changes["currency"] = cur
         if "approval_timeout" in data:
             changes["approval_timeout"] = _num(data["approval_timeout"], "approval_timeout", 10, 3600, integer=True)
@@ -542,40 +595,40 @@ class AppControl:
             if ws:
                 p = Path(ws).expanduser()
                 if not p.is_absolute():
-                    raise ValueError("workspace: a full folder path is required (e.g. /Users/me/AgentWork)")
+                    raise SettingsError("ws_absolute", "workspace: a full folder path is required (e.g. /Users/me/AgentWork)")
                 p = p.resolve()
                 if p == Path(p.anchor) or p == Path.home().resolve():
-                    raise ValueError("workspace: choose a dedicated folder, not the disk root or your whole home folder")
+                    raise SettingsError("ws_too_wide", "workspace: choose a dedicated folder, not the disk root or your whole home folder")
                 if p.exists() and not p.is_dir():
-                    raise ValueError("workspace: this path is a file")
+                    raise SettingsError("ws_is_file", "workspace: this path is a file")
                 ws = str(p)
             changes["workspace"] = ws or None
         if "permissions" in data:
             pd = data["permissions"]
             if not isinstance(pd, dict):
-                raise ValueError("permissions: {category: mode}")
+                raise SettingsError("bad_object", "permissions: {category: mode}", field="permissions")
             for c, m in pd.items():
                 if c not in CATEGORIES:
-                    raise ValueError(f"permissions: unknown category {c!r}")
+                    raise SettingsError("unknown_field", f"permissions: unknown category {c!r}", field=str(c))
                 if m not in MODES:
-                    raise ValueError(f"permissions: invalid mode {m!r}")
+                    raise SettingsError("bad_choice", f"permissions: invalid mode {m!r}", field=str(c))
                 if c in YOLO_PROTECTED and m == "allow":
-                    raise ValueError(f"permissions: '{c}' can never be approved automatically (ask or deny only)")
+                    raise SettingsError("perm_protected", f"permissions: '{c}' can never be approved automatically (ask or deny only)", field=c)
             changes["permissions"] = dict(pd)
         if "idc" in data:
             from .idc import IDCConfig
             d = data["idc"]
             if not isinstance(d, dict):
-                raise ValueError("idc: settings object expected")
+                raise SettingsError("bad_object", "idc: settings object expected", field="idc")
             base = (h.idc_config.as_dict() if h is not None else IDCConfig().as_dict())
             types = {k: type(v) for k, v in base.items()}
             new = dict(base)
             for k, v in d.items():
                 if k not in types:
-                    raise ValueError(f"idc: unknown setting {k!r}")
+                    raise SettingsError("unknown_field", f"idc: unknown setting {k!r}", field=str(k))
                 if types[k] is bool:
                     if not isinstance(v, bool):
-                        raise ValueError(f"idc: {k} must be true or false")
+                        raise SettingsError("bad_bool", f"idc: {k} must be true or false", field=k)
                     new[k] = v
                 else:
                     new[k] = _num(v, f"idc.{k}", 0, 1e9, integer=types[k] is int)
@@ -583,20 +636,20 @@ class AppControl:
         if "remote" in data:
             r = data["remote"]
             if not isinstance(r, dict):
-                raise ValueError("remote: settings object expected")
+                raise SettingsError("bad_object", "remote: settings object expected", field="remote")
             cur = dict(cfg.get("remote") or {})
             if "enabled" in r:
                 if not isinstance(r["enabled"], bool):
-                    raise ValueError("remote.enabled must be true or false")
+                    raise SettingsError("bad_bool", "remote.enabled must be true or false", field="remote.enabled")
                 cur["enabled"] = r["enabled"]
             if "tunnel" in r:
                 if r["tunnel"] not in TUNNELS:
-                    raise ValueError(f"remote.tunnel must be one of {', '.join(TUNNELS)}")
+                    raise SettingsError("bad_choice", f"remote.tunnel must be one of {', '.join(TUNNELS)}", field="remote.tunnel")
                 cur["tunnel"] = r["tunnel"]
             if "public_url" in r:
                 u = str(r["public_url"] or "").strip()
                 if u and not re.match(r"^https?://[^\s/]+", u):
-                    raise ValueError("remote.public_url: an http(s) address")
+                    raise SettingsError("bad_url", "remote.public_url: an http(s) address", field="remote.public_url")
                 cur["public_url"] = u
             changes["remote"] = cur
         # apply
@@ -635,7 +688,7 @@ class AppControl:
 
     def new_token(self) -> dict:
         if self.token_where == "AGENT_HARNESS_TOKEN":
-            raise ValueError("the token comes from AGENT_HARNESS_TOKEN: change it there")
+            raise SettingsError("token_env", "the token comes from AGENT_HARNESS_TOKEN: change it there")
         from . import remote
         tok = remote.rotate_token(self.cfg.dir)
         n = 0

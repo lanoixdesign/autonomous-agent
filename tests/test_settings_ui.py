@@ -222,7 +222,9 @@ def test_key_test_is_lightweight_and_mock_safe(app, fake, monkeypatch):
     assert not r["ok"] and r["code"] == "invalid"
     assert fake.auth == []                                   # /models only: no completion, no tokens spent
     assert post(base, "/app/providers/test", {"provider": "groq", "key": ""})[1]["code"] == "missing"
-    assert post(base, "/app/providers/test", {"provider": "groq", "key": "sk-notgroq123456"})[1]["code"] == "format"
+    r = post(base, "/app/providers/test", {"provider": "groq", "key": "sk-notgroq123456"})[1]
+    assert r["code"] == "wrong_provider" and r["detected"] == "openai"     # an OpenAI key pasted under Groq
+    assert post(base, "/app/providers/test", {"provider": "groq", "key": "zzz-notgroq123456"})[1]["code"] == "format"
     monkeypatch.setenv("AGENT_KEY_TEST", "offline")
     assert post(base, "/app/providers/test", {"provider": "groq", "key": "gsk_" + "b" * 20})[1] == {"ok": True, "code": "offline"}
     pid = post(base, "/app/providers", {"provider": "custom", "name": "f", "base_url": fake.url, "model": "m",
@@ -385,6 +387,7 @@ def test_trace_routing_and_summary_in_node():
     src = "\n".join([
         "const I18N={en:{'trace.agents':'{n} agents','trace.agent1':'1 agent','trace.actions':'{n} actions','trace.action1':'1 action'}};",
         "const LANG='en'; function t(k,v){ let s=I18N.en[k]||k; return v?s.replace(/\\{(\\w+)\\}/g,(m,n)=>String(v[n])):s; }",
+        "const TRACE_TECH=true;",
         "function depth(id){ return id ? id.split('.').length-1 : 0; }",
         grab("traceKind"), grab("traceSummary"), grab("traceCount"),
         """

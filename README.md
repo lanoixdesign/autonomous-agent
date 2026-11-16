@@ -79,24 +79,54 @@ no spaces on recent Windows; compare the characters, not the case). If it differ
 download it again from the Releases page.
 </details>
 
-**First run: a 3-step wizard in the browser.** ① pick your language (English / Français) → ② choose a
-provider (Groq, OpenAI, OpenRouter, Ollama), paste your API key, click **Test the key**, then **Save and
-continue**, *or* click **Try demo mode (no key)** → ③ done, open the chat.
+**First run: a 3-step wizard in the browser.** ① pick your language (English / Français) → ② click
+**🎈 Try without a key** (demo answers, nothing to set up) *or* connect a real AI: pick a service (**Groq** is
+recommended and free), follow the **step-by-step guide** ("Open Groq in a new tab", sign in, create a key,
+copy it), paste the key (the service is **recognised from the key** itself), **Test the key**, then **Save and
+continue** → ③ done, open the chat.
 
-| Wizard | Settings → API keys |
+| Wizard (day theme) | Wizard (night theme) |
 |---|---|
-| ![First-run wizard](docs/v5-wizard-en.png) | ![Settings, API keys](docs/v5-settings-keys-en.png) |
+| ![First-run wizard, day](docs/v6-wizard-light-en.png) | ![First-run wizard, night](docs/v6-wizard-dark-en.png) |
 
-**Everything else is in ⚙ Settings** (the tabs **Chat | Dashboard | Settings | Connect** are at the top
-of every page, and in the ☰ menu on a phone):
+**Made for beginners (0.6).**
+- **"What can I do for you?"**: the chat opens with six example tasks (summarize a document, write an email,
+  organize notes, research a topic, make a plan, translate) and a 4-step **guided tour** (shown once; Help →
+  "Show the guided tour again").
+- **Questions in plain words**: before acting, the agent asks *"The agent wants to write the file report.md.
+  Do you allow it?"* with big **✓ Allow** / **✕ Refuse** buttons and a one-line hint; the tool name and
+  arguments are folded under "Technical details". **send** and **spend** are asked every single time.
+- **"What the agent did"**: the work trace reads as sentences ("The helper "Researcher" read notes.txt"),
+  folded by default; Settings → "Work details in the chat" → **Technical** shows the raw tool calls.
+- **📁 My files**: list, add and download the files of your work folder; files the agent creates appear
+  under its answer with a **⬇ Download** button.
+- **Help** tab: how it works in 4 steps, a sample question card, FAQ, "Larger text".
+- **Simple / Expert** Settings: Simple hides permissions, limits, IDC and technical options; ❓ buttons
+  explain each setting; error messages are translated (EN/FR).
+- **☀ Day / ☾ Night theme**: a sun/moon button at the top of every page (and in the ☰ phone menu) switches
+  between a clean, high-contrast light theme (WCAG AA) and the neon night theme. Settings → General →
+  Display → **Theme: Day / Night / Automatic** (default: Automatic = follows your computer or phone). The
+  choice is remembered in this browser.
+
+| Chat, day theme | Chat, night theme |
+|---|---|
+| ![Chat, day theme](docs/v6-chat-light-en.png) | ![Chat, night theme](docs/v6-chat-dark-en.png) |
+
+| A question in plain words (phone, day) | My files | Settings: theme, Simple / Expert |
+|---|---|---|
+| ![Approval card](docs/v6-mobile-approval-light-fr.png) | ![My files](docs/v6-files-light-en.png) | ![Display settings](docs/v6-mobile-settings-light-fr.png) |
+
+**Everything else is in ⚙ Settings** (the tabs **Chat | Dashboard | Settings | Help | Connect** are at the
+top of every page, and in the ☰ menu on a phone):
 - **API keys & models**: add, edit, delete and test keys, per use (text, code, images, speech,
   transcription, embeddings), with limits (requests / tokens / cost per day or month) and a failover
   order (↑ ↓: when a key hits a limit or fails, the next one takes over). Keys are shown **masked**
   (`sk-d••••RET2`) with their usage. Changes apply to the next message, **no restart**.
-- **General**: language, workspace folder, conversations at once, approval timeout.
-- **Permissions**: allow / ask / deny per risk category. **send** and **spend** can never be set to
+- **General**: language, theme, Simple / Expert, work details, larger text, work folder, conversations at
+  once, approval timeout.
+- **Permissions** (Expert): allow / ask / deny per risk category. **send** and **spend** can never be set to
   "allow".
-- **IDC mode**: on/off and its parameters.
+- **IDC mode** (Expert): on/off and its parameters.
 - **Phone access**: turn it on, pick Tailscale or Cloudflare, show the QR code, generate a new token.
 - **App**: version, **Restart** (shown when a change needs it) and **Quit** (stops the server cleanly;
   also in the chat sidebar).
@@ -110,25 +140,15 @@ a phone signed in remotely sees a 🔒 notice (see
 
 **Where things go.** Everything is in one folder in your home directory, `AutonomousAgent`
 (`C:\Users\<you>\AutonomousAgent` or `/Users/<you>/AutonomousAgent`): `workspace/` (the only folder the
-agent's file tools can touch; chat attachments go there), `data/` (settings, keys, memory, audit log,
-conversations), and the optional `.env` / `permissions.yaml` / `providers.yaml` for advanced users.
+agent's file tools can touch; "My files" and chat attachments go there), `data/` (settings, keys, memory,
+audit log, conversations), and the optional `.env` / `permissions.yaml` / `providers.yaml` for advanced users.
 
 **Stop:** click **Quit** (chat sidebar, or Settings → App). Double-clicking the app again while it runs just
 reopens the browser tab. **Language:** first-run choice, Settings → General, or the EN | FR switch.
 
-| Navigation (dashboard → "← Back to chat") | Phone menu |
+| Live helpers graph (day) | Dashboard (night) |
 |---|---|
-| ![Dashboard with tabs](docs/v5-nav-dashboard-en.png) | ![Phone menu](docs/v5-mobile-nav-fr.png) |
-
-**Work trace.** In the chat, the agent's work (sub-agents launched, tool calls and their results,
-approvals) is folded into one **"How the agent worked"** block under your message, **closed by default**,
-with a live summary ("3 agents · 8 actions · 1 pending approval"). Click it (or Enter / Space) to open it
-with ▸ / ▾; your choice is remembered. Approval cards always stay visible and clickable, and the final
-answer stays outside the block.
-
-| Trace closed | Trace open |
-|---|---|
-| ![Trace closed](docs/v5-trace-collapsed-en.png) | ![Trace open](docs/v5-trace-expanded-en.png) |
+| ![Swarm graph, day theme](docs/v6-swarm-light-en.png) | ![Dashboard](docs/v6-dashboard-dark-fr.png) |
 
 Notes: the server only listens on `127.0.0.1` (your computer); port 8765 if free, else another one. The
 macOS builds are separate for Apple Silicon and Intel. Advanced: build it yourself with
@@ -709,6 +729,8 @@ builds, each smoke-tested, attached to a GitHub Release.
   bundled in the desktop builds). **Test the key** only checks the provider's `/models` endpoint, not
   access to a given model. Restarting from Settings cancels running tasks. Validation messages from the
   server are in English.
+- Day theme: checked for WCAG AA contrast on the main text colours and visually on every page, but not
+  audited with a screen reader; the theme choice is stored per browser (Settings sets the default).
 - This project is independent: it is **not** Grok Bot and does not reproduce it.
 
 ### License
@@ -800,25 +822,56 @@ des versions.
 </details>
 
 **Premier lancement : un assistant en 3 étapes dans le navigateur.** ① choisissez la langue (English /
-Français) → ② choisissez un fournisseur (Groq, OpenAI, OpenRouter, Ollama), collez votre clé d'API,
-cliquez sur **Tester la clé**, puis **Enregistrer et continuer**, *ou* cliquez sur **Essayer le mode démo
-(sans clé)** → ③ c'est prêt, ouvrez le chat.
+Français) → ② cliquez sur **🎈 Essayer sans clé** (réponses de démonstration, rien à régler) *ou* connectez
+une vraie IA : choisissez un service (**Groq** est recommandé et gratuit), suivez le **guide pas à pas**
+(« Ouvrir Groq dans un nouvel onglet », connexion, création d'une clé, copie), collez la clé (le service est
+**reconnu d'après la clé**), **Tester la clé**, puis **Enregistrer et continuer** → ③ c'est prêt, ouvrez le chat.
 
-| Assistant | Réglages → Clés d'API |
+| Assistant (thème jour) | Assistant (thème nuit) |
 |---|---|
-| ![Assistant de premier lancement](docs/v5-wizard-fr.png) | ![Réglages, clés d'API](docs/v5-settings-keys-fr.png) |
+| ![Assistant, jour](docs/v6-wizard-light-fr.png) | ![Assistant, nuit](docs/v6-wizard-dark-fr.png) |
 
-**Tout le reste est dans ⚙ Réglages** (les onglets **Chat | Tableau de bord | Réglages | Connexion** sont
-en haut de chaque page, et dans le menu ☰ sur téléphone) :
+**Pensé pour les débutants (0.6).**
+- **« Que puis-je faire pour vous ? »** : le chat s'ouvre sur six exemples (résumer un document, écrire un
+  e-mail, ranger des notes, se renseigner sur un sujet, faire un plan, traduire) et une **visite guidée** en
+  4 étapes (affichée une fois ; Aide → « Revoir la visite guidée »).
+- **Des questions avec des mots simples** : avant d'agir, l'agent demande *« L'agent veut écrire le fichier
+  report.md. Vous l'autorisez ? »* avec de grands boutons **✓ Autoriser** / **✕ Refuser** et une phrase
+  d'aide ; le nom de l'outil et ses arguments sont repliés sous « Détails techniques ». **Envoi** et
+  **dépense** sont demandés à chaque fois.
+- **« Ce qu'a fait l'agent »** : la trace se lit comme des phrases (« L'assistant « Chercheur » a lu
+  notes.txt »), repliée par défaut ; Réglages → « Détails du travail dans le chat » → **Technique** montre
+  les appels d'outils bruts.
+- **📁 Mes fichiers** : lister, ajouter et télécharger les fichiers du dossier de travail ; les fichiers
+  créés par l'agent apparaissent sous sa réponse avec un bouton **⬇ Télécharger**.
+- Onglet **Aide** : le fonctionnement en 4 étapes, un exemple de question, une FAQ, « Texte plus grand ».
+- Réglages **Simple / Expert** : Simple masque autorisations, limites, IDC et options techniques ; des
+  boutons ❓ expliquent chaque réglage ; les messages d'erreur sont traduits (EN/FR).
+- **Thème ☀ Jour / ☾ Nuit** : un bouton soleil/lune en haut de chaque page (et dans le menu ☰ du
+  téléphone) passe d'un thème clair, net et très contrasté (WCAG AA) au thème néon de nuit. Réglages →
+  Général → Affichage → **Thème : Jour / Nuit / Automatique** (par défaut : Automatique = suit votre
+  ordinateur ou téléphone). Le choix est mémorisé dans ce navigateur.
+
+| Chat, thème jour | Chat, thème nuit |
+|---|---|
+| ![Chat, thème jour](docs/v6-chat-light-fr.png) | ![Chat, thème nuit](docs/v6-chat-dark-fr.png) |
+
+| Une question en mots simples (téléphone, jour) | Mes fichiers | Réglages : thème, Simple / Expert |
+|---|---|---|
+| ![Carte de validation](docs/v6-mobile-approval-light-fr.png) | ![Mes fichiers](docs/v6-files-light-fr.png) | ![Réglages d'affichage](docs/v6-mobile-settings-light-fr.png) |
+
+**Tout le reste est dans ⚙ Réglages** (les onglets **Chat | Tableau de bord | Réglages | Aide | Connexion**
+sont en haut de chaque page, et dans le menu ☰ sur téléphone) :
 - **Clés d'API et modèles** : ajouter, modifier, supprimer et tester des clés, par usage (texte, code,
   images, voix, transcription, embeddings), avec des limites (requêtes / jetons / coût par jour ou par
   mois) et un ordre de relais (↑ ↓ : quand une clé atteint une limite ou échoue, la suivante prend le
   relais). Les clés sont affichées **masquées** (`sk-d••••RET2`) avec leur consommation. Les changements
   s'appliquent au message suivant, **sans redémarrage**.
-- **Général** : langue, dossier de travail, conversations simultanées, délai de validation.
-- **Autorisations** : autoriser / demander / refuser par catégorie de risque. **envoi** et **dépense** ne
-  peuvent jamais être mis sur « autoriser ».
-- **Mode IDC** : activé/désactivé et ses paramètres.
+- **Général** : langue, thème, Simple / Expert, détails du travail, texte plus grand, dossier de travail,
+  conversations simultanées, délai de validation.
+- **Autorisations** (Expert) : autoriser / demander / refuser par catégorie de risque. **envoi** et
+  **dépense** ne peuvent jamais être mis sur « autoriser ».
+- **Mode IDC** (Expert) : activé/désactivé et ses paramètres.
 - **Accès téléphone** : l'activer, choisir Tailscale ou Cloudflare, afficher le QR code, générer un nouveau jeton.
 - **Application** : version, **Redémarrer** (proposé quand un changement l'exige) et **Quitter** (arrête
   proprement le serveur ; aussi dans la barre latérale du chat).
@@ -832,27 +885,17 @@ masquées), jamais écrites dans les journaux ni dans l'audit. Les réglages et 
 
 **Où vont les fichiers.** Tout est dans un seul dossier de votre répertoire personnel, `AutonomousAgent`
 (`C:\Users\<vous>\AutonomousAgent` ou `/Users/<vous>/AutonomousAgent`) : `workspace/` (le seul dossier
-que les outils de fichiers de l'agent peuvent toucher ; les pièces jointes du chat y vont), `data/`
-(réglages, clés, mémoire, journal d'audit, conversations), et les fichiers facultatifs `.env` /
+que les outils de fichiers de l'agent peuvent toucher ; « Mes fichiers » et les pièces jointes y vont),
+`data/` (réglages, clés, mémoire, journal d'audit, conversations), et les fichiers facultatifs `.env` /
 `permissions.yaml` / `providers.yaml` pour les utilisateurs avancés.
 
 **Arrêter :** cliquez sur **Quitter** (barre latérale du chat, ou Réglages → Application). Un nouveau
 double-clic pendant que l'app tourne rouvre simplement l'onglet du navigateur. **Langue :** choix du
 premier lancement, Réglages → Général, ou le sélecteur EN | FR.
 
-| Navigation (tableau de bord → « ← Retour au chat ») | Menu sur téléphone |
+| Graphe des assistants en direct (jour) | Tableau de bord (nuit) |
 |---|---|
-| ![Tableau de bord avec onglets](docs/v5-nav-dashboard-fr.png) | ![Menu téléphone](docs/v5-mobile-nav-fr.png) |
-
-**Trace de travail.** Dans le chat, le travail de l'agent (sous-agents lancés, appels d'outils et leurs
-résultats, validations) est replié dans un bloc **« Comment l'agent a travaillé »** sous votre message,
-**fermé par défaut**, avec un résumé en direct (« 3 agents · 8 actions · 1 validation en attente »).
-Cliquez dessus (ou Entrée / Espace) pour l'ouvrir avec ▸ / ▾ ; votre choix est mémorisé. Les cartes de
-validation restent toujours visibles et cliquables, et la réponse finale reste hors du bloc.
-
-| Trace fermée | Trace ouverte |
-|---|---|
-| ![Trace fermée](docs/v5-trace-collapsed-fr.png) | ![Trace ouverte](docs/v5-trace-expanded-fr.png) |
+| ![Graphe de l'essaim, thème jour](docs/v6-swarm-light-fr.png) | ![Tableau de bord](docs/v6-dashboard-dark-fr.png) |
 
 Remarques : le serveur n'écoute que sur `127.0.0.1` (votre ordinateur) ; port 8765 s'il est libre, sinon
 un autre. Les versions macOS sont distinctes pour puce Apple et Intel. Avancé : compiler soi-même avec
@@ -1468,6 +1511,9 @@ de bout en bout hors ligne avec le backend mock, et une compilation de l'applica
   `keyring` est installé (il n'est pas inclus dans les versions de bureau). **Tester la clé** ne vérifie
   que le point `/models` du fournisseur, pas l'accès à un modèle précis. Redémarrer depuis Réglages
   annule les tâches en cours. Les messages de validation du serveur sont en anglais.
+- Thème jour : contraste WCAG AA vérifié sur les couleurs de texte principales et visuellement sur chaque
+  page, mais pas audité avec un lecteur d'écran ; le choix du thème est gardé par navigateur (Réglages fixe
+  la valeur par défaut).
 - Ce projet est indépendant : ce n'est **pas** Grok Bot et il ne le reproduit pas.
 
 ### Licence
