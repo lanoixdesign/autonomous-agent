@@ -154,6 +154,7 @@ TIP_JS = r"""
 NAV_HTML = ('<nav class="tabs" data-i18n-aria="nav.label">'
             '<a href="/" data-nav="chat" data-i18n="nav.chat"></a>'
             '<a href="/dashboard" data-nav="dashboard" data-i18n="nav.dashboard"></a>'
+            '<a href="/dev" data-nav="dev" data-i18n="nav.dev"></a>'
             '<a href="/settings" data-nav="settings" data-i18n="nav.settings"></a>'
             '<a href="/help" data-nav="help" data-i18n="nav.help"></a>'
             '<a href="/connect" data-nav="connect" data-i18n="nav.connect"></a></nav>')

@@ -96,7 +96,9 @@ def parts(args) -> tuple[Permissions, ToolContext, Path]:
     perms = Permissions.load(perm_path, yolo=args.yolo)
     mem = Memory(state / "memory")
     skills = SkillLibrary([ws / "skills", state / "skills", REPO_SKILLS])
-    ctx = ToolContext(workspace=ws, memory=mem, skills=skills)
+    ctx = ToolContext(workspace=ws, memory=mem, skills=skills, deny_paths=[state])
+    if getattr(args, "sandbox", False) or os.environ.get("AGENT_SANDBOX", "").lower() in ("1", "true", "yes", "on"):
+        ctx.sandbox = lambda: True
     args._router = make_router(args, ws, state)
     return perms, ctx, state
 
@@ -197,6 +199,8 @@ def serve(args) -> int:
                                     file_router=args._router, home=os.environ.get("AGENT_HOME") or str(state))
     control.router.audit = AuditLog(state / "audit.jsonl")
     args._control = control
+    ctx.sandbox = control.sandbox_on
+    ctx.deny_paths = list(dict.fromkeys([state, cfg.dir]))
     if args._router is None and control.backend_mode("text") == "fallback":
         try:
             make_llm(args.provider, args.model)   # fail fast on a missing key
@@ -236,6 +240,7 @@ def serve(args) -> int:
                 key_router=args._router, store=store, backend=backend_info(args), idc_config=idc_cfg,
                 lang=args.lang)
     control.h, control.auth, control.token_where = h, auth, where
+    h.deny_paths = list(ctx.deny_paths)
     control.boot = {"workspace": str(ctx.workspace), "max_tasks": h.max_tasks,
                     "remote": {"enabled": remote_mode, "tunnel": args.tunnel or "none", "public_url": args.public_url or ""}}
     h.control = control
@@ -344,6 +349,9 @@ def common(p: argparse.ArgumentParser) -> None:
                    help="providers.yaml with several keys + limits (default: AGENT_KEYS_FILE or ./providers.yaml if present)")
     p.add_argument("--category", default="text", help="key category used for the chat model (text, code...)")
     p.add_argument("--yolo", action="store_true", help="turn 'ask' into 'allow' EXCEPT for send and spend")
+    p.add_argument("--sandbox", action="store_true",
+                   help="sandbox mode for the shell tool: allowlisted commands, work folder only, no network "
+                        "(always on in the app's Simple mode)")
     p.add_argument("--offline", action="store_true", help="do not register network tools (web, GitHub)")
     p.add_argument("--quiet", "-q", action="store_true")
     g = p.add_mutually_exclusive_group()

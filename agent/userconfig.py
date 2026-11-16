@@ -59,6 +59,7 @@ DEFAULTS: dict[str, Any] = {
     "approval_timeout": None, "max_tasks": None, "workspace": None, "currency": "",
     "remote": {"enabled": False, "tunnel": "none", "public_url": ""},
     "ui_mode": "simple", "trace": "simple", "theme": "auto",
+    "sandbox": True,               # sandbox for commands (agent/sandbox.py); always on in Simple mode
     "parallel": "auto",            # assistants at the same time: auto = one per working key, or 1..MAX_PARALLEL
 }
 MAX_PARALLEL = 8
@@ -406,6 +407,8 @@ class AppControl:
             "parallel": {"saved": self.cfg.get("parallel", "auto"), "keys": self.router.usable("text"),
                          "effective": self.parallel_limit("text"), "max": MAX_PARALLEL},
             "tasks": list(TASKS),
+            "sandbox": {"saved": bool(self.cfg.get("sandbox", True)), "effective": self.sandbox_on(),
+                        "forced": self.ui_mode() == "simple"},
             "restart_needed": self.restart_needed(),
             "storage": self.secrets.backend, "home": self.home or str(self.cfg.dir), "secrets_dir": str(self.cfg.dir),
             "presets": {k: dict(p) for k, p in PRESETS.items()},
@@ -419,6 +422,10 @@ class AppControl:
     def ui_mode(self) -> str:
         m = self.cfg.get("ui_mode")
         return m if m in UI_MODES else "simple"
+
+    def sandbox_on(self) -> bool:
+        """Sandbox for commands: always on in Simple mode; in Expert mode it follows the saved setting."""
+        return self.ui_mode() == "simple" or self.cfg.get("sandbox", True) is not False
 
     def theme(self) -> str:
         m = self.cfg.get("theme")
@@ -825,6 +832,10 @@ class AppControl:
                 if data[k] not in allowed:
                     raise SettingsError("bad_choice", f"{k} must be one of {', '.join(allowed)}", field=k)
                 changes[k] = data[k]
+        if "sandbox" in data:
+            if not isinstance(data["sandbox"], bool):
+                raise SettingsError("bad_bool", "sandbox must be true or false", field="sandbox")
+            changes["sandbox"] = data["sandbox"]
         if "parallel" in data:
             v = data["parallel"]
             changes["parallel"] = "auto" if v in ("auto", None, "") else _num(v, "parallel", 1, MAX_PARALLEL, integer=True)
@@ -921,6 +932,9 @@ class AppControl:
                 if k == "currency":
                     self.router.currency = v
             cfg.save()
+        if "sandbox" in changes:
+            self._audit("sandbox_on" if changes["sandbox"] else "sandbox_off", ui_mode=self.ui_mode(),
+                        effective=self.sandbox_on())
         self._audit("settings_changed", fields=sorted(changes))
         return self.view()
 

@@ -29,6 +29,7 @@ from dataclasses import dataclass, field
 from typing import Any, Callable
 
 from . import idc as idc_mod
+from . import sandbox as sandbox_mod
 from .audit import AuditLog
 from .llm import CALLER, LLMError
 from .permissions import Permissions
@@ -110,6 +111,7 @@ class Agent:
         self.lock = threading.Lock()      # guards self.state when sub-agents run in threads
         self.cancel = cancel
         self.idc = idc
+        self.extra_rules = ""             # e.g. developer mode rules for this conversation (harness)
         if idc is not None:
             idc.on_change = lambda data: self.on_event("idc", data)
         if swarm and allow_spawn and depth < swarm.max_depth:
@@ -130,7 +132,14 @@ class Agent:
             swarm=swarm,
             skills=f"\nAvailable skills (load_skill to read one):\n{idx}\n" if idx else "",
             memory=f"\nWhat you remember (memory):\n{mem}\n" if mem else "") + (
-            idc_mod.system_rules(self.idc) if self.idc is not None else "")
+            idc_mod.system_rules(self.idc) if self.idc is not None else "") + (
+            "\n- " + sandbox_mod.help_text() + "\n" if self.ctx.sandbox_on() else "") + (
+            "\n" + self.extra_rules if self.extra_rules else "")
+
+    def refresh_system(self) -> None:
+        """Recompute the system prompt (sandbox setting or developer-mode rules may have changed)."""
+        if self.messages and self.messages[0].get("role") == "system":
+            self.messages[0] = {"role": "system", "content": self.system_prompt()}
 
     def set_idc(self, ctrl: "idc_mod.IDC | None") -> None:
         """Turn IDC on (a controller) or off (None) between turns; the system prompt follows."""

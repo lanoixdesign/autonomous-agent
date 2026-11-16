@@ -21,6 +21,15 @@ class ToolContext:
     skills: SkillLibrary
     shell_timeout: int = 60
     max_output: int = 12000
+    # Sandbox mode (agent/sandbox.py): a callable so the setting can change while the app runs.
+    sandbox: Callable[[], bool] | None = None
+    deny_paths: list[Path] = field(default_factory=list)   # private app data, never reachable in the sandbox
+
+    def sandbox_on(self) -> bool:
+        try:
+            return bool(self.sandbox and self.sandbox())
+        except Exception:
+            return True     # if the setting cannot be read, stay safe
 
 
 @dataclass
