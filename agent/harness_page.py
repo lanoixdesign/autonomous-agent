@@ -118,6 +118,7 @@ function evLine(e){
   else if(e.kind==="message") txt = (e.final?t("ev.answer"):"")+e.content;
   else if(e.kind==="approval") txt = t("ev.approval",{tool:e.tool,status:tr("status",e.status)});
   else if(e.kind==="keys") txt = keysText(e)||("keys "+e.action);
+  else if(e.kind==="critic") txt = t(e.ok?"trace.criticOk":"trace.criticRevise",{n:e.round||1,max:e.max||1,score:e.score!=null?t("trace.criticScore",{s:e.score}):"",issues:(e.issues||[]).join(" · ")});
   else if(e.kind==="retry") txt = t("trace.retryN",{n:e.attempt||1,max:e.max||3});
   else txt = e.kind+" "+(e.status?tr("status",e.status):(e.reason?tr("status",e.reason):""));
   d.append(el("span","muted",e.ts.slice(11,19)+" "), el("b",null,who), el("span",null,txt)); return d;

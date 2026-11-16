@@ -27,6 +27,7 @@ class ToolContext:
     # developer mode: write_file / edit_file (and sandbox commands that change files) stay under this
     # workspace-relative folder, e.g. "projects/site/"; None = anywhere in the workspace
     write_prefix: str | None = None
+    apis: Any = None          # apis.ApiRegistry: business APIs added in the Connect tab (v0.9)
 
     def write_root(self) -> Path | None:
         return (Path(self.workspace) / self.write_prefix) if self.write_prefix else None

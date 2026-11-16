@@ -767,10 +767,13 @@ EN.update(EN_V81)
 FR.update(FR_V81)
 
 from .i18n_v82 import EN_V82, FR_V82  # noqa: E402
+from .i18n_v09 import EN_V09, FR_V09  # noqa: E402
 from .i18n_tu import FR_TU  # noqa: E402
 
 EN.update(EN_V82)
 FR.update(FR_V82)
+EN.update(EN_V09)
+FR.update(FR_V09)
 FR.update(FR_TU)          # v0.8.2: one form in French, "tu", everywhere
 
 STRINGS = {"en": EN, "fr": FR}

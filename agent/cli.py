@@ -100,6 +100,9 @@ def parts(args) -> tuple[Permissions, ToolContext, Path]:
     if getattr(args, "sandbox", False) or os.environ.get("AGENT_SANDBOX", "").lower() in ("1", "true", "yes", "on"):
         ctx.sandbox = lambda: True
     args._router = make_router(args, ws, state)
+    if args._router is not None:            # semantic memory with an "embeddings" key of the keys file
+        from .vectors import RouterEmbedder
+        mem.embedder = RouterEmbedder(lambda: args._router)
     return perms, ctx, state
 
 
@@ -145,6 +148,10 @@ def new_agent(args, perms: Permissions, ctx: ToolContext, audit: AuditLog, confi
     else:
         llm = base_llm()
     registry = default_registry(enable_web=not args.offline, enable_github=not args.offline)
+    if getattr(ctx, "apis", None) is not None and ctx.apis.items:   # business APIs added in the Connect tab
+        from . import apis as apis_mod
+        for t in apis_mod.TOOLS:
+            registry.add(t)
     budget = Budget(max_steps=args.max_steps, max_tool_calls=args.max_tool_calls, max_tokens=args.max_tokens)
     pool = None
     if control is not None:          # one assistant per working key (or the number chosen in Settings)
@@ -200,6 +207,11 @@ def serve(args) -> int:
     control.router.audit = AuditLog(state / "audit.jsonl")
     args._control = control
     ctx.sandbox = control.sandbox_on
+    from .apis import ApiRegistry
+    from .vectors import RouterEmbedder
+    control.apis = ctx.apis = ApiRegistry(cfg.dir, secrets_store, perms)
+    # semantic memory: keys tagged "Embeddings" in Settings (else the keys file), read at each call
+    ctx.memory.embedder = RouterEmbedder(lambda: control.router if control.router.entries else args._router)
     ctx.deny_paths = list(dict.fromkeys([state, cfg.dir]))
     if args._router is None and control.backend_mode("text") == "fallback":
         try:
@@ -241,6 +253,7 @@ def serve(args) -> int:
                 lang=args.lang)
     control.h, control.auth, control.token_where = h, auth, where
     h.deny_paths = list(ctx.deny_paths)
+    h.memory = ctx.memory
     control.boot = {"workspace": str(ctx.workspace), "max_tasks": h.max_tasks,
                     "remote": {"enabled": remote_mode, "tunnel": args.tunnel or "none", "public_url": args.public_url or ""}}
     h.control = control

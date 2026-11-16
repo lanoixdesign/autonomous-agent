@@ -51,6 +51,7 @@ class Decision:
 @dataclass
 class Permissions:
     defaults: dict[str, str] = field(default_factory=lambda: dict(SAFE_DEFAULTS))
+    api_auto_get: set = field(default_factory=set)   # business APIs whose GETs need no approval (v0.9)
     tools: dict[str, str] = field(default_factory=dict)
     path_allow: list[str] = field(default_factory=list)
     path_deny: list[str] = field(default_factory=lambda: list(DEFAULT_PATH_DENY))
@@ -136,6 +137,17 @@ class Permissions:
             hit = _first(cmd, self.command_allow)
             if hit and mode == "ask":
                 return Decision("allow", f"command matches allow pattern '{hit}'")
+        elif subject is not None and subject_kind == "api_get":    # business API reads (v0.9)
+            auto = subject.lower() in self.api_auto_get
+            if mode == "ask" and auto:
+                return Decision("allow", f"API '{subject}': reads allowed without asking (Connect tab)")
+            if mode == "allow" and not auto:
+                mode, why = "ask", f"API '{subject}': reads need your OK (tick 'reads without asking' in Connect)"
+        elif subject_kind == "api_pay":                              # money: never without the user's OK
+            if mode == "allow":
+                mode, why = "ask", f"API '{subject}' can spend money: always asked"
+            elif mode == "deny":
+                why += " (payments are blocked: set 'spend' to ask in Settings > Safety to allow them with your OK)"
         elif subject is not None and subject_kind == "url":
             host = (urlparse(subject).hostname or "").lower()
             if _match_domain(host, self.domain_deny):

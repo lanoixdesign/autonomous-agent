@@ -1,10 +1,12 @@
 """Durable memory as plain files: memory/profile.md (stable facts) + memory/journal.jsonl (notes).
 
-Recall is a simple keyword score (no embeddings, no network). `forget` removes matching
-journal entries and profile lines; it is the only operation that rewrites memory files.
+Recall is a keyword score; with an embeddings key (v0.9) it is hybrid: meaning (cosine similarity of
+embeddings kept in memory/vectors.sqlite3, see vectors.py) + keywords. `forget` removes matching journal
+entries and profile lines; it is the only operation that rewrites memory files.
 """
 from __future__ import annotations
 
+import hashlib
 import json
 import re
 import threading
@@ -31,6 +33,58 @@ class Memory:
             self.profile.write_text("# Profile\n\n", encoding="utf-8")
         self.journal.touch(exist_ok=True)
         self._lock = threading.RLock()   # harness: several agents may share one memory
+        self.embedder = None             # vectors.RouterEmbedder (or any texts -> vectors callable), v0.9
+        self._index = None
+        self.last_mode = "keyword"
+
+    @property
+    def index(self):
+        if self._index is None:
+            from .vectors import VectorIndex
+            self._index = VectorIndex(self.root / "vectors.sqlite3")
+        return self._index
+
+    def semantic_on(self) -> bool:
+        e = self.embedder
+        if e is None:
+            return False
+        avail = getattr(e, "available", None)
+        try:
+            return bool(avail()) if callable(avail) else True
+        except Exception:  # noqa: BLE001
+            return False
+
+    def status(self) -> dict:
+        on = self.semantic_on()
+        return {"semantic": on, "vectors": self.index.count() if on or self._index is not None else 0,
+                "model": getattr(self.embedder, "model", None) if on else None,
+                "error": getattr(self.embedder, "last_error", None) if on else None}
+
+    @staticmethod
+    def _item_id(it: dict) -> str:
+        if it.get("kind") == "profile" and it.get("id") in (None, "profile"):
+            return "p:" + hashlib.sha1(it["text"].encode("utf-8")).hexdigest()[:12]
+        return "j:" + str(it.get("id"))
+
+    def _vectors(self, items: list[dict], limit_new: int = 64) -> dict[str, list[float]]:
+        """Vectors of these items (cached in SQLite; at most `limit_new` new ones embedded per call)."""
+        model = getattr(self.embedder, "model", None) or "default"
+        out, missing = {}, []
+        for it in items:
+            iid = self._item_id(it)
+            v = self.index.get(iid, it["text"], model)
+            if v is not None:
+                out[iid] = v
+            elif len(missing) < limit_new:
+                missing.append((iid, it["text"]))
+        if missing:
+            vecs = self.embedder([t for _, t in missing])
+            if vecs:
+                model = getattr(self.embedder, "model", None) or "default"
+                for (iid, text), v in zip(missing, vecs):
+                    self.index.put(iid, text, model, v)
+                    out[iid] = v
+        return out
 
     # ----- write -----
     def write(self, text: str, kind: str = "note", tags: list[str] | None = None) -> dict:
@@ -38,7 +92,13 @@ class Memory:
         if not text:
             raise ValueError("empty memory")
         with self._lock:
-            return self._write(text, kind, tags)
+            entry = self._write(text, kind, tags)
+        if self.semantic_on():                   # best effort: recall embeds what is missing anyway
+            try:
+                self._vectors([entry])
+            except Exception:  # noqa: BLE001
+                pass
+        return entry
 
     def _write(self, text: str, kind: str, tags: list[str] | None) -> dict:
         if kind == "profile":
@@ -66,6 +126,56 @@ class Memory:
         return [ln[2:].strip() for ln in self.profile.read_text(encoding="utf-8").splitlines() if ln.startswith("- ")]
 
     def recall(self, query: str, limit: int = 5) -> list[dict]:
+        if query.strip() and self.semantic_on():
+            try:
+                hits = self._hybrid(query, limit)
+                if hits is not None:
+                    self.last_mode = "hybrid"
+                    return hits
+            except Exception:  # noqa: BLE001 - never lose recall because of the embeddings service
+                pass
+        self.last_mode = "keyword"
+        return self._keyword(query, limit)
+
+    def _hybrid(self, query: str, limit: int) -> list[dict] | None:
+        """Meaning + keywords: 0.65 x cosine similarity + 0.35 x keyword score (normalised)."""
+        from .vectors import cosine
+        items = [{"id": "profile", "kind": "profile", "text": t, "tags": []} for t in self.profile_lines()]
+        items += self.entries()
+        if not items:
+            return []
+        qv = self.embedder([query])
+        if not qv:
+            return None
+        vecs = self._vectors(items)
+        if not vecs:
+            return None
+        self.index.delete_missing({self._item_id(it) for it in items})
+        kw = {id(it): s for s, _, it in self._scored(query, items)}
+        top = max(kw.values() or [0]) or 1
+        out = []
+        for idx, it in enumerate(items):
+            cos = cosine(qv[0], vecs.get(self._item_id(it)) or [])
+            k = kw.get(id(it), 0) / top
+            score = 0.65 * cos + 0.35 * k
+            if cos >= 0.2 or k > 0:
+                out.append((score, idx, dict(it, semantic=round(cos, 3), keyword=round(k, 3))))
+        out.sort(key=lambda x: (-x[0], -x[1]))
+        return [dict(it, score=round(sc, 3), how="hybrid") for sc, _, it in out[:limit]]
+
+    def _scored(self, query: str, items: list[dict]) -> list[tuple]:
+        q = set(_words(query))
+        out = []
+        for idx, it in enumerate(items):
+            words = _words(it["text"] + " " + " ".join(it.get("tags", [])))
+            if q:
+                score = sum(1 for w in words if w in q) + 2 * len(q & set(words))
+                score += sum(0.5 for qw in q for w in set(words) if len(qw) >= 4 and qw != w and (w.startswith(qw) or qw.startswith(w)))
+                if score > 0:
+                    out.append((score, idx, it))
+        return out
+
+    def _keyword(self, query: str, limit: int = 5) -> list[dict]:
         q = set(_words(query))
         items = [{"id": "profile", "kind": "profile", "text": t, "tags": []} for t in self.profile_lines()]
         items += self.entries()

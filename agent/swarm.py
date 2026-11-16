@@ -26,6 +26,7 @@ from __future__ import annotations
 
 import dataclasses
 import shutil
+import re
 import threading
 from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass, field
@@ -40,7 +41,8 @@ from .tools import Registry, Tool, ToolContext, ToolError, params, s
 if TYPE_CHECKING:  # pragma: no cover
     from .loop import Agent
 
-SPAWN_TOOLS = ("spawn_agent", "spawn_agents")
+SPAWN_TOOLS = ("spawn_agent", "spawn_agents", "handoff")
+MAX_HANDOFFS = 4         # hand-overs per root run (root -> Coder -> Tester -> Critic ...)
 PARALLEL_CATEGORIES = ("read", "network")
 
 
@@ -71,6 +73,7 @@ class SwarmConfig:
 class SwarmState:
     """Shared by every agent of one tree. Thread-safe."""
     spawned: int = 0
+    handoffs: int = 0
     lock: threading.Lock = field(default_factory=threading.Lock, repr=False, compare=False)
 
     def reserve_child(self, limit: int) -> int | None:
@@ -81,9 +84,17 @@ class SwarmState:
             self.spawned += 1
             return self.spawned
 
+    def take_handoff(self) -> bool:
+        with self.lock:
+            if self.handoffs >= MAX_HANDOFFS:
+                return False
+            self.handoffs += 1
+            return True
+
     def reset(self) -> None:
         with self.lock:
             self.spawned = 0
+            self.handoffs = 0
 
 
 class RestrictedPermissions:
@@ -185,7 +196,8 @@ def spawn(parent: "Agent", task: str, max_steps: int | None = None,
 
 def run_child(parent: "Agent", task: str, max_steps: int | None = None,
               allowed_tools: list[str] | None = None, share: int = 1,
-              workspace: Path | None = None) -> tuple[str, str]:
+              workspace: Path | None = None, handoff: bool = False,
+              result: dict | None = None, role: str | None = None) -> tuple[str, str]:
     """Run one sub-agent to completion; returns (child id, observation for the parent).
 
     `share` > 1 (parallel batch): the child may reserve at most 1/share of what is left.
@@ -200,7 +212,7 @@ def run_child(parent: "Agent", task: str, max_steps: int | None = None,
     if parent.cancel is not None and parent.cancel.is_set():
         raise ToolError("cancelled")
     depth = parent.depth + 1
-    if depth > cfg.max_depth:
+    if depth > cfg.max_depth + (MAX_HANDOFFS if handoff else 0):
         raise ToolError(f"max depth reached ({cfg.max_depth}); do the work yourself")
 
     b = parent.budget
@@ -231,7 +243,7 @@ def run_child(parent: "Agent", task: str, max_steps: int | None = None,
     ctx = parent.ctx if workspace is None else dataclasses.replace(parent.ctx, workspace=Path(workspace))
     parent.audit.record(event="spawn", agent=parent.agent_id, depth=parent.depth, child=child_id,
                         child_depth=depth, task=task, tools=sorted(allowed),
-                        isolated=workspace is not None,
+                        isolated=workspace is not None, **({"handoff": True} if handoff else {}),
                         budget={"max_steps": budget.max_steps, "max_tool_calls": budget.max_tool_calls,
                                 "max_tokens": budget.max_tokens})
     on_event = parent.on_event
@@ -245,6 +257,7 @@ def run_child(parent: "Agent", task: str, max_steps: int | None = None,
     child.key_task = role_task(task)      # key pool: research / writing / code / analysis / vision / general
     # same language as the user's request, same confinement and rules as the parent (developer mode)
     child.lang, child.ui_lang = getattr(parent, "lang", None), getattr(parent, "ui_lang", None)
+    child.handoff_role = role             # a specialist who received a hand-over (never hands over to itself)
     child.child_rules = getattr(parent, "child_rules", "")
     child.extra_rules = child.child_rules
     child.refresh_system()
@@ -265,6 +278,8 @@ def run_child(parent: "Agent", task: str, max_steps: int | None = None,
                 st.tool_calls += cs.tool_calls
                 st.tokens += cs.tokens
                 st.cost += cs.cost
+    if result is not None:
+        result.update(answer=res.answer, stop_reason=res.stop_reason, child=child_id)
     parent.audit.record(event="child_done", agent=child_id, depth=depth, parent=parent.agent_id,
                         stop_reason=res.stop_reason, steps=res.steps, tool_calls=res.tool_calls,
                         tokens=res.tokens, cost=res.cost, result=res.answer)
@@ -337,7 +352,50 @@ def spawn_many(parent: "Agent", tasks: list[str], max_steps: int | None = None,
     return out
 
 
-def make_tools(agent: "Agent") -> list[Tool]:
+def handoff_context(agent: "Agent", limit: int = 3000) -> str:
+    """What the next specialist needs: the request of this turn and the latest work (answers, tool results)."""
+    msgs = agent.messages
+    start = max((i for i, m in enumerate(msgs) if m.get("role") == "user"), default=0)
+    request = str(msgs[start].get("content") or "") if msgs else ""
+    lines = []
+    for m in msgs[start + 1:]:
+        if m.get("role") == "assistant" and m.get("content"):
+            lines.append(f"{agent.agent_id} said: {str(m['content'])[:600]}")
+        elif m.get("role") == "tool":
+            lines.append(f"tool result: {str(m.get('content'))[:400]}")
+        for c in m.get("tool_calls") or []:
+            lines.append(f"{agent.agent_id} called {c['function']['name']}({str(c['function'].get('arguments'))[:200]})")
+    work = "\n".join(lines)[-(limit - min(len(request), 1200)):]
+    return f"Request: {request[:1200]}\nWork so far:\n{work or '(nothing yet)'}"
+
+
+def handoff(agent: "Agent", to: str, brief: str) -> str:
+    """Hand the task over to a specialist (a new agent with the context); its answer becomes this agent's
+    final answer (the loop ends right after this tool). If the specialist does not finish, the work comes back."""
+    role = re.sub(r"[\n:]+", " ", str(to or "")).strip()[:40] or "Specialist"
+    brief = str(brief or "").strip()
+    if not brief:
+        raise ToolError("brief is empty: say what the specialist must do")
+    mine = str(getattr(agent, "handoff_role", None) or "").strip().lower()
+    if mine and role.lower() == mine:
+        raise ToolError(f"you ARE the {role}: do this part yourself now (write files, run tools), then answer "
+                        "or hand over to a different role")
+    if agent.swarm_state is None or not agent.swarm_state.take_handoff():
+        raise ToolError(f"no more hand-overs in this run (max {MAX_HANDOFFS}); finish the task yourself")
+    task = (f"{role}: {brief}\n\nYou are the {role}. Do this part yourself now with your tools. Hand over again "
+            f"(handoff) only to a DIFFERENT role, and only if the request asks for it after your part.\n"
+            f"--- Handed over by {agent.agent_id} (you now own the task; answer the user directly) ---\n"
+            f"{handoff_context(agent)}")
+    box: dict = {}
+    # the parent stops after a hand-over: the specialist gets everything that is left (not a sub-task budget)
+    _, obs = run_child(agent, task, 10 ** 6, None, 1, handoff=True, result=box, role=role)
+    if box.get("stop_reason") == "final":
+        agent.handoff_result = box.get("answer") or ""
+        return f"[handed over to {box.get('child')} ({role})] it answered the user."
+    return obs + "\n(The specialist did not finish: continue the task yourself.)"
+
+
+def make_tools(agent: "Agent", spawn_tools: bool = True) -> list[Tool]:
     """Spawn tools bound to one agent (closures: the tool needs the agent, not only the context)."""
 
     def _one(ctx: ToolContext, a: dict) -> str:
@@ -360,7 +418,15 @@ def make_tools(agent: "Agent") -> list[Tool]:
                                  "yours); omitted or empty = all of your tools"}
     steps_prop = {"type": ["integer", "null"],
                   "description": "optional: step budget (capped by what you have left); usually omit it"}
-    return [
+    hand = Tool("handoff", "Hand the whole task over to a specialist (e.g. 'Codeur', 'Testeur', 'Critique'): a new "
+                "agent gets the request and your work so far, finishes the task and answers the user; you stop. "
+                "Use it when another role should take over; use spawn_agent when you want a result back.",
+                "delegate", params(["to", "brief"], to=s("the specialist's role, e.g. Testeur"),
+                                   brief=s("what they must do now, complete and self-contained")),
+                lambda ctx, a: handoff(agent, a.get("to"), a.get("brief")))
+    if not spawn_tools:
+        return [hand]
+    return [hand,
         Tool("spawn_agent", "Launch a sub-agent on a self-contained task; returns its final answer. "
              "It uses your budget and never has more permissions than you.", "delegate",
              params(["task"], task=s("complete, self-contained instructions"), max_steps=steps_prop,
