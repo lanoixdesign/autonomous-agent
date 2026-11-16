@@ -23,6 +23,9 @@ if [ -z "$ok" ]; then stop; echo "FAIL: /health did not answer"; exit 1; fi
 cat "$HOME_DIR/health.json"; echo
 grep -q '"status": "ok"' "$HOME_DIR/health.json"
 grep -q '"provider": "mock"' "$HOME_DIR/health.json"
+# v0.9.4: HTTPS certificates are shipped with the app and usable (macOS: the embedded Python has none)
+grep -q '"bundled": true' "$HOME_DIR/health.json"
+! grep -q '"source": "missing"' "$HOME_DIR/health.json"
 test "$(curl -s -o /dev/null -w '%{http_code}' "http://127.0.0.1:$PORT/")" = 200
 test -f "$HOME_DIR/.env" && test -d "$HOME_DIR/workspace" && test -f "$HOME_DIR/permissions.yaml"
 stop

@@ -59,7 +59,7 @@ ENV_TEMPLATE = """# autonomous-agent — API keys / clés d'API
 # AGENT_MODEL=
 
 # Several keys with limits: copy providers.example.yaml to providers.yaml in this folder.
-# Plusieurs clés avec limites : copiez providers.example.yaml en providers.yaml dans ce dossier.
+# Plusieurs clés avec limites : copie providers.example.yaml en providers.yaml dans ce dossier.
 
 # IDC mode (finite deliberation, append-only commitments) on by default for new conversations
 # Mode IDC (délibération finie, engagements en ajout seul) activé par défaut pour les nouvelles conversations
@@ -133,8 +133,9 @@ def prepare_home(home: Path) -> dict[str, Path]:
             pass
     res = resources()
     for name, key in (("permissions.yaml", "permissions"), ("providers.example.yaml", "providers_example")):
-        if not paths[key].exists() and (res / name).is_file():
-            shutil.copyfile(res / name, paths[key])
+        src = res / name if (res / name).is_file() else res / "docs" / "examples" / name   # repo: docs/examples
+        if not paths[key].exists() and src.is_file():
+            shutil.copyfile(src, paths[key])
     return paths
 
 
@@ -237,6 +238,8 @@ def main(argv: list[str] | None = None) -> int:
 
     home = home_dir()
     logged = ensure_streams(home / "data" / "app.log")
+    from .tlsca import ensure_ca
+    ensure_ca(home / "data")         # v0.9.4: HTTPS certificates (the embedded macOS Python has none)
     paths = prepare_home(home)
     load_dotenv(paths["env"])
     cfg = UserConfig(paths["data"])

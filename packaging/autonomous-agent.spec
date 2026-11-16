@@ -15,12 +15,15 @@ NAME = "AutonomousAgent"
 datas = [
     (os.path.join(ROOT, "skills"), "skills"),                       # bundled skills (agent/cli.py REPO_SKILLS)
     (os.path.join(ROOT, "permissions.yaml"), "."),                  # copied to ~/AutonomousAgent on first run
-    (os.path.join(ROOT, "providers.example.yaml"), "."),
-    (os.path.join(ROOT, ".env.example"), "."),
+    (os.path.join(ROOT, "docs", "examples", "providers.example.yaml"), "."),
+    (os.path.join(ROOT, "docs", "examples", ".env.example"), "."),
     (os.path.join(ROOT, "LICENSE"), "."),
 ]
 # The web pages and the EN/FR strings are Python modules (agent/harness_*.py, agent/i18n.py).
-hiddenimports = collect_submodules("agent") + ["sqlite3"]
+hiddenimports = collect_submodules("agent") + ["sqlite3", "certifi"]
+# v0.9.4: the certificate list for HTTPS (the embedded macOS Python has none; see agent/tlsca.py)
+from PyInstaller.utils.hooks import collect_data_files
+datas += collect_data_files("certifi")
 
 a = Analysis(
     [os.path.join(SPECPATH, "launcher.py")],
@@ -37,7 +40,7 @@ if sys.platform == "darwin":
               argv_emulation=False, target_arch=None, codesign_identity=None)
     coll = COLLECT(exe, a.binaries, a.datas, name=NAME)
     app = BUNDLE(coll, name=f"{NAME}.app", bundle_identifier="io.github.lanoixdesign.autonomous-agent",
-                 info_plist={"CFBundleShortVersionString": os.environ.get("APP_VERSION", "0.9.3"),
+                 info_plist={"CFBundleShortVersionString": os.environ.get("APP_VERSION", "0.9.4"),
                              "CFBundleDisplayName": "Autonomous Agent", "LSMinimumSystemVersion": "11.0",
                              "NSHighResolutionCapable": True})
 else:

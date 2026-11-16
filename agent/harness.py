@@ -1190,7 +1190,7 @@ class Harness:
                 "uploads": self.workspace is not None, "keys": keys, "backend": backend,
                 "idc": {"default": self.settings["idc"]},
                 "critic": {"enabled": bool(self.settings.get("critic")), "rounds": self.settings.get("critic_rounds")},
-                "memory": self._memory_status()}
+                "memory": self._memory_status(), "tls": _tls_status()}
 
     def _memory_status(self) -> dict:
         try:
@@ -1249,6 +1249,12 @@ SSE_PING = 15.0
 
 
 LOOPBACK = ("127.0.0.1", "::1", "::ffff:127.0.0.1")
+
+
+def _tls_status() -> dict:
+    """v0.9.4: where HTTPS certificates come from (system / bundled / macos-keychain / env / missing)."""
+    from . import tlsca
+    return {"source": tlsca.STATE.get("source"), "bundled": tlsca._certifi() is not None}
 # v0.9.3: the app's own pages. Everything comes from this app (no CDN); nobody else may frame them.
 PAGE_CSP = ("default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline'; "
             "img-src 'self' data: blob:; media-src 'self' data: blob:; connect-src 'self'; frame-src 'self'; "

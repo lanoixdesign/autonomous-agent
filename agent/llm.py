@@ -27,9 +27,19 @@ PROVIDERS: dict[str, dict[str, Any]] = {
 
 class LLMError(Exception):
     def __init__(self, message: str, status: int | None = None, retry_after: float | None = None,
-                 ratelimit: dict | None = None, code: str | None = None):
+                 ratelimit: dict | None = None, code: str | None = None, **info: Any):
         super().__init__(message)
         self.status, self.retry_after, self.ratelimit, self.code = status, retry_after, ratelimit, code
+        self.host, self.model, self.key_mask = info.get("host"), info.get("model"), info.get("key_mask")
+
+
+NET_RETRIES = 2          # v0.9.4: a network error is retried twice (5 s apart in the key router), then explained
+NET_COOLDOWN = 5.0
+
+
+def _host(url: str) -> str:
+    import urllib.parse
+    return urllib.parse.urlsplit(url).hostname or url
 
 
 TRANSIENT = (408, 409, 425, 429, 500, 502, 503, 504, 520, 522, 524, 529)   # worth another try (other key / later)
@@ -41,6 +51,78 @@ TOOL_FAIL = re.compile(r"tool_use_failed|failed to call a function|tool call val
                        r"tool choice is none, but model called a tool|invalid tool call|"
                        r"failed to parse tool call|attempted to call tool", re.I)
 _AGAIN = re.compile(r"try again in\s+((?:\d+(?:\.\d+)?(?:ms|h|m|s))+)", re.I)
+
+
+# v0.9.4: what really went wrong, so the app never shows "rate limit, retrying in 30 s" for something
+# that waiting cannot fix. Codes: tls, network, too_large, daily_limit, rate_limit, key_invalid,
+# model_unavailable, tool_use_failed, server.
+FINAL_CODES = ("tls", "too_large", "daily_limit", "key_invalid", "model_unavailable")
+_TOO_LARGE = re.compile(r"request too large|reduce your message size|context_length_exceeded|"
+                        r"maximum context length|prompt is too long|too many tokens", re.I)
+_DAILY = re.compile(r"per day|\((?:TPD|RPD|ASPD)\)|daily", re.I)
+_MODEL = re.compile(r"model_not_found|model_decommissioned|decommissioned|does not exist|not supported|"
+                    r"no longer (?:available|supported)|unknown model|invalid model", re.I)
+_LIMIT = re.compile(r"Limit\s+(\d+)", re.I)
+_REQUESTED = re.compile(r"Requested\s+(\d+)", re.I)
+
+
+def classify_http(status: int, detail: str) -> str | None:
+    if status == 400 and TOOL_FAIL.search(detail):
+        return "tool_use_failed"
+    if status == 413 or (status in (400, 429) and _TOO_LARGE.search(detail)):
+        return "too_large"
+    if status == 429:
+        lim, req = _LIMIT.search(detail), _REQUESTED.search(detail)
+        if lim and req and int(req.group(1)) > int(lim.group(1)) and not _DAILY.search(detail):
+            return "too_large"                         # can never fit in the per-minute budget
+        return "daily_limit" if _DAILY.search(detail) else "rate_limit"
+    if status in (401, 402, 403):
+        return "key_invalid"
+    if status == 404 or (status in (400, 422) and _MODEL.search(detail) and "model" in detail.lower()):
+        return "model_unavailable"
+    if status >= 500:
+        return "server"
+    return None
+
+
+def token_limit(e: BaseException) -> int | None:
+    """The provider's per-minute token limit, from the error message or its headers."""
+    m = _LIMIT.search(str(e))
+    if m:
+        return int(m.group(1))
+    rl = getattr(e, "ratelimit", None) or {}
+    try:
+        return int(rl.get("x-ratelimit-limit-tokens")) if rl.get("x-ratelimit-limit-tokens") else None
+    except (TypeError, ValueError):
+        return None
+
+
+def friendly(e: BaseException, lang: str | None = None, key_mask: str | None = None) -> str:
+    """A short message for a beginner (EN/FR) for a model error; the technical detail stays in the audit."""
+    from . import i18n
+    lang = lang or i18n.env_lang()
+    code = getattr(e, "code", None)
+    km = key_mask or getattr(e, "key_mask", None) or "?"
+    if code == "tls":
+        return i18n.t(lang, "err.tls")
+    if code == "network":
+        return i18n.t(lang, "err.network", host=getattr(e, "host", None) or "?")
+    if code == "too_large":
+        return i18n.t(lang, "err.tooLarge", limit=token_limit(e) or "?")
+    if code == "daily_limit":
+        ra = getattr(e, "retry_after", None)
+        if ra:
+            at = time.strftime("%H:%M", time.localtime(time.time() + ra))
+            return i18n.t(lang, "err.daily", mask=km, at=at)
+        return i18n.t(lang, "err.dailyNoTime", mask=km)
+    if code in ("key_invalid", "keys_refused"):
+        return i18n.t(lang, "err.keyInvalid")
+    if code == "model_unavailable":
+        return i18n.t(lang, "err.model", model=getattr(e, "model", None) or "?")
+    if code in ("keys_exhausted", "rate_limit"):
+        detail = str(e).strip()
+        return i18n.t(lang, "err.busy") + (f"\n({detail[:400]})" if code == "keys_exhausted" and detail else "")
+    return i18n.t(lang, "err.other", detail=str(e)[:300])
 
 
 def _rl_headers(headers: Any) -> dict:
@@ -104,8 +186,10 @@ class OpenAICompatible:
         temp = (CALLER.get() or {}).get("temperature")     # lower on a retry after a malformed tool call
         payload: dict[str, Any] = {"model": self.model, "messages": messages,
                                    "temperature": self.temperature if temp is None else temp}
-        if self.max_tokens:
-            payload["max_tokens"] = self.max_tokens
+        cap = (CALLER.get() or {}).get("max_tokens")    # v0.9.4: smaller answer budget to fit the TPM limit
+        mt = min(x for x in (self.max_tokens, cap) if x) if (self.max_tokens or cap) else None
+        if mt:
+            payload["max_tokens"] = int(mt)
         if tools:
             payload["tools"] = tools
             payload["tool_choice"] = "auto"
@@ -132,29 +216,33 @@ class OpenAICompatible:
                         retry_after = float(e.headers.get("Retry-After"))
                 except (TypeError, ValueError):
                     retry_after = None
-                if retry_after is None and e.code == 429:   # Groq also says "Please try again in 4.5s"
+                code = classify_http(e.code, detail)
+                if code == "daily_limit" or (retry_after is None and e.code == 429):   # "Please try again in 7m12s"
                     m = _AGAIN.search(detail)
                     if m:
                         from .keys import parse_duration
-                        retry_after = parse_duration(m.group(1))
+                        retry_after = max(retry_after or 0, parse_duration(m.group(1)))
                 last = LLMError(f"HTTP {e.code} from {self.base_url}: {redact(detail, [self._api_key or ''])}",
                                 status=e.code, retry_after=retry_after, ratelimit=_rl_headers(e.headers or {}),
-                                code="tool_use_failed" if e.code == 400 and TOOL_FAIL.search(detail) else None)
-                if e.code not in TRANSIENT or attempt == self.retries:
+                                code=code, model=self.model, host=_host(self.base_url))
+                if e.code not in TRANSIENT or code in FINAL_CODES or attempt == self.retries:
                     raise last
                 if retry_after:
                     wait = min(MAX_WAIT, max(0.5, retry_after))
             except (urllib.error.URLError, TimeoutError, http.client.HTTPException, ConnectionError, OSError) as e:
-                last = LLMError(f"cannot reach {self.base_url}: {e}")
-                if attempt == self.retries:
-                    raise last
+                from .tlsca import is_cert_error
+                tls = is_cert_error(e)
+                last = LLMError(f"cannot reach {self.base_url}: {e}", code="tls" if tls else "network",
+                                model=self.model, host=_host(self.base_url))
+                if tls or attempt >= min(self.retries, NET_RETRIES):
+                    raise last      # waiting does not fix a certificate problem; the network gets 2 retries
             except ValueError as e:   # not JSON (proxy error page...)
                 last = LLMError(f"unexpected response from {self.base_url}: {e}", status=502)
                 if attempt == self.retries:
                     raise last
             from .keys import mask
             notify("wait", seconds=round(wait, 1), key_mask=mask(self._api_key) if self._api_key else "(no key)",
-                   status=last.status, reason="all_paused")
+                   status=last.status, reason="network" if last.code == "network" else "all_paused")
             if not _pause(wait):
                 raise LLMError("cancelled", code="cancelled")
         try:
@@ -242,7 +330,7 @@ def make_llm(provider: str | None = None, model: str | None = None) -> Any:
         raise LLMError("AGENT_MODEL (or --model) is required for provider 'custom'")
     key = os.environ.get("AGENT_API_KEY") or (os.environ.get(cfg["key_env"]) if cfg["key_env"] else None)
     if cfg["key_env"] and not key and provider != "custom":
-        raise LLMError(f"missing API key: set {cfg['key_env']} (see .env.example)")
+        raise LLMError(f"missing API key: set {cfg['key_env']} (see docs/examples/.env.example)")
     return OpenAICompatible(base, model, key, retries=MAX_WAITS)   # single .env key: wait out rate limits
 
 
@@ -278,8 +366,9 @@ class RoutedLLM:
 
         est_prompt = (len(json.dumps(messages, ensure_ascii=False)) + len(json.dumps(tools or []))) // 3 + 16
         errors: list[str] = []
-        waits = 0
+        waits = net_fails = 0
         failed: dict | None = None    # the key that just failed (for the "switching to backup" message)
+        final: LLMError | None = None  # v0.9.4: a daily limit seen on a key (explained if no other key can go on)
         while True:
             caller = CALLER.get() or {}
             try:
@@ -291,13 +380,16 @@ class RoutedLLM:
                     notify("refused")
                     raise LLMError("every API key was refused by its provider (invalid, revoked or no credit): "
                                    "check them in Settings -> Keys. " + detail, code="keys_refused")
+                if final is not None and (e.wait_s is None or e.wait_s > self.max_wait_total):
+                    raise final
                 if e.wait_s is None or e.wait_s > self.max_wait_total or waits >= self.max_waits:
                     notify("exhausted")
                     raise LLMError(detail, code="keys_exhausted")
                 pause = min(self.max_wait, max(0.5, e.wait_s))
                 waits += 1
                 notify("wait", seconds=round(pause, 1), key_mask=(failed or {}).get("key_mask"),
-                       status=(failed or {}).get("status"), reason="all_paused")
+                       status=(failed or {}).get("status"),
+                       reason="network" if (failed or {}).get("code") == "network" else "all_paused")
                 if not _pause(pause):
                     raise LLMError("cancelled", code="cancelled")
                 continue
@@ -311,7 +403,11 @@ class RoutedLLM:
                 tagged = not ent.tasks or "general" in ent.tasks or ht in ent.tasks
                 notify("switch", key_mask=failed["key_mask"], to_mask=key_mask, status=failed.get("status"),
                        backup_kind="same" if own and tagged else ("other_task" if own else "other_category"))
-            client = self.client_factory(lease.base_url, lease.model, lease.api_key, lease.max_completion_tokens)
+            mct = lease.max_completion_tokens
+            tpm = self.router.rate_limit_tokens(lease.name) if hasattr(self.router, "rate_limit_tokens") else None
+            if tpm and mct:     # v0.9.4: the provider counts max_tokens in its per-minute budget (Groq: 8000)
+                mct = max(256, min(mct, int(tpm * 0.9) - est_prompt))
+            client = self.client_factory(lease.base_url, lease.model, lease.api_key, mct)
             try:
                 reply = client.chat(messages, tools)
             except LLMError as e:
@@ -320,12 +416,26 @@ class RoutedLLM:
                 if e.code == "cancelled":
                     lease.release()
                     raise
+                e.key_mask = e.key_mask or key_mask
+                if e.code in ("tls", "too_large", "model_unavailable"):
+                    lease.fail(e.status if e.status is not None else 400)   # no cooldown: waiting would not help
+                    raise   # explained to the user at once (too_large: the agent shortens the request first)
                 if e.status is not None and e.status not in TRANSIENT and e.status not in KEY_ERRORS:
                     lease.fail(e.status)
                     raise   # a 4xx like 400 is not a key problem: do not burn the other keys
-                lease.fail(e.status, e.retry_after)
+                if e.code == "network":
+                    net_fails += 1
+                    if net_fails > NET_RETRIES:
+                        lease.fail(None, NET_COOLDOWN)
+                        raise
+                    lease.fail(None, NET_COOLDOWN)
+                elif e.code == "daily_limit":
+                    final = e
+                    lease.fail(429, max(e.retry_after or 0, 3600.0))   # set aside; another key may go on
+                else:
+                    lease.fail(e.status, e.retry_after)
                 errors.append(f"{lease.name}: {e}")
-                failed = {"key": lease.name, "key_mask": key_mask, "status": e.status}
+                failed = {"key": lease.name, "key_mask": key_mask, "status": e.status, "code": e.code}
                 continue
             except Exception:
                 lease.fail(None)

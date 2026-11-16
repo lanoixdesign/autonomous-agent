@@ -378,6 +378,8 @@ def common(p: argparse.ArgumentParser) -> None:
 
 def main(argv: list[str] | None = None) -> int:
     load_dotenv(Path.cwd() / ".env")
+    from .tlsca import ensure_ca
+    ensure_ca()                      # v0.9.4: HTTPS certificates in the desktop builds (macOS)
     ap = argparse.ArgumentParser(prog="python -m agent", description="Autonomous agent with tunable guardrails.")
     ap.add_argument("--version", action="version", version=__version__)
     sub = ap.add_subparsers(dest="cmd", required=True)

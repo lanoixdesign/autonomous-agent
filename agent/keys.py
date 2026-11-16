@@ -1,6 +1,6 @@
 """Several API keys, by category, with limits that are never exceeded: the key router.
 
-Config (`providers.yaml`, git-ignored; see providers.example.yaml): a list of keys. Each key names the
+Config (`providers.yaml`, git-ignored; see docs/examples/providers.example.yaml): a list of keys. Each key names the
 ENVIRONMENT VARIABLE that holds the secret (`key_env`), never the secret itself. Categories are free
 strings (text, code, image, audio_tts, audio_stt, embeddings, ... add your own).
 
@@ -552,6 +552,17 @@ class KeyRouter:
             with self._lock:
                 rl["at"] = self.clock()
                 self._rate[name] = rl
+
+    def rate_limit_tokens(self, name: str) -> int | None:
+        """v0.9.4: the per-minute token limit of key `name` (provider headers, its own limit, or the free
+        Groq default), used to keep prompt + max_tokens under it."""
+        with self._lock:
+            rl = self._rate.get(name) or {}
+            e = next((x for x in self.entries if x.name == name), None)
+        lim = (e.limits.get("tokens_per_minute") if e else None) or rl.get("tokens_limit")
+        if not lim and e is not None:
+            lim = DEFAULT_TPM.get(e.provider or "") or (DEFAULT_TPM["groq"] if e.base_url and "groq.com" in e.base_url else None)
+        return int(lim) if lim else None
 
     def rate_reset(self, name: str) -> float | None:
         """Seconds until the provider refills the token budget of `name` (from its last headers)."""

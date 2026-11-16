@@ -51,6 +51,9 @@ function keysText(e){
   const a=e.action, from=e.from_mask||e.key_mask;
   if(a==="switch") return t(e.status===429||e.status==null?"kw.switch":"kw.switchErr",{from:mk(from),to:mk(e.to_mask),status:e.status})
                           +(e.backup_kind==="same"||!e.backup_kind?"":t("kw.otherUse"));
+  if(a==="wait" && e.reason==="network") return t("kw.waitNet",{key:mk(from),s:Math.ceil(e.seconds||0)});
+  if(a==="shrink") return t("kw.shrink");
+  if(a==="switch" && e.status==null) return t("kw.switchErr",{from:mk(from),to:mk(e.to_mask),status:t("kw.net")});
   if(a==="wait") return from ? t("kw.waitKey",{key:mk(from),s:Math.ceil(e.seconds||0)}) : t("kw.wait",{s:Math.ceil(e.seconds||0)});
   if(a==="resume") return t("kw.resume",{key:mk(from)});
   if(a==="refused") return t("kw.refused");
