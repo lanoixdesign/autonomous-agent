@@ -30,7 +30,7 @@ from typing import Any, Callable
 
 from . import idc as idc_mod
 from .audit import AuditLog
-from .llm import LLMError
+from .llm import CALLER, LLMError
 from .permissions import Permissions
 from .redact import redact
 from .swarm import SwarmConfig, SwarmState
@@ -103,6 +103,7 @@ class Agent:
         self.stop_rule = stop_rule
         # Multi-agent mode (off unless `swarm` is given). base_registry = tools without spawn tools.
         self.swarm, self.depth, self.agent_id = swarm, depth, agent_id
+        self.key_task = "general"     # task type for the key pool (set by the swarm from the child's role)
         self.swarm_state = swarm_state or (SwarmState() if swarm else None)
         self.base_registry = registry
         self.state: RunState | None = None
@@ -146,6 +147,13 @@ class Agent:
     # ------------------------------------------------------------------
     def run(self, task: str) -> RunResult:
         """Run one user turn. Can be called repeatedly (chat mode keeps history)."""
+        try:
+            return self._run(task)
+        finally:
+            if self.depth == 0:
+                self.release_key()     # the turn is over: this conversation's key is free for others
+
+    def _run(self, task: str) -> RunResult:
         self.messages.append({"role": "user", "content": task})
         st = RunState()
         self.state = st
@@ -174,13 +182,17 @@ class Agent:
                 if why:
                     return self._collapse(st, why)
             try:
-                reply = self.llm.chat(self.messages, self.tool_schemas())
+                reply = self._chat(self.tool_schemas())
             except LLMError as e:
                 return self._stop(st, "llm_error", f"LLM error: {e}")
             st.steps += 1
             st.tokens += reply.total_tokens
             st.cost += getattr(reply, "cost", 0.0) or 0.0
-            self.on_event("step", {"steps": st.steps, "max_steps": b.max_steps})   # live progress (harness graph)
+            step = {"steps": st.steps, "max_steps": b.max_steps}
+            if getattr(reply, "key_mask", None):   # which pool key served this agent (masked, never the secret)
+                step.update(key=reply.key, key_mask=reply.key_mask, key_task=reply.key_task,
+                            key_match=bool(reply.key_match))
+            self.on_event("step", step)   # live progress (harness graph)
             if ctrl is not None:
                 ctrl.on_step(reply.total_tokens)
             msg = reply.message
@@ -207,6 +219,26 @@ class Agent:
             if len(st.last_calls) == b.max_repeats and len(set(st.last_calls)) == 1:
                 return self._stop(st, "no_progress", "Stopped: the same tool call was repeated without progress.")
 
+    @property
+    def holder(self) -> str:
+        """This agent's id in the key pool: unique per conversation and agent (root, root.1, ...)."""
+        return f"{id(self.swarm_state) if self.swarm_state is not None else id(self)}:{self.agent_id}"
+
+    def _chat(self, tools: list[dict]) -> Any:
+        token = CALLER.set({"holder": self.holder, "task": self.key_task, "label": self.agent_id})
+        try:
+            return self.llm.chat(self.messages, tools)
+        finally:
+            CALLER.reset(token)
+
+    def release_key(self) -> None:
+        rel = getattr(self.llm, "release_holder", None)
+        if callable(rel):
+            try:
+                rel(self.holder)
+            except Exception:
+                pass
+
     def _collapse(self, st: RunState, why: str) -> RunResult:
         """IDC stopping rule: one last call WITHOUT tools (unless vitality is gone), else the fallback."""
         ctrl = self.idc
@@ -215,7 +247,7 @@ class Agent:
         if why != "exhausted":
             self.messages.append({"role": "user", "content": idc_mod.collapse_message(ctrl, why)})
             try:
-                reply = self.llm.chat(self.messages, [])
+                reply = self._chat([])
             except LLMError:
                 reply = None
             if reply is not None:

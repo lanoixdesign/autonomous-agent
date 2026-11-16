@@ -1,6 +1,7 @@
 """LLM backends: any OpenAI-compatible /chat/completions endpoint (urllib, no SDK), plus a mock."""
 from __future__ import annotations
 
+import contextvars
 import json
 import os
 import threading
@@ -35,6 +36,9 @@ class LLMReply:
     completion_tokens: int = 0
     cost: float = 0.0              # in the keys file currency, when the key router knows the pricing
     key: str | None = None         # name of the key that served the call (key router)
+    key_mask: str | None = None    # its masked form ("gsk_…a1b2"), never the secret
+    key_task: str | None = None    # the task type the agent asked for (research, writing, …)
+    key_match: bool = False        # True when the key is tagged for that task
 
     @property
     def total_tokens(self) -> int:
@@ -177,6 +181,11 @@ def make_llm(provider: str | None = None, model: str | None = None) -> Any:
     return OpenAICompatible(base, model, key)
 
 
+# Which swarm agent is calling (set by the agent loop around llm.chat): the key router gives each agent
+# its own key from the pool, matched to the agent's task type. Thread / context local.
+CALLER: contextvars.ContextVar[dict | None] = contextvars.ContextVar("aa_llm_caller", default=None)
+
+
 class RoutedLLM:
     """Chat backend that takes its key from a KeyRouter (agent/keys.py) for one category (text, code...).
 
@@ -192,13 +201,15 @@ class RoutedLLM:
         self.model = f"router:{category}"
 
     def chat(self, messages: list[dict], tools: list[dict] | None = None) -> LLMReply:
-        from .keys import KeysExhausted
+        from .keys import KEY_ERRORS, KeysExhausted, mask
 
         est_prompt = (len(json.dumps(messages, ensure_ascii=False)) + len(json.dumps(tools or []))) // 3 + 16
         errors = []
         while True:
             try:
-                lease = self.router.acquire(self.category, prompt_tokens=est_prompt)
+                caller = CALLER.get() or {}
+                lease = self.router.acquire(self.category, prompt_tokens=est_prompt, holder=caller.get("holder"),
+                                            task=caller.get("task"), label=caller.get("label"))
             except KeysExhausted as e:
                 raise LLMError(str(e) + (f"; errors: {' | '.join(errors)}" if errors else ""))
             if not lease.base_url or not lease.model:
@@ -208,7 +219,7 @@ class RoutedLLM:
             try:
                 reply = client.chat(messages, tools)
             except LLMError as e:
-                if e.status is not None and e.status != 429 and e.status < 500:
+                if e.status is not None and e.status != 429 and e.status < 500 and e.status not in KEY_ERRORS:
                     lease.fail(e.status)
                     raise   # a 4xx other than 429 is not a key problem: do not burn the other keys
                 lease.fail(e.status, e.retry_after)
@@ -222,7 +233,13 @@ class RoutedLLM:
                 pt, ct = est_prompt, len(json.dumps(reply.message)) // 3
             lease.commit(pt, ct)
             reply.cost, reply.key = lease.entry.cost(pt, ct), lease.name
+            reply.key_mask = mask(lease.api_key) if lease.entry.needs_key else "(no key)"
+            reply.key_task = getattr(lease, "holder_task", None)
+            reply.key_match = bool(reply.key_task and reply.key_task in (lease.entry.tasks or []))
             return reply
+
+    def release_holder(self, holder: str) -> None:
+        self.router.release_holder(holder)
 
 
 class SwitchLLM:
@@ -262,3 +279,7 @@ class SwitchLLM:
 
     def chat(self, messages: list[dict], tools: list[dict] | None = None) -> LLMReply:
         return self.current().chat(messages, tools)
+
+    def release_holder(self, holder: str) -> None:
+        """A swarm agent finished: free its key in the pool."""
+        self.control.router.release_holder(holder)

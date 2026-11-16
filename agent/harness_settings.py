@@ -3,6 +3,7 @@ terminal — API keys per category with limits and failover order, language, IDC
 parallel tasks, approval timeout, workspace, restart / quit. Plain HTML + JS, no external resources, EN/FR.
 Secrets are typed here and sent once to the server; they never come back (only masked)."""
 from .i18n_js import I18N_JS, LANG_CSS, LANG_SWITCH
+from .harness_keys import KEYS_CSS, KEYS_JS
 from .theme import BASE_CSS, NAV_CSS, NAV_HTML, NAV_JS, THEME_BTN, TIP_CSS, TIP_JS
 
 COMMON_CSS = r"""
@@ -131,6 +132,7 @@ SETTINGS_PAGE = r"""<!doctype html>
   .seg span{padding:9px 14px} input,select{font-size:16px!important} .banner{margin:10px}
  }
 /*TIP_CSS*/
+/*KEYS_CSS*/
 /*NAV_CSS*/
 /*LANG_CSS*/
 </style></head><body data-page="settings" class="simple">
@@ -148,8 +150,12 @@ SETTINGS_PAGE = r"""<!doctype html>
   <div class="row" style="justify-content:space-between"><span><label class="switch"><input type="checkbox" id="demo"><span data-i18n="set.demo"></span></label><button class="tip" data-tip="tip.demo"></button></span><span id="modebadge" class="pill"></span></div>
   <p id="storage" class="muted"></p>
   <p class="muted"><span data-i18n="set.keys.failover"></span><button class="tip" data-tip="tip.failover"></button></p>
+  <div id="poolbox" class="poolbox"><label class="f" for="parsel" style="display:inline"><span data-i18n="pool.title"></span></label><select id="parsel"></select>
+   <p id="poolnow" class="muted"></p><p class="bwhy" data-i18n="bulk.why"></p><p class="muted" data-i18n="pool.share"></p></div>
   <div id="plist"></div>
-  <div class="row"><button id="addkey" class="primary" data-i18n="set.keys.add"></button></div>
+  <div class="row"><button id="addkey" class="primary" data-i18n="set.keys.add"></button><button id="bulkb" type="button" data-i18n="bulk.open"></button><button id="jobsb" type="button" data-i18n="jobs.open"></button></div>
+  <div id="bulkp" class="subp" hidden><div class="row" style="justify-content:space-between"><h3 data-i18n="bulk.title" style="margin:0"></h3><button id="bulkx" type="button" class="linkish" data-i18n="bulk.close"></button></div><div id="bulkw"></div></div>
+  <div id="jobsp" class="subp" hidden></div>
   <form id="pform" hidden autocomplete="off">
    <h3 id="ftitle"></h3>
    <div class="grid2">
@@ -159,6 +165,7 @@ SETTINGS_PAGE = r"""<!doctype html>
    <label class="f" for="fkey"><span data-i18n="set.f.key"></span><button class="tip" data-tip="tip.key"></button></label>
    <input id="fkey" type="password" autocomplete="new-password" spellcheck="false">
    <div class="row" style="justify-content:space-between"><a id="getkey" target="_blank" rel="noopener noreferrer" data-i18n="set.f.getKey"></a><label class="switch"><input type="checkbox" id="fenabled" checked><span data-i18n="set.f.enabled"></span></label></div>
+   <div><label class="f" data-i18n="set.f.tasks"></label><div id="ftasks" class="chips"></div><p class="muted" data-i18n="set.f.tasksHelp"></p></div>
    <div class="xp"><label class="f"><span data-i18n="set.f.cats"></span><button class="tip" data-tip="tip.cats"></button></label><div id="fcats" class="chips"></div><p class="muted" data-i18n="set.f.catsHelp"></p></div>
    <p id="fdetect" class="muted" aria-live="polite"></p>
    <details id="fadv" class="xp"><summary data-i18n="set.f.advanced"></summary>
@@ -223,6 +230,7 @@ SETTINGS_PAGE = r"""<!doctype html>
 /*NAV_JS*/
 /*TIP_JS*/
 /*COMMON_JS*/
+/*KEYS_JS*/
 let V = null, P = [], editing = null;
 const PROVS = ["groq","openai","openrouter","ollama","custom"];
 function num(v,d){ return Number(v||0).toLocaleString(LANG,{maximumFractionDigits:d}); }
@@ -243,6 +251,7 @@ function drawRestart(){ const r=V.restart_needed||[], b=$("restartbar"); b.hidde
 function drawKeys(){
   $("demo").checked=!!V.demo; const mb=$("modebadge"); mb.textContent=tr("set.mode",V.mode); mb.className="pill "+(V.mode==="demo"?"purple":"ok");
   $("storage").textContent=V.storage==="keyring" ? t("set.storage.keyring") : t("set.storage.file",{home:V.secrets_dir||V.home});
+  drawPool(); $("jobsb").hidden=!P.length;
   const box=$("plist"); box.replaceChildren();
   if(!P.length){ box.append(el("p","muted",t("set.keys.none"))); return; }
   P.forEach((p,i)=>{ const c=el("div","pcard"+(p.enabled?"":" off"));
@@ -251,6 +260,7 @@ function drawKeys(){
     if(p.needs_key) top.append(el("code",null,p.key||"—"));
     c.append(top);
     c.append(el("div","pmeta",t("set.keys.model",{model:p.model})+" · "+t("set.keys.for",{cats:p.categories.map(x=>tr("kcat",x)).join(", ")})));
+    c.append(el("div","pmeta jfor",t("jobs.for",{tasks:taskList(p.tasks)})+((p.agents||[]).length?" · "+t("quota.agents",{agents:p.agents.map(x=>x==="root"?t("who.short.root"):x).join(", ")}):"")));
     const u=p.used||{}, expert=V.ui_mode==="expert";
     c.append(el("div","pmeta",expert ? t("set.keys.today",{req:num(u.requests_per_day||0,0),tok:fmt("tokens",u.tokens_per_day||0),cost:num(u.cost_per_day||0,4)+(V.currency?" "+V.currency:"")})
                                      : t("set.keys.todaySimple",{req:num(u.requests_per_day||0,0)})));
@@ -267,6 +277,18 @@ function drawKeys(){
     ed.onclick=()=>openForm(p); de.onclick=async()=>{ if(!confirm(t("set.keys.confirmDelete",{name:p.name}))) return; try{ await api("POST","/app/providers/"+p.id+"/delete",{}); toast(t("set.saved")); await reload(); }catch(e){ fail(e); } };
     a.append(up,dn,te,ed,de); c.append(a,tl); box.append(c); });
 }
+function drawPool(){ const pl=V.parallel||{saved:"auto",keys:0,effective:1,max:8}, s=$("parsel"); s.replaceChildren();
+  const o=el("option",null,t("pool.auto")); o.value="auto"; s.append(o);
+  for(let n=1;n<=(pl.max||8);n++){ const x=el("option",null,t("pool.n",{n})); x.value=String(n); s.append(x); }
+  s.value=String(pl.saved||"auto"); $("poolnow").textContent=V.mode==="demo"?t("pool.demo"):t("pool.now",{keys:pl.keys,n:pl.effective}); }
+$("parsel").onchange=async e=>{ try{ V=await api("POST","/app/settings",{parallel:e.target.value==="auto"?"auto":Number(e.target.value)}); drawPool(); toast(t("set.savedLive")); }catch(err){ fail(err); drawPool(); } };
+let bulkW=null;
+function pnameS(k){ return tr("prov",k).split(" (")[0]; }
+$("bulkb").onclick=()=>{ const p=$("bulkp"); p.hidden=!p.hidden; if(!p.hidden){ if(!bulkW) bulkW=makeBulk($("bulkw"),{prefixes:()=>V.key_prefixes||[],pname:pnameS,
+    onSaved:async r=>{ await reload(); if(r.saved && r.proposal && r.proposal.length) openJobs(r.proposal); }}); p.querySelector("textarea").focus(); } };
+$("bulkx").onclick=()=>{ $("bulkp").hidden=true; bulkW=null; $("bulkw").replaceChildren(); };
+function openJobs(prop){ const j=$("jobsp"); makeJobs(j,prop,async ok=>{ j.hidden=true; j.replaceChildren(); if(ok) await reload(); }); j.scrollIntoView({block:"nearest"}); }
+$("jobsb").onclick=async()=>{ if(!$("jobsp").hidden){ $("jobsp").hidden=true; return; } try{ openJobs((await api("POST","/app/providers/propose",{})).proposal.map(p=>Object.assign(p,{tasks:p.current&&p.current.length?p.current:p.tasks}))); }catch(e){ fail(e); } };
 function showTest(line,r){ line.className="testline "+(r.ok?"ok":"bad"); line.textContent=tr("test",r.code,{http:r.http_status||"?",prov:r.detected?tr("prov",r.detected).split(" (")[0]:""}); }
 async function move(i,d){ const ids=P.map(p=>p.id); const [x]=ids.splice(i,1); ids.splice(i+d,0,x);
   try{ P=(await api("POST","/app/providers/order",{ids})).providers; drawKeys(); toast(t("set.savedLive")); }catch(e){ fail(e); } }
@@ -274,6 +296,7 @@ async function reload(){ V=await api("GET","/app/settings"); P=(await api("GET",
 $("demo").onchange=async e=>{ try{ V=await api("POST","/app/settings",{demo:e.target.checked}); draw(); toast(t("set.savedLive")); }catch(err){ fail(err); e.target.checked=!e.target.checked; } };
 function buildForm(){
   const s=$("fprov"); s.replaceChildren(); PROVS.forEach(k=>{ const o=el("option",null,tr("prov",k)); o.value=k; s.append(o); });
+  const tk=$("ftasks"); tk.replaceChildren(); KTASKS.forEach(k=>{ const l=el("label","jchip"), i=el("input"); i.type="checkbox"; i.value=k; l.append(i, el("span",null,tr("task",k))); tk.append(l); });
   const cats=$("fcats"); cats.replaceChildren(); (V.categories||[]).forEach(c=>{ const l=el("label"), i=el("input"); i.type="checkbox"; i.value=c; l.append(i, document.createTextNode(tr("kcat",c))); cats.append(l); });
   const lims=$("flims"); lims.replaceChildren(); (V.limit_fields||[]).forEach(f=>{ const d=el("div"), l=el("label","f",tr("limit",f)), i=el("input"); i.type="number"; i.min="0"; i.step="any"; i.dataset.limit=f; i.id="lim-"+f; l.htmlFor=i.id; d.append(l,i); lims.append(d); });
   const pr=$("fprices"); pr.replaceChildren(); (V.pricing_fields||[]).forEach(f=>{ const d=el("div"), l=el("label","f",tr("price",f)), i=el("input"); i.type="number"; i.min="0"; i.step="any"; i.dataset.price=f; i.id="price-"+f; l.htmlFor=i.id; d.append(l,i); pr.append(d); });
@@ -293,6 +316,7 @@ function openForm(p){ editing=p||null; buildForm(); const f=$("pform"); f.hidden
   $("fkey").placeholder=p&&p.has_key?t("set.f.keyKeep",{key:p.key}):t("set.f.keyPh");
   $("fenabled").checked=p?!!p.enabled:true; presetFill(!!p);
   if(p){ $("fmodel").value=p.model||""; $("fbase").value=p.base_url||""; }
+  const tks=p?(p.tasks||[]):[]; $("ftasks").querySelectorAll("input").forEach(i=>{ i.checked=tks.includes(i.value); });
   const cats=p?p.categories:["text","code"]; $("fcats").querySelectorAll("input").forEach(i=>{ i.checked=cats.includes(i.value); });
   $("flims").querySelectorAll("input").forEach(i=>{ const v=p&&p.limits?p.limits[i.dataset.limit]:null; i.value=v==null?"":v; });
   $("fprices").querySelectorAll("input").forEach(i=>{ const v=p&&p.pricing?p.pricing[i.dataset.price]:null; i.value=v==null?"":v; });
@@ -302,7 +326,7 @@ function formData(){ const lim={}, pr={};
   $("flims").querySelectorAll("input").forEach(i=>{ if(i.value!=="") lim[i.dataset.limit]=Number(i.value); });
   $("fprices").querySelectorAll("input").forEach(i=>{ if(i.value!=="") pr[i.dataset.price]=Number(i.value); });
   const d={provider:$("fprov").value, name:$("fname").value.trim(), model:$("fmodel").value.trim(), base_url:$("fbase").value.trim(),
-    categories:[...$("fcats").querySelectorAll("input:checked")].map(i=>i.value), limits:lim, pricing:pr, enabled:$("fenabled").checked};
+    categories:[...$("fcats").querySelectorAll("input:checked")].map(i=>i.value), tasks:[...$("ftasks").querySelectorAll("input:checked")].map(i=>i.value), limits:lim, pricing:pr, enabled:$("fenabled").checked};
   if($("fkey").value.trim()) d.key=$("fkey").value.trim(); return d; }
 $("addkey").onclick=()=>openForm(null);
 $("fcancel").onclick=()=>{ $("pform").hidden=true; $("fkey").value=""; editing=null; };
@@ -409,6 +433,7 @@ WELCOME_PAGE = r"""<!doctype html>
  .lang{position:absolute;top:14px;right:14px}
  @media (max-width:520px){ .provs{grid-template-columns:1fr} .big2 button{padding:14px} main{padding:18px 12px} input{font-size:16px!important} }
 /*TIP_CSS*/
+/*KEYS_CSS*/
 /*LANG_CSS*/
 </style></head><body data-page="welcome">
 <div class="lang">/*LANG_SWITCH*/</div>
@@ -428,7 +453,9 @@ WELCOME_PAGE = r"""<!doctype html>
    <div id="detect" class="note" aria-live="polite"></div></div>
    <div id="test" class="testline" aria-live="polite"></div></div>
   <div class="acts"><button id="back2" class="grey" data-i18n="wiz.back"></button><button id="testb" data-i18n="set.f.test"></button><button id="save2" class="primary" data-i18n="wiz.save"></button></div>
+  <details class="guide" id="wbulkd"><summary data-i18n="wiz.bulkOpen"></summary><h3 data-i18n="bulk.title"></h3><div id="wbulk"></div></details>
   <p class="muted" data-i18n="wiz.later"></p></section>
+ <section id="s2b" class="card" hidden><div class="stepn" id="n2b"></div><h1 data-i18n="wiz.jobsTitle"></h1><div id="wjobs" class="jobs"></div></section>
  <section id="s3" class="card" hidden><div class="stepn" id="n3"></div><h1 data-i18n="wiz.doneTitle"></h1><p id="donemsg"></p>
   <div class="acts"><a class="btn primary" href="/" data-i18n="wiz.open"></a><a class="btn" href="/settings" data-i18n="wiz.settings"></a></div></section>
  <section id="slock" class="card" hidden><h1 data-i18n="wiz.welcome"></h1><p data-i18n="wiz.locked"></p><div class="acts"><a class="btn primary" href="/" data-i18n="wiz.open"></a></div></section>
@@ -439,10 +466,19 @@ WELCOME_PAGE = r"""<!doctype html>
 /*I18N_JS*/
 /*TIP_JS*/
 /*COMMON_JS*/
+/*KEYS_JS*/
 const WPROVS=["groq","openai","openrouter","ollama"], BADGE={groq:["rec","wiz.rec"],openai:["paid","wiz.paid"],openrouter:["","wiz.some"],ollama:["","wiz.local"]};
-let PRESETS={}, PREFIXES=[], step=1, doneKey=null;
-function show(n){ step=n; [1,2,3].forEach(i=>{ $("s"+i).hidden=i!==n; $("d"+i).className=i<=n?"on":""; $("n"+i).textContent=t("wiz.step",{n:i}); });
+let PRESETS={}, PREFIXES=[], step=1, doneKey=null, doneBulk=null, wbulk=null, wprop=null;
+function show(n){ step=n; $("s2b").hidden=n!=="2b"; const k=n==="2b"?2:n;
+  [1,2,3].forEach(i=>{ $("s"+i).hidden=i!==n; $("d"+i).className=i<=k?"on":""; $("n"+i).textContent=t("wiz.step",{n:i}); }); $("n2b").textContent=t("wiz.step",{n:2});
   const f=$("s"+n).querySelector("h1"); if(f){ f.tabIndex=-1; f.focus(); } }
+function doneText(){ return doneBulk ? t("wiz.doneKeys",{n:doneBulk.n,p:doneBulk.p}) : (doneKey?t("wiz.doneKey",{name:doneKey}):t("wiz.doneDemo")); }
+function buildWBulk(){ wbulk=makeBulk($("wbulk"),{prefixes:()=>PREFIXES,pname:pname,onSaved:async r=>{
+    if(!r.saved) return;
+    try{ await api("POST","/app/setup",{demo:false,done:true,lang:LANG}); }catch(e){ return fail(e); }
+    doneKey=null; doneBulk={n:r.saved,p:r.parallel||r.saved}; wprop=r.proposal||[];
+    setTimeout(()=>{ if(wprop.length>1){ jobsStep(); } else { $("donemsg").textContent=doneText(); show(3); } }, 1200); }}); }
+function jobsStep(){ makeJobs($("wjobs"),wprop,()=>{ $("donemsg").textContent=doneText(); show(3); },true); show("2b"); }
 function prov(){ const i=document.querySelector('input[name="prov"]:checked'); return i?i.value:"groq"; }
 function drawProvs(){ const box=$("provs"), cur=prov(); box.replaceChildren();
   WPROVS.forEach(k=>{ const l=el("label"), i=el("input"), d=el("span"); i.type="radio"; i.name="prov"; i.value=k; i.checked=k===cur; i.onchange=()=>provChanged(true);
@@ -473,13 +509,13 @@ $("save2").onclick=async()=>{ const k=prov(), p=PRESETS[k]||{}, key=$("key").val
   const name=pname(k);
   try{ await api("POST","/app/providers",{provider:k,name,categories:["text","code"],...(key?{key}:{})}); await api("POST","/app/setup",{demo:false,done:true,lang:LANG}); }
   catch(e){ return fail(e); }
-  $("key").value=""; doneKey=name; $("donemsg").textContent=t("wiz.doneKey",{name}); show(3); };
-$("demo").onclick=async()=>{ try{ await api("POST","/app/setup",{demo:true,done:true,lang:LANG}); }catch(e){ return fail(e); } doneKey=null; $("donemsg").textContent=t("wiz.doneDemo"); show(3); };
-onLang=()=>{ pickBtns(); drawProvs(); show(step); if(step===3) $("donemsg").textContent=doneKey?t("wiz.doneKey",{name:doneKey}):t("wiz.doneDemo"); };
+  $("key").value=""; doneKey=name; doneBulk=null; $("donemsg").textContent=doneText(); show(3); };
+$("demo").onclick=async()=>{ try{ await api("POST","/app/setup",{demo:true,done:true,lang:LANG}); }catch(e){ return fail(e); } doneKey=null; doneBulk=null; $("donemsg").textContent=doneText(); show(3); };
+onLang=()=>{ pickBtns(); drawProvs(); buildWBulk(); if(step==="2b") jobsStep(); else show(step); if(step===3) $("donemsg").textContent=doneText(); };
 (async()=>{ try{ await status(); }catch(e){ if(e.status===401){ location.href="/connect"; return; } }
   if(!ST.available || !ST.editable){ [1,2,3].forEach(i=>$("s"+i).hidden=true); $("slock").hidden=false; return; }
   try{ const v=await api("GET","/app/settings"); PRESETS=v.presets||{}; PREFIXES=v.key_prefixes||[]; }catch(e){}
-  pickBtns(); drawProvs(); show(1); })();
+  pickBtns(); drawProvs(); buildWBulk(); show(1); })();
 </script></body></html>
 """
 
@@ -488,6 +524,7 @@ def _finish(page: str) -> str:
     page = page.replace("/*TIP_CSS*/", TIP_CSS).replace("/*TIP_JS*/", TIP_JS)
     page = page.replace("/*THEME*/", BASE_CSS).replace("/*COMMON_CSS*/", COMMON_CSS).replace("/*NAV_CSS*/", NAV_CSS)
     page = page.replace("/*NAV*/", NAV_HTML).replace("/*LANG_CSS*/", LANG_CSS).replace("/*LANG_SWITCH*/", THEME_BTN + LANG_SWITCH)
+    page = page.replace("/*KEYS_CSS*/", KEYS_CSS).replace("/*KEYS_JS*/", KEYS_JS)
     return page.replace("/*I18N_JS*/", I18N_JS).replace("/*NAV_JS*/", NAV_JS).replace("/*COMMON_JS*/", COMMON_JS)
 
 

@@ -29,7 +29,7 @@ from pathlib import Path
 from typing import Any, Callable
 
 from . import USER_AGENT, __version__, i18n
-from .keys import KNOWN_CATEGORIES, LIMIT_FIELDS, KeyEntry, KeyRouter
+from .keys import KNOWN_CATEGORIES, LIMIT_FIELDS, TASKS, KeyEntry, KeyRouter
 from .permissions import CATEGORIES, MODES, YOLO_PROTECTED
 
 SETTINGS_FILE = "settings.json"
@@ -59,7 +59,18 @@ DEFAULTS: dict[str, Any] = {
     "approval_timeout": None, "max_tasks": None, "workspace": None, "currency": "",
     "remote": {"enabled": False, "tunnel": "none", "public_url": ""},
     "ui_mode": "simple", "trace": "simple", "theme": "auto",
+    "parallel": "auto",            # assistants at the same time: auto = one per working key, or 1..MAX_PARALLEL
 }
+MAX_PARALLEL = 8
+MAX_BULK = 50                      # lines in one bulk paste
+PROVIDER_LABELS = {"groq": "Groq", "openai": "OpenAI", "openrouter": "OpenRouter", "ollama": "Ollama",
+                   "custom": "Custom"}
+# Model strength, for the proposed task assignments (plain heuristics, the user can change everything)
+FAST_WORDS = ("mini", "nano", "instant", "flash", "haiku", "small", "lite", "1b", "3b", "7b", "8b", "9b",
+              "gemma", "free")
+STRONG_WORDS = ("gpt-4o", "gpt-4.1", "gpt-5", "o1", "o3", "o4", "claude", "sonnet", "opus", "70b", "72b",
+                "120b", "235b", "405b", "large", "pro", "deepseek", "coder", "kimi", "grok")
+VISION_WORDS = ("gpt-4o", "gpt-4.1", "gpt-5", "vision", "claude", "gemini", "llava", "pixtral", "-vl", "grok-4")
 
 
 UI_MODES = ("simple", "expert")
@@ -312,7 +323,7 @@ class AppControl:
                                 priority=int(p.get("priority", 100)), limits=dict(p.get("limits") or {}),
                                 pricing=dict(p.get("pricing") or {}),
                                 secret_fn=(lambda pid=pid: self.secrets.get(pid)) if self._needs_key(p) else None,
-                                source="ui"))
+                                source="ui", tasks=[t for t in (p.get("tasks") or []) if t in TASKS]))
         return out
 
     def reload_router(self) -> None:
@@ -347,6 +358,8 @@ class AppControl:
             s = st.get(p["name"], {})
             out.append({k: p.get(k) for k in ("id", "name", "provider", "base_url", "model", "categories", "priority",
                                                "limits", "pricing", "enabled", "created", "updated")}
+                       | {"tasks": list(p.get("tasks") or []), "agents": s.get("agents", []),
+                          "in_flight": s.get("in_flight", 0)}
                        | {"key": mask(secret), "has_key": bool(secret), "needs_key": self._needs_key(p),
                           "available": s.get("available", False) if p.get("enabled", True) else False,
                           "cooldown_s": s.get("cooldown_s", 0), "usage": s.get("limits", {}), "used": s.get("used", {})})
@@ -390,6 +403,9 @@ class AppControl:
                        "tunnels": list(TUNNELS)},
             "currency": self.cfg.get("currency", ""),
             "ui_mode": self.ui_mode(), "trace": self.trace_mode(), "theme": self.theme(),
+            "parallel": {"saved": self.cfg.get("parallel", "auto"), "keys": self.router.usable("text"),
+                         "effective": self.parallel_limit("text"), "max": MAX_PARALLEL},
+            "tasks": list(TASKS),
             "restart_needed": self.restart_needed(),
             "storage": self.secrets.backend, "home": self.home or str(self.cfg.dir), "secrets_dir": str(self.cfg.dir),
             "presets": {k: dict(p) for k, p in PRESETS.items()},
@@ -476,8 +492,13 @@ class AppControl:
                 raise SettingsError("key_spaces", "key: no spaces, at most 500 characters")
         if pre["key"] and not secret and not (old and self.secrets.has(old["id"])):
             raise SettingsError("key_required", "key: required for this provider")
+        tasks = data.get("tasks", (old or {}).get("tasks") or [])
+        tasks = [tasks] if isinstance(tasks, str) else tasks
+        if not isinstance(tasks, list) or any(t not in TASKS for t in tasks):
+            raise SettingsError("bad_task", f"tasks: choose among {', '.join(TASKS)}", field="tasks")
+        tasks = [t for t in TASKS if t in tasks]
         rec = {"name": name, "provider": provider, "base_url": base, "model": model, "categories": cats,
-               "priority": prio, "limits": limits, "pricing": pricing,
+               "priority": prio, "limits": limits, "pricing": pricing, "tasks": tasks,
                "enabled": bool(data.get("enabled", (old or {}).get("enabled", True)))}
         return rec, (secret or None)
 
@@ -561,6 +582,229 @@ class AppControl:
         res = self.prober(base, secret)
         return {k: v for k, v in res.items() if k in ("ok", "code", "http_status", "models", "ms", "detail")}
 
+    # ---------------------------------------------------------------- key pool (v0.7)
+    def parallel_limit(self, category: str = "text", fallback: int = 3) -> int:
+        """How many swarm assistants work at the same time: the saved number, or (auto) one per working
+        key of the Settings page (at most MAX_PARALLEL); demo / no key: `fallback`."""
+        v = self.cfg.get("parallel", "auto")
+        if v != "auto":
+            try:
+                return max(1, min(MAX_PARALLEL, int(v)))
+            except (TypeError, ValueError):
+                pass
+        if self.backend_mode(category) == "ui":
+            n = self.router.usable(category)
+            if n > 0:
+                return min(MAX_PARALLEL, n)
+        return max(1, fallback)
+
+    def pool_view(self) -> dict:
+        """Live key pool for the dashboard and the swarm graph: per key (masked) its agents and usage."""
+        st = self.router.status()
+        keys = [{"name": k["name"], "key": k["key"], "provider": k.get("provider"), "available": k.get("available"),
+                 "tasks": k.get("tasks", []), "agents": k.get("agents", []), "in_flight": k.get("in_flight", 0),
+                 "cooldown_s": k.get("cooldown_s", 0), "used": k.get("used", {}), "limits": k.get("limits", {})}
+                for k in st.get("keys", [])]
+        return {"keys": keys, "parallel": self.parallel_limit("text"), "mode": self.effective_mode()}
+
+    @staticmethod
+    def parse_bulk(text: Any) -> list[dict]:
+        """One key per line, optionally "label: key" (or "label = key", "label key", "export NAME=key").
+        Returns [{"line", "label", "key", "provider", "code"?}]; code set when the line cannot be used."""
+        if not isinstance(text, str):
+            raise SettingsError("bad_key", "keys: text expected")
+        out: list[dict] = []
+        seen: set[str] = set()
+        for n, raw in enumerate(text.splitlines(), 1):
+            line = raw.strip().strip("\ufeff").strip()
+            if not line or line.startswith("#"):
+                continue
+            if len(out) >= MAX_BULK:
+                over = {"line": n, "label": "", "key": "", "provider": None}
+                over["code"] = "too_many"          # a per-line status (bulkc.*), not a request error
+                out.append(over)
+                break
+            if line.lower().startswith("export "):
+                line = line[7:].strip()
+            m = re.match(r"^(.*?)[\s:=]*['\"]?([^\s'\":=]{8,})['\"]?[,;]?$", line)
+            key = m.group(2) if m else ""
+            label = (m.group(1) if m else line).strip().strip(":=-–—").strip().strip("'\"")[:60] if m else ""
+            label = re.sub(r"[^\w .@+-]", "", label).strip()[:60]
+            prov = detect_provider(key)
+            low = label.lower()
+            hinted = next((p for p in ("openrouter", "groq", "openai", "ollama") if p in low), None)
+            if prov is None or (hinted == "openrouter" and prov == "openai"):
+                prov = hinted if hinted in ("openrouter", "groq", "openai") else prov
+            row = {"line": n, "label": label, "key": key, "provider": prov}
+            if not key or len(key) > MAX_SECRET:
+                row["code"] = "format"
+            elif prov is None:
+                row["code"] = "unknown_provider"
+            elif key in seen:
+                row["code"] = "duplicate"
+            seen.add(key)
+            out.append(row)
+        return out
+
+    def _unique_name(self, label: str, provider: str, taken: set[str]) -> str:
+        base = label if label and re.fullmatch(r"[\w .@+-]{1,60}", label) else PROVIDER_LABELS.get(provider, provider)
+        if re.fullmatch(r"(?i)(export )?[A-Z0-9_]*(API_?KEY|TOKEN|KEY)[A-Z0-9_]*", base or ""):
+            base = PROVIDER_LABELS.get(provider, provider)       # GROQ_API_KEY=... -> "Groq"
+        name, i = base[:60], 2
+        while name in taken:
+            name = f"{base[:55]} {i}"
+            i += 1
+        taken.add(name)
+        return name
+
+    def bulk_add(self, text: Any, save: bool = True) -> dict:
+        """Paste many keys at once: parse, detect the provider, test them all at the same time, save the
+        working ones. Returns one line per key (masked, never the secret) and a proposed task assignment."""
+        rows = self.parse_bulk(text)
+        if not rows:
+            raise SettingsError("nothing", "no key found: paste one key per line")
+        existing: set[str] = set()
+        for p in self.cfg.providers:
+            sec = self.secrets.get(p["id"]) if self._needs_key(p) else None
+            if sec:
+                existing.add(sec)
+        todo = []
+        for r in rows:
+            if "code" not in r and r["key"] in existing:
+                r["code"] = "already_saved"
+            if "code" not in r and not key_format_ok(r["provider"], r["key"]):
+                r["code"] = "format"
+            if "code" not in r:
+                todo.append(r)
+
+        def test(r: dict) -> dict:
+            try:
+                return self.test_provider(data={"provider": r["provider"], "key": r["key"]})
+            except Exception as e:  # noqa: BLE001
+                return {"ok": False, "code": "error", "detail": type(e).__name__}
+        if todo:
+            from concurrent.futures import ThreadPoolExecutor
+            with ThreadPoolExecutor(max_workers=min(8, len(todo)), thread_name_prefix="keytest") as ex:
+                for r, res in zip(todo, ex.map(test, todo)):
+                    r["ok"], r["code"] = bool(res.get("ok")), res.get("code") or ("ok" if res.get("ok") else "error")
+                    if res.get("http_status"):
+                        r["http_status"] = res["http_status"]
+        saved = []
+        if save:
+            with self._lock:
+                taken = {p["name"] for p in self.cfg.providers}
+                for r in rows:
+                    if not r.get("ok"):
+                        continue
+                    name = self._unique_name(r["label"], r["provider"], taken)
+                    try:
+                        v = self.save_provider({"provider": r["provider"], "key": r["key"], "name": name})
+                    except SettingsError as e:
+                        r["ok"], r["code"] = False, e.code
+                        continue
+                    r["id"], r["name"] = v["id"], v["name"]
+                    saved.append(v["id"])
+        out = []
+        for r in rows:
+            out.append({"line": r["line"], "label": r.get("label", ""), "provider": r.get("provider"),
+                        "key": mask(r.get("key")) if r.get("key") else "", "ok": bool(r.get("ok")),
+                        "code": r.get("code", "error"), "id": r.get("id"), "name": r.get("name"),
+                        **({"http_status": r["http_status"]} if r.get("http_status") else {})})
+        self._audit("settings_keys_bulk", lines=len(rows), saved=len(saved),
+                    failed=sum(1 for r in out if not r["ok"]))
+        return {"results": out, "saved": len(saved), "failed": sum(1 for r in out if not r["ok"]),
+                "proposal": self.propose_tasks() if saved else [], "providers": self.providers_view(),
+                "parallel": self.parallel_limit("text")}
+
+    @staticmethod
+    def key_class(provider: str | None, model: str | None) -> tuple[int, bool]:
+        """(strength 0 fast/free, 1 fast paid, 2 strong; vision?) from the provider and the model name."""
+        m = (model or "").lower()
+        free = provider in ("groq", "ollama") or ":free" in m
+        vision = (not free) and any(w in m for w in VISION_WORDS)
+        if free:
+            return 0, vision
+        fast = any(w in re.split(r"[/:]", m)[-1] for w in FAST_WORDS)
+        strong = any(w in m for w in STRONG_WORDS)
+        return (2 if strong and not fast else 1), vision
+
+    def propose_tasks(self) -> list[dict]:
+        """Sensible task types for every enabled key (not saved): fast / free keys for research and
+        summaries, stronger models for writing and code; with keys of one kind, the jobs are spread."""
+        provs = [p for p in self.cfg.providers if p.get("enabled", True)]
+        if not provs:
+            return []
+        cls = {p["id"]: self.key_class(p.get("provider"), p.get("model")) for p in provs}
+        lo, hi = min(c[0] for c in cls.values()), max(c[0] for c in cls.values())
+        plan: dict[str, list[str]] = {p["id"]: [] for p in provs}
+        why: dict[str, str] = {}
+        if lo != hi:
+            for p in provs:
+                s = cls[p["id"]][0]
+                if s == lo:
+                    plan[p["id"]] += ["research", "analysis"]
+                    why[p["id"]] = "fast_free" if s == 0 else "fast"
+                elif s == hi:
+                    plan[p["id"]] += ["writing", "code", "general"]
+                    why[p["id"]] = "strong"
+                else:
+                    plan[p["id"]] += ["analysis", "general"]
+                    why[p["id"]] = "middle"
+        else:
+            groups = ["research", "writing", "code", "analysis"]
+            n = len(provs)
+            for j, g in enumerate(groups):
+                plan[provs[j % n]["id"]].append(g)
+            for i, p in enumerate(provs):
+                if i >= len(groups) or i == 0:
+                    plan[p["id"]].append("general")
+                why[p["id"]] = "only" if n == 1 else "spread"
+        for p in provs:
+            if cls[p["id"]][1]:
+                plan[p["id"]].append("vision")
+        out = []
+        for p in provs:
+            secret = self.secrets.get(p["id"]) if self._needs_key(p) else None
+            out.append({"id": p["id"], "name": p["name"], "provider": p.get("provider"), "model": p.get("model"),
+                        "key": mask(secret), "current": list(p.get("tasks") or []),
+                        "tasks": [t for t in TASKS if t in plan[p["id"]]], "why": why.get(p["id"], "spread"),
+                        "strength": cls[p["id"]][0]})
+        return out
+
+    def set_tasks(self, assign: Any) -> list[dict]:
+        """{id: [tasks]} or {id: {"tasks": [...], "model": "..."}}: the user accepted / adjusted the proposal."""
+        if not isinstance(assign, dict) or not assign:
+            raise SettingsError("bad_object", "assign: {key id: [task types]}", field="assign")
+        clean: dict[str, tuple[list[str], str | None]] = {}
+        for pid, v in assign.items():
+            try:
+                self._find(str(pid))
+            except KeyError:
+                raise SettingsError("unknown_key", f"unknown key id {pid!r}", field=str(pid)) from None
+            model = None
+            if isinstance(v, dict):
+                model = v.get("model")
+                v = v.get("tasks", [])
+            v = [v] if isinstance(v, str) else v
+            if not isinstance(v, list) or any(t not in TASKS for t in v):
+                raise SettingsError("bad_task", f"tasks: choose among {', '.join(TASKS)}", field="tasks")
+            if model is not None:
+                model = str(model).strip()[:200]
+                if model and re.search(r"\s", model):
+                    raise SettingsError("bad_model", "model: no spaces", field="model")
+            clean[str(pid)] = ([t for t in TASKS if t in v], model or None)
+        with self._lock:
+            for pid, (tasks, model) in clean.items():
+                p = self._find(pid)
+                p["tasks"] = tasks
+                if model:
+                    p["model"] = model
+                p["updated"] = time.strftime("%Y-%m-%dT%H:%M:%S%z")
+            self.cfg.save_providers()
+            self.reload_router()
+        self._audit("settings_key_tasks", keys={self._find(pid)["name"]: t for pid, (t, _) in clean.items()})
+        return self.providers_view()
+
     # ---------------------------------------------------------------- settings
     def update(self, data: dict) -> dict:
         if not isinstance(data, dict) or not data:
@@ -581,6 +825,9 @@ class AppControl:
                 if data[k] not in allowed:
                     raise SettingsError("bad_choice", f"{k} must be one of {', '.join(allowed)}", field=k)
                 changes[k] = data[k]
+        if "parallel" in data:
+            v = data["parallel"]
+            changes["parallel"] = "auto" if v in ("auto", None, "") else _num(v, "parallel", 1, MAX_PARALLEL, integer=True)
         if "currency" in data:
             cur = str(data["currency"] or "").strip()[:8]
             if cur and not re.fullmatch(r"[A-Za-z€$£¥ ]{1,8}", cur):

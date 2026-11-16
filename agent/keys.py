@@ -12,6 +12,13 @@ overshoot together. The caller then `commit()`s the real usage, or `fail(status)
 key on cooldown and the caller moves on to the next key). If no key can serve the category,
 `KeysExhausted` is raised with the reason for each key: no limit is ever exceeded.
 
+Key pool (v0.7): when the caller names a `holder` (one swarm agent, e.g. "root.2" of one conversation),
+the router gives that agent its OWN key and keeps it ("sticky"): keys whose task tags match the agent's
+role come first (research, writing, code, analysis, vision; see `role_task`), then keys tagged
+"general" or untagged, then any other key of the category; within each group the least busy key wins
+(fewest agents holding it, then fewest requests in flight, then priority). On a limit, a 429 or an error
+the agent moves to the next key. With fewer keys than agents, agents share the least busy keys.
+
 Usage counters (per key: per minute, per day, per month, local time) are thread-safe and persisted
 in `usage.json` (atomic rewrite), so limits survive restarts. Each limit hit is audit-logged once per
 key, limit and period (`event: key_limit`).
@@ -40,6 +47,34 @@ CHAT_CATEGORIES = ("text", "code")   # categories served by the chat-completions
 MIN_COMPLETION = 16                   # a chat request needs at least this many completion tokens
 COOLDOWN_429 = 60.0
 COOLDOWN_ERROR = 30.0
+KEY_ERRORS = (401, 402, 403)            # the KEY is refused (revoked, no credit): cool it down, try another
+HOLD_TTL = 120.0                       # an agent that has not called for this long no longer counts as busy
+TASKS = ("research", "writing", "code", "analysis", "vision", "general")
+# role words (EN/FR) -> task; checked in this order, on the role name first, then on the whole task text
+ROLE_WORDS = (
+    ("vision", ("image", "vision", "photo", "picture", "screenshot", "capture")),
+    ("code", ("code", "coder", "developer", "développeur", "developpeur", "programm", "engineer", "ingénieur",
+              "debug", "script", "test")),
+    ("writing", ("writ", "rédact", "redact", "draft", "rédige", "redige", "author", "auteur", "editor",
+                 "éditeur", "translat", "tradu", "copy", "email", "e-mail", "mail", "letter", "lettre")),
+    ("analysis", ("analy", "compar", "evaluat", "évalu", "review", "critic", "risk", "risque", "data",
+                  "donnée", "plan", "strateg", "stratég", "audit")),
+    ("research", ("research", "recherch", "chercheur", "search", "find", "collect", "rassembl", "summar",
+                  "résum", "resum", "fact", "fait", "read", "lire", "veille", "investigat", "enquêt", "source")),
+)
+
+
+def role_task(task: str | None) -> str:
+    """The task type of a swarm agent from its task text ("Researcher: collect…" -> research)."""
+    text = str(task or "").strip().lower()
+    if not text:
+        return "general"
+    head = text.split(":", 1)[0] if ":" in text[:40] else ""
+    for part in ([head] if head else []) + [text]:
+        for name, words in ROLE_WORDS:
+            if any(w in part for w in words):
+                return name
+    return "general"
 
 
 class KeysExhausted(Exception):
@@ -72,6 +107,7 @@ class KeyEntry:
     # read at call time, never from this object's fields (so it never ends up in a repr, a log or the audit).
     secret_fn: Callable[[], str | None] | None = field(default=None, repr=False, compare=False)
     source: str = "file"                 # "file" (providers.yaml) | "ui" (Settings page)
+    tasks: list[str] = field(default_factory=list)   # task types this key is meant for (empty = general)
 
     def secret(self) -> str | None:
         if self.secret_fn is not None:
@@ -131,7 +167,9 @@ def parse(data: dict) -> tuple[list[KeyEntry], str]:
         out.append(KeyEntry(name=name, categories=cats, key_env=k.get("key_env"), provider=provider,
                             base_url=base, models={str(a): str(b) for a, b in models.items()},
                             priority=int(k.get("priority", 100)), limits=limits,
-                            pricing={a: float(b) for a, b in (k.get("pricing") or {}).items()}))
+                            pricing={a: float(b) for a, b in (k.get("pricing") or {}).items()},
+                            tasks=[t for t in ([k["tasks"]] if isinstance(k.get("tasks"), str)
+                                               else list(k.get("tasks") or [])) if t in TASKS]))
     return out, str(data.get("currency") or "")
 
 
@@ -207,7 +245,7 @@ class Lease:
         cool = None
         if status == 429:
             cool = retry_after or COOLDOWN_429
-        elif status is None or status >= 500:
+        elif status is None or status >= 500 or status in KEY_ERRORS:
             cool = COOLDOWN_ERROR
         self.router._finish(self, {"tokens": 0, "cost": 0, "images": 0, "audio_minutes": 0}, cooldown=cool, status=status)
 
@@ -238,6 +276,7 @@ class KeyRouter:
         self._usage: dict[str, dict] = {}
         self._pending: dict[str, dict[str, float]] = {e.name: {} for e in self.entries}
         self._logged: set[tuple] = set()
+        self._holders: dict[str, dict] = {}      # holder -> {"key", "label", "task", "last"}
         self._load()
 
     @classmethod
@@ -290,13 +329,63 @@ class KeyRouter:
     def keys_for(self, category: str) -> list[KeyEntry]:
         return [e for e in self.entries if category in e.categories]
 
+    # ---------------- key pool: one key per swarm agent
+    def _busy(self, name: str, holder: str | None, now: float) -> int:
+        return sum(1 for h, r in self._holders.items()
+                   if h != holder and r["key"] == name and now - r["last"] < HOLD_TTL)
+
+    def _order(self, category: str, holder: str | None, task: str | None, now: float) -> list[KeyEntry]:
+        keys = self.keys_for(category)
+        if holder is None:
+            return keys                                   # plain priority order (single agent / CLI)
+        task = task if task in TASKS else "general"
+        rank = {e.name: i for i, e in enumerate(keys)}
+
+        def group(e: KeyEntry) -> int:
+            tags = set(e.tasks or ["general"])
+            if task != "general" and task in tags:
+                return 0
+            if "general" in tags or not e.tasks:
+                return 1
+            return 2
+
+        def busy(e: KeyEntry) -> tuple:
+            pend = self._pending.get(e.name, {}).get("requests", 0)
+            return (group(e), self._busy(e.name, holder, now), pend, rank[e.name])
+        order = sorted(keys, key=busy)
+        cur = self._holders.get(holder, {}).get("key")
+        mine = next((e for e in order if e.name == cur), None)
+        if mine is not None and group(mine) == group(order[0]):
+            order.remove(mine)
+            order.insert(0, mine)                         # sticky: keep the key it already has
+        return order
+
+    def usable(self, category: str = "text") -> int:
+        """How many keys of `category` can take a request now (key set, not cooling down)."""
+        with self._lock:
+            now = self.clock()
+            return sum(1 for e in self.keys_for(category) if e.available()
+                       and self._usage.get(e.name, {}).get("cooldown_until", 0) <= now)
+
+    def release_holder(self, holder: str) -> None:
+        """A swarm agent finished: its key is free for the others."""
+        with self._lock:
+            self._holders.pop(holder, None)
+
+    def holders(self) -> dict[str, dict]:
+        with self._lock:
+            now = self.clock()
+            return {h: dict(r) for h, r in self._holders.items() if now - r["last"] < HOLD_TTL}
+
     def acquire(self, category: str, prompt_tokens: int = 0, max_completion_tokens: int | None = None,
-                images: float = 0, audio_minutes: float = 0) -> Lease:
-        """Reserve one request on the best key for `category`, or raise KeysExhausted."""
+                images: float = 0, audio_minutes: float = 0, holder: str | None = None,
+                task: str | None = None, label: str | None = None) -> Lease:
+        """Reserve one request on the best key for `category`, or raise KeysExhausted. `holder` (a swarm
+        agent) gets its own key from the pool, matched to its `task` type; see the module docstring."""
         reasons: dict[str, str] = {}
         with self._lock:
             now = self.clock()
-            for e in self.keys_for(category):
+            for e in self._order(category, holder, task, now):
                 if not e.available():
                     reasons[e.name] = e.missing_reason()
                     continue
@@ -338,7 +427,19 @@ class KeyRouter:
                 u["minute"].append(now)
                 u["requests_day"] += 1
                 self._save()
-                return Lease(self, e, category, amounts, completion if chat else None)
+                lease = Lease(self, e, category, amounts, completion if chat else None)
+                if holder is not None:
+                    old = self._holders.get(holder, {})
+                    prev = old.get("key")
+                    t = task if task in TASKS else "general"
+                    label = label or old.get("label") or holder
+                    self._holders[holder] = {"key": e.name, "label": label, "task": t, "last": now,
+                                             "match": bool(e.tasks) and t in e.tasks}
+                    if prev != e.name and self.audit is not None:
+                        self.audit.record(event="key_assign", agent=label or holder, entry=e.name, task=t,
+                                          key=mask(e.secret()) if e.needs_key else "(no key)", previous=prev)
+                lease.holder_task = task if task in TASKS else "general"
+                return lease
         raise KeysExhausted(category, reasons)
 
     @staticmethod
@@ -402,7 +503,11 @@ class KeyRouter:
                              "categories": e.categories, "priority": e.priority, "models": e.models,
                              "available": e.available(),
                              "cooldown_s": max(0, math.ceil(u.get("cooldown_until", 0) - now)),
-                             "limits": limits, "used": {f: round(v, 6) for f, v in used.items()}})
+                             "limits": limits, "used": {f: round(v, 6) for f, v in used.items()},
+                             "tasks": list(e.tasks),
+                             "in_flight": int(self._pending.get(e.name, {}).get("requests", 0)),
+                             "agents": sorted(r["label"] for r in self._holders.values()
+                                              if r["key"] == e.name and now - r["last"] < HOLD_TTL)})
             cats = sorted({c for e in self.entries for c in e.categories})
             return {"currency": self.currency, "keys": keys,
                     "categories": {c: [e.name for e in self.keys_for(c)] for c in cats}}

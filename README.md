@@ -150,6 +150,27 @@ reopens the browser tab. **Language:** first-run choice, Settings → General, o
 |---|---|
 | ![Swarm graph, day theme](docs/v6-swarm-light-en.png) | ![Dashboard](docs/v6-dashboard-dark-fr.png) |
 
+#### Several keys = several assistants at the same time (new in 0.7)
+
+**The more keys you add, the more your assistants work at the same time.** In the wizard ("I have several
+keys") or in ⚙ Settings → API keys → **Paste several keys**, paste all your keys at once, one per line
+(optionally `name: key`), or add them one by one with **+ Add another key**. Each key's service is
+recognised from its first letters, all keys are **tested at the same time**, and you get one plain line per
+key (✓ "Works: saved as Groq 2" / ✗ "Groq refuses this key: it is wrong or was deleted"). Only the working
+ones are saved; keys are only ever displayed masked (`gsk_••••a1b2`) and stored like before.
+
+Then **Who does what?** proposes a job for each key, in plain words: fast / free keys for *Research &
+summaries* and *Analysis*, stronger models for *Writing* and *Code* (and *Images/vision* when the model can
+see images). Accept with one click or adjust with the switches (and optionally the model). When the swarm
+runs, each helper gets **its own key**: first a key made for its job (a "Researcher" takes a research key),
+otherwise a *General* key, otherwise any free key. Helpers work in parallel, **one per working key** by
+default (Settings → *Assistants at the same time*: Automatic, or 1 to 8 if you prefer they share keys). The
+live graph shows which key (masked) each helper uses and for which job.
+
+| Wizard: who does what? | Each helper on its own key |
+|---|---|
+| ![Who does what](docs/v7-wizard-jobs-light-en.png) | ![Swarm with keys](docs/v7-swarm-keys-dark-en.png) |
+
 Notes: the server only listens on `127.0.0.1` (your computer); port 8765 if free, else another one. The
 macOS builds are separate for Apple Silicon and Intel. Advanced: build it yourself with
 `pip install pyinstaller && pyinstaller packaging/autonomous-agent.spec` (output in `dist/`), or run
@@ -179,7 +200,8 @@ the logs).
   - dark neon web chat with **approval cards that ask a plain question** ("Allow writing report.md?"),
     a **live swarm graph** of the sub-agents, and several conversations running in parallel;
   - **attachments**;
-  - **several API keys per category with hard limits**;
+  - **several API keys per category with hard limits**, pasted all at once, **one key per helper** matched to
+    its job (research, writing, code…), so helpers work in parallel;
   - **persistence** (SQLite), **live updates** (SSE) and **⛔ Stop all**;
   - remembered approvals (never for send/spend) and a **dashboard** (usage per agent, quotas, health);
   - **Markdown/JSON export**, **scheduled tasks** and an **EN/FR interface**.
@@ -455,6 +477,22 @@ keys:
   category for the provider call you plug in (no image/audio generation is built in).
 - `python -m agent keys` and the harness (`GET /keys`, chat sidebar, `/dashboard`) show the remaining
   quota per key and category, with keys masked (`gsk_…abcd`).
+- **Key pool (0.7)**: every swarm agent (`root`, `root.1`, `root.2`…) gets its **own** key and keeps it
+  while it works. Order: keys whose `tasks` match the agent's job (from its task text, EN/FR keywords:
+  *Researcher / Chercheur* → `research`, *Writer / Rédacteur* → `writing`, *Coder / Développeur* → `code`,
+  *Analyst / Analyste* → `analysis`, *image / screenshot* → `vision`, otherwise `general`), then keys
+  tagged `general` or untagged, then any key of the category; within a group the **least busy** key wins
+  (fewest agents holding it, then fewest requests in flight, then priority). Limits are still checked
+  and reserved first. On a limit, a 429, a 5xx / network error or a refused key (401 / 402 / 403) the key
+  cools down and the agent **fails over** to the next key; with fewer keys than agents, agents share the
+  least busy keys. Parallelism = number of working keys (at most 8), or the number set in Settings
+  (`parallel`); demo / single-key mode keeps `--max-parallel`. In `providers.yaml`: `tasks: [research,
+  analysis]`. Each change of key is audit-logged (`event: key_assign`, key masked).
+- **Bulk entry (0.7)**: `POST /app/providers/bulk {"text"}` (Settings / wizard) parses one key per line
+  (`label: key`, `NAME=key`, `export NAME="key"`), detects the provider, tests all keys concurrently and
+  saves the working ones; `POST /app/providers/propose` and `POST /app/providers/tasks {"assign": {id:
+  [tasks] | {"tasks", "model"}}}` handle "Who does what?"; `GET /app/pool` shows the live pool. All
+  responses carry masked keys only.
 
 ### Multi-agent mode (sub-agents)
 
@@ -731,6 +769,13 @@ builds, each smoke-tested, attached to a GitHub Release.
   server are in English.
 - Day theme: checked for WCAG AA contrast on the main text colours and visually on every page, but not
   audited with a screen reader; the theme choice is stored per browser (Settings sets the default).
+- Key pool: a helper's job is guessed from keywords in its task text (EN/FR), and the "fast / strong"
+  proposal from the provider and model name: both are heuristics you can override in Settings. The pool
+  lives in the running app (one process); a helper keeps its key while it works, and counts as busy for
+  2 minutes after its last call if it did not finish cleanly. Pasted keys are hidden by intercepting the
+  paste and by masking the box (`-webkit-text-security`); in browsers without that CSS (older Firefox),
+  characters **typed** directly in the paste box are visible until Enter, so type keys in the
+  "+ Add another key" rows (password fields) instead.
 - This project is independent: it is **not** Grok Bot and does not reproduce it.
 
 ### License
@@ -897,6 +942,30 @@ premier lancement, Réglages → Général, ou le sélecteur EN | FR.
 |---|---|
 | ![Graphe de l'essaim, thème jour](docs/v6-swarm-light-fr.png) | ![Tableau de bord](docs/v6-dashboard-dark-fr.png) |
 
+#### Plusieurs clés = plusieurs assistants en même temps (nouveau en 0.7)
+
+**Plus tu ajoutes de clés, plus tes assistants travaillent en même temps.** Dans l'assistant (« J'ai
+plusieurs clés ») ou dans ⚙ Réglages → Clés d'API → **Coller plusieurs clés**, collez toutes vos clés d'un
+coup, une par ligne (éventuellement `nom: clé`), ou ajoutez-les une par une avec **+ Ajouter une autre
+clé**. Le service de chaque clé est reconnu d'après ses premières lettres, toutes les clés sont **testées
+en même temps**, avec une ligne claire par clé (✓ « Ça marche : enregistrée sous Groq 2 » / ✗ « Groq refuse
+cette clé : elle est fausse ou a été supprimée »). Seules celles qui marchent sont enregistrées ; les clés
+ne sont jamais affichées en clair (`gsk_••••a1b2`) et sont rangées comme avant.
+
+Ensuite, **Qui fait quoi ?** propose un travail pour chaque clé, en mots simples : clés rapides / gratuites
+pour *Recherche & résumés* et *Analyse*, modèles plus puissants pour *Rédaction* et *Code* (et
+*Images/vision* si le modèle sait lire les images). Validez en un clic ou ajustez avec les interrupteurs
+(et, si vous voulez, le modèle). Quand l'essaim travaille, chaque assistant reçoit **sa propre clé** :
+d'abord une clé faite pour son travail (un « Chercheur » prend une clé de recherche), sinon une clé
+*Général*, sinon n'importe quelle clé libre. Les assistants travaillent en parallèle, **un par clé qui
+marche** par défaut (Réglages → *Assistants en même temps* : Automatique, ou de 1 à 8 si vous préférez
+qu'ils partagent les clés). Le graphe en direct montre quelle clé (masquée) chaque assistant utilise, et
+pour quel travail.
+
+| Assistant : qui fait quoi ? | Chaque assistant sur sa propre clé |
+|---|---|
+| ![Qui fait quoi](docs/v7-wizard-jobs-light-fr.png) | ![Essaim avec clés](docs/v7-swarm-keys-dark-fr.png) |
+
 Remarques : le serveur n'écoute que sur `127.0.0.1` (votre ordinateur) ; port 8765 s'il est libre, sinon
 un autre. Les versions macOS sont distinctes pour puce Apple et Intel. Avancé : compiler soi-même avec
 `pip install pyinstaller && pyinstaller packaging/autonomous-agent.spec` (résultat dans `dist/`), ou
@@ -927,7 +996,8 @@ Terminal pour voir le journal).
   - chat web au thème néon sombre avec des **cartes de validation qui posent une question claire**
     (« Autoriser l'écriture de report.md ? »), un **graphe de l'essaim en direct** et plusieurs conversations en parallèle ;
   - **pièces jointes** ;
-  - **plusieurs clés d'API par catégorie avec limites strictes** ;
+  - **plusieurs clés d'API par catégorie avec limites strictes**, collées d'un coup, **une clé par assistant**
+    selon son travail (recherche, rédaction, code…), pour que les assistants travaillent en parallèle ;
   - **persistance** (SQLite), **direct** (SSE) et **⛔ Tout arrêter** ;
   - validations retenues (jamais pour send/spend) et un **tableau de bord** (consommation par agent,
     quotas, état du serveur) ;
@@ -1214,6 +1284,22 @@ keys:
 - `python -m agent keys` et le harness (`GET /keys`, barre latérale du chat, `/dashboard`) affichent le
   quota restant par clé et par catégorie, avec les clés masquées (`gsk_…abcd`).
 
+
+- **Réserve de clés (0.7)** : chaque agent de l'essaim (`root`, `root.1`, `root.2`…) reçoit **sa propre**
+  clé et la garde pendant son travail. Ordre : les clés dont les `tasks` correspondent au travail de
+  l'agent (d'après le texte de sa tâche, mots-clés EN/FR : *Chercheur / Researcher* → `research`,
+  *Rédacteur / Writer* → `writing`, *Développeur / Coder* → `code`, *Analyste / Analyst* → `analysis`,
+  *image / capture* → `vision`, sinon `general`), puis les clés `general` ou sans étiquette, puis n'importe
+  quelle clé de la catégorie ; dans un groupe, la clé **la moins occupée** gagne. Les limites restent
+  vérifiées et réservées d'abord. Sur une limite, un 429, une erreur 5xx / réseau ou une clé refusée
+  (401 / 402 / 403), la clé se repose et l'agent **passe à la suivante** ; avec moins de clés que
+  d'agents, ils partagent les moins occupées. Parallélisme = nombre de clés qui marchent (8 au plus), ou
+  le nombre choisi dans Réglages (`parallel`). Dans `providers.yaml` : `tasks: [research, analysis]`.
+  Chaque changement de clé est journalisé (`event: key_assign`, clé masquée).
+- **Saisie groupée (0.7)** : `POST /app/providers/bulk {"text"}` lit une clé par ligne (`nom: clé`,
+  `NOM=clé`, `export NOM="clé"`), reconnaît le service, teste toutes les clés en même temps et enregistre
+  celles qui marchent ; `POST /app/providers/propose` et `POST /app/providers/tasks` gèrent « Qui fait
+  quoi ? » ; `GET /app/pool` montre la réserve en direct. Les réponses ne contiennent que des clés masquées.
 ### Mode essaim (sous-agents)
 
 Un agent peut lancer des **sous-agents** avec `spawn_agent(task, max_steps?, allowed_tools?)`, ou
@@ -1515,6 +1601,13 @@ de bout en bout hors ligne avec le backend mock, et une compilation de l'applica
   page, mais pas audité avec un lecteur d'écran ; le choix du thème est gardé par navigateur (Réglages fixe
   la valeur par défaut).
 - Ce projet est indépendant : ce n'est **pas** Grok Bot et il ne le reproduit pas.
+- Réserve de clés : le travail d'un assistant est deviné d'après des mots-clés de sa tâche (EN/FR), et la
+  proposition « rapide / puissant » d'après le service et le nom du modèle : ce sont des heuristiques,
+  modifiables dans Réglages. La réserve vit dans l'application en cours (un seul processus) ; un
+  assistant garde sa clé pendant son travail. Les clés collées sont masquées (interception du collage et
+  `-webkit-text-security`) ; dans un navigateur sans ce CSS (ancien Firefox), les caractères **tapés**
+  directement dans la zone de collage restent visibles jusqu'à Entrée : tapez plutôt dans les lignes
+  « + Ajouter une autre clé » (champs mot de passe).
 
 ### Licence
 

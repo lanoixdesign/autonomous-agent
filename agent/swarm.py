@@ -30,9 +30,10 @@ import threading
 from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING, Any, Callable
 
 from . import isolation
+from .keys import role_task
 from .permissions import Decision
 from .tools import Registry, Tool, ToolContext, ToolError, params, s
 
@@ -51,6 +52,19 @@ class SwarmConfig:
     max_parallel: int = 3        # spawn_agents: children run concurrently up to this many
     isolate: bool = True         # allow parallel writing children in isolated workspace copies
     copy_limits: isolation.Limits = field(default_factory=isolation.Limits)
+    # key pool (v0.7): how many children may work at once, read at each batch (Settings page: one per
+    # working key, or the number the user chose). None: max_parallel.
+    pool_size: Callable[[], int] | None = field(default=None, repr=False, compare=False)
+
+    def workers(self) -> int:
+        if self.pool_size is not None:
+            try:
+                n = int(self.pool_size())
+                if n > 0:
+                    return n
+            except Exception:  # noqa: BLE001 - never break a run on a settings read
+                pass
+        return max(1, self.max_parallel)
 
 
 @dataclass
@@ -216,9 +230,11 @@ def run_child(parent: "Agent", task: str, max_steps: int | None = None,
                   stop_rule=parent.stop_rule, swarm=cfg, depth=depth, agent_id=child_id,
                   swarm_state=shared, allow_spawn=bool(allowed & set(SPAWN_TOOLS)), cancel=parent.cancel,
                   idc=kid_idc)
+    child.key_task = role_task(task)      # key pool: research / writing / code / analysis / vision / general
     try:
         res = child.run(task)
     finally:
+        child.release_key()               # its key is free for the next agent
         if kid_idc is not None:
             parent.idc.settle_child(kid_idc, idc_slice)
         # Release the reservation and deduct the child's real usage from the parent's budget.
@@ -242,7 +258,7 @@ def run_child(parent: "Agent", task: str, max_steps: int | None = None,
 def plan_batch(parent: "Agent", n: int, allowed_tools: list[str] | None) -> str:
     """'sequential' | 'parallel' (shared workspace, read-only) | 'isolated' (parallel, one copy each)."""
     cfg = parent.swarm
-    if cfg is None or n < 2 or min(cfg.max_parallel, n) < 2:
+    if cfg is None or n < 2 or min(cfg.workers(), n) < 2:
         return "sequential"
     if parallel_safe(parent, allowed_tools):
         return "parallel"
@@ -257,7 +273,7 @@ def spawn_many(parent: "Agent", tasks: list[str], max_steps: int | None = None,
                allowed_tools: list[str] | None = None) -> list[str]:
     """Run several children (see the module docstring for when they run concurrently)."""
     mode = plan_batch(parent, len(tasks), allowed_tools)
-    workers = min(parent.swarm.max_parallel, len(tasks)) if parent.swarm else 1
+    workers = min(parent.swarm.workers(), len(tasks)) if parent.swarm else 1
 
     def one(task: str, share: int, workspace: Path | None = None) -> tuple[str | None, str]:
         try:
