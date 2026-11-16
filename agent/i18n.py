@@ -766,6 +766,13 @@ from .i18n_v81 import EN_V81, FR_V81  # noqa: E402
 EN.update(EN_V81)
 FR.update(FR_V81)
 
+from .i18n_v82 import EN_V82, FR_V82  # noqa: E402
+from .i18n_tu import FR_TU  # noqa: E402
+
+EN.update(EN_V82)
+FR.update(FR_V82)
+FR.update(FR_TU)          # v0.8.2: one form in French, "tu", everywhere
+
 STRINGS = {"en": EN, "fr": FR}
 PLACEHOLDER_RE = re.compile(r"\{(\w+)[^}]*\}")
 
@@ -788,3 +795,46 @@ def ui_strings() -> dict[str, dict[str, str]]:
     """What the pages get: everything except the terminal and export strings."""
     return {lang: {k: v for k, v in d.items() if not k.startswith(("cli.", "export.", "desktop."))}
             for lang, d in STRINGS.items()}
+
+
+# -- v0.8.2: answer in the language of the request -------------------------------------------------------------
+_FR_WORDS = frozenset("""le la les des une un et est sont pour avec dans sur que qui je tu il elle nous vous mon ma mes
+ton ta tes son sa ses ce cette ces pas du au aux en où ou mais donc puis ne plus moi toi fais fait faire écris écrire
+crée créer ajoute ajouter change changer peux peut veux voudrais merci bonjour salut stp svp réponds répondre
+résume résumer liste lister relever rédiger rédige utilise utiliser fichier fichiers bouton couleur page phrase phrases
+quoi comment pourquoi quand combien aussi très bien avec chez sans entre leur leurs notre votre trois deux""".split())
+_EN_WORDS = frozenset("""the a an and is are for with in on that which who i you he she we my your his her this these
+those not of to it its but so then also very well do does make write create add change can could would want please
+thanks hello hi answer reply summarize summarise list use file files button color colour page sentence sentences what
+how why when there their our three two from into by be have has""".split())
+_FR_CHARS = set("éèêàâîôûçœëïù«»")
+_WORD_RE = re.compile(r"[a-zàâäçéèêëîïôöùûüœ']+")
+
+
+def detect_lang(text: str | None, default: str | None = None) -> str | None:
+    """'fr' or 'en' from a short request (common words + accents); `default` when it is unclear
+    (too short, mixed, code only). A cheap heuristic, not a language model."""
+    s = str(text or "").lower()[:4000]
+    words = [w.strip("'") for w in _WORD_RE.findall(s)]
+    words = [w.split("'")[-1] if "'" in w else w for w in words]   # l'agent -> agent, j'ai -> ai
+    fr = sum(1 for w in words if w in _FR_WORDS) + 0.5 * sum(1 for c in s if c in _FR_CHARS)
+    en = sum(1 for w in words if w in _EN_WORDS)
+    if fr >= 1.5 and fr > en * 1.3:
+        return "fr"
+    if en >= 1.5 and en > fr * 1.3:
+        return "en"
+    return normalize(default) if default else None
+
+
+LANG_RULE = {
+    "fr": ("- LANGUAGE: the user writes in French. Write EVERYTHING you produce in French: messages, plans, "
+           "file contents meant for the user (unless asked otherwise), the tasks you give to sub-agents, and the "
+           "final answer, even though these instructions and the tools are in English. Address the user with "
+           "\"tu\" (informal)."),
+    "en": ("- LANGUAGE: the user writes in English. Write everything you produce in English: messages, plans, "
+           "the tasks you give to sub-agents and the final answer."),
+}
+
+
+def language_rule(lang: str | None) -> str:
+    return LANG_RULE.get(normalize(lang), "") if lang else ""

@@ -17,8 +17,8 @@ keys:
     key_env: GROQ_API_KEY
     categories: [text, code]
     models:
-      text: openai/gpt-oss-120b
-      code: openai/gpt-oss-120b
+      text: openai/gpt-oss-20b
+      code: openai/gpt-oss-20b
     priority: 1
     pricing:                            # per 1M tokens, in `currency`
       input_per_1m: 0.15

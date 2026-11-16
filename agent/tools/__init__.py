@@ -24,6 +24,12 @@ class ToolContext:
     # Sandbox mode (agent/sandbox.py): a callable so the setting can change while the app runs.
     sandbox: Callable[[], bool] | None = None
     deny_paths: list[Path] = field(default_factory=list)   # private app data, never reachable in the sandbox
+    # developer mode: write_file / edit_file (and sandbox commands that change files) stay under this
+    # workspace-relative folder, e.g. "projects/site/"; None = anywhere in the workspace
+    write_prefix: str | None = None
+
+    def write_root(self) -> Path | None:
+        return (Path(self.workspace) / self.write_prefix) if self.write_prefix else None
 
     def sandbox_on(self) -> bool:
         try:

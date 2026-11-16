@@ -43,9 +43,9 @@ PREFERRED_PORT = 8765
 
 ENV_TEMPLATE = """# autonomous-agent — API keys / clés d'API
 # Remove the leading '#' of ONE provider line and paste your key, then restart the app.
-# Enlevez le '#' devant UNE ligne de fournisseur, collez votre clé, puis relancez l'application.
+# Enlève le '#' devant UNE ligne de fournisseur, colle ta clé, puis relance l'application.
 # This file stays on your computer; it is outside the agent's workspace.
-# Ce fichier reste sur votre ordinateur ; il est hors de l'espace de travail de l'agent.
+# Ce fichier reste sur ton ordinateur ; il est hors de l'espace de travail de l'agent.
 
 # AGENT_PROVIDER=groq
 # GROQ_API_KEY=
@@ -68,9 +68,9 @@ ENV_TEMPLATE = """# autonomous-agent — API keys / clés d'API
 # Use it from your phone (remote mode: sign-in required, pairing QR code in this window and at /connect)
 # L'utiliser depuis le téléphone (mode distant : connexion obligatoire, QR code ici et sur /connect)
 # AGENT_REMOTE=1
-# Tunnel started for you / tunnel lancé pour vous : tailscale (recommended / recommandé) | cloudflared
+# Tunnel started for you / tunnel lancé pour toi : tailscale (recommended / recommandé) | cloudflared
 # AGENT_TUNNEL=tailscale
-# Or the address you already expose / ou l'adresse que vous exposez déjà :
+# Or the address you already expose / ou l'adresse que tu exposes déjà :
 # AGENT_REMOTE_URL=https://my-computer.my-tailnet.ts.net/
 # Fixed access token (24+ characters; otherwise one is generated in data/remote-token)
 # AGENT_HARNESS_TOKEN=

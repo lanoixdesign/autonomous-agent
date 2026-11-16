@@ -122,7 +122,7 @@ def test_approval_question_and_reason_are_human_and_translated(lang):
         assert out[6].endswith("(--yolo does not apply to this category)")
     else:
         assert out[:4] == ["L'agent veut écrire le fichier report.md",
-                           "L'agent veut créer 3 assistants pour vous aider : Researcher, Analyst, Writer",
+                           "L'agent veut créer 3 assistants pour t'aider : Researcher, Analyst, Writer",
                            "L'agent veut ouvrir une page web sur example.com",
                            "L'agent veut envoyer quelque chose que d'autres personnes verront"]
         assert out[4] == "Règle par défaut pour les actions « écriture » : demander"

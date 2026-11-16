@@ -127,6 +127,18 @@ def _tool_list(v: Any) -> list[str] | None:
     return [str(t) for t in v]
 
 
+def usable_tools(parent: "Agent", v: Any) -> list[str] | None:
+    """allowed_tools as the model sent it -> a usable list, or None (= all of the parent's tools).
+    An empty list or a list with no tool the parent has would make a helper with no tools at all (a common
+    model slip that also breaks providers: "tool choice is none, but model called a tool"), so it means
+    "all of yours" instead. Never wider than the parent either way."""
+    lst = _tool_list(v)
+    if lst is None:
+        return None
+    known = [t for t in lst if t in parent.registry.tools]
+    return known or None
+
+
 def parallel_safe(parent: "Agent", allowed_tools: list[str] | None) -> bool:
     """True if children limited to `allowed_tools` can run concurrently (see module docstring)."""
     if not allowed_tools:
@@ -160,7 +172,7 @@ def may_ask(parent: "Agent", allowed_tools: list[str] | None) -> bool:
 def _left(parent: "Agent") -> tuple[int, int, int]:
     """What the parent has left, minus what running children already reserved (call under lock)."""
     b, st = parent.budget, parent.state
-    return (b.max_steps - st.steps - st.reserved_steps,
+    return (b.max_steps - st.steps - st.reserved_steps - 1,      # keep one step for the parent's own answer
             b.max_tool_calls - st.tool_calls - st.reserved_calls - 1,   # the spawn call itself counts
             b.max_tokens - st.tokens - st.reserved_tokens)
 
@@ -231,6 +243,11 @@ def run_child(parent: "Agent", task: str, max_steps: int | None = None,
                   swarm_state=shared, allow_spawn=bool(allowed & set(SPAWN_TOOLS)), cancel=parent.cancel,
                   idc=kid_idc)
     child.key_task = role_task(task)      # key pool: research / writing / code / analysis / vision / general
+    # same language as the user's request, same confinement and rules as the parent (developer mode)
+    child.lang, child.ui_lang = getattr(parent, "lang", None), getattr(parent, "ui_lang", None)
+    child.child_rules = getattr(parent, "child_rules", "")
+    child.extra_rules = child.child_rules
+    child.refresh_system()
     try:
         res = child.run(task)
     finally:
@@ -324,7 +341,7 @@ def make_tools(agent: "Agent") -> list[Tool]:
     """Spawn tools bound to one agent (closures: the tool needs the agent, not only the context)."""
 
     def _one(ctx: ToolContext, a: dict) -> str:
-        return spawn(agent, a["task"], _int(a.get("max_steps"), "max_steps"), _tool_list(a.get("allowed_tools")))
+        return spawn(agent, a["task"], _int(a.get("max_steps"), "max_steps"), usable_tools(agent, a.get("allowed_tools")))
 
     def _many(ctx: ToolContext, a: dict) -> str:
         tasks = a["tasks"]
@@ -332,12 +349,17 @@ def make_tools(agent: "Agent") -> list[Tool]:
             tasks = [tasks]
         if not isinstance(tasks, list) or not tasks:
             raise ToolError("tasks must be a non-empty list")
-        out = spawn_many(agent, tasks, _int(a.get("max_steps"), "max_steps"), _tool_list(a.get("allowed_tools")))
+        out = spawn_many(agent, tasks, _int(a.get("max_steps"), "max_steps"),
+                         usable_tools(agent, a.get("allowed_tools")))
         return "\n\n".join(out)
 
-    tools_prop = {"type": "array", "items": {"type": "string"},
-                  "description": "optional: tools the sub-agent may use (subset of yours)"}
-    steps_prop = {"type": "integer", "description": "optional: step budget (capped by what you have left)"}
+    # null accepted: models often send "max_steps": null / "allowed_tools": [] and some providers (Groq) then
+    # reject the whole call with tool_use_failed before we can treat it as "not given"
+    tools_prop = {"type": ["array", "null"], "items": {"type": "string"},
+                  "description": "optional, usually omit it: tool names the sub-agent may use (subset of "
+                                 "yours); omitted or empty = all of your tools"}
+    steps_prop = {"type": ["integer", "null"],
+                  "description": "optional: step budget (capped by what you have left); usually omit it"}
     return [
         Tool("spawn_agent", "Launch a sub-agent on a self-contained task; returns its final answer. "
              "It uses your budget and never has more permissions than you.", "delegate",

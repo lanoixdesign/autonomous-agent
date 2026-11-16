@@ -46,11 +46,11 @@ T = {
     "en": {"title": "My website", "hello": "Hello!", "lead": "This page was created by your assistant. Ask it to change anything.",
            "button": "Click me", "clicked": "Thanks for clicking! ({n})", "footer": "Made with Autonomous Agent",
            "py_readme": "A small Python program.\n\nRun it: `python main.py`\nTest it: `python -m pytest` (or `python -m unittest`)\n",
-           "greet": "Hello"},
-    "fr": {"title": "Mon site", "hello": "Bonjour !", "lead": "Cette page a été créée par votre assistant. Demandez-lui de changer ce que vous voulez.",
-           "button": "Cliquez ici", "clicked": "Merci pour le clic ! ({n})", "footer": "Fait avec Autonomous Agent",
+           "greet": "Hello, {name}!", "world": "world", "doc": "Return a friendly greeting."},
+    "fr": {"title": "Mon site", "hello": "Bonjour !", "lead": "Cette page a été créée par ton assistant. Demande-lui de changer ce que tu veux.",
+           "button": "Clique ici", "clicked": "Merci pour le clic ! ({n})", "footer": "Fait avec Autonomous Agent",
            "py_readme": "Un petit programme Python.\n\nLancer : `python main.py`\nTester : `python -m pytest` (ou `python -m unittest`)\n",
-           "greet": "Bonjour"},
+           "greet": "Bonjour, {name} !", "world": "tout le monde", "doc": "Renvoie une salutation amicale."},
 }
 
 
@@ -104,12 +104,12 @@ document.getElementById("btn").addEventListener("click", () => {{
 
 
 def greet(name: str) -> str:
-    """Return a friendly greeting."""
-    return f"{t['greet']}, {{name}}!"
+    """{t['doc']}"""
+    return f"{t['greet']}"
 
 
 def main() -> None:
-    print(greet("world"))
+    print(greet("{t['world']}"))
 
 
 if __name__ == "__main__":
@@ -122,7 +122,7 @@ from {mod} import greet
 
 class GreetTest(unittest.TestCase):
     def test_greet(self):
-        self.assertEqual(greet("Ada"), "{t['greet']}, Ada!")
+        self.assertEqual(greet("Ada"), "{t['greet'].replace('{name}', 'Ada')}")
 
 
 if __name__ == "__main__":
@@ -357,20 +357,47 @@ def check_site(p: Path) -> list[str]:
     return problems
 
 
-def rules(project: str | None, kind: str | None) -> str:
-    """System-prompt rules for a developer-mode conversation."""
+ROLE_NAMES = {"en": ("Coder", "Tester"), "fr": ("Codeur", "Testeur")}
+OPEN_HOW = {
+    "en": "in this app's Dev tab: the 👁 Preview button shows it, ⬇ Download the project (.zip) gives every file",
+    "fr": "dans l'onglet Dév de l'application : le bouton 👁 Aperçu l'affiche, ⬇ Télécharger le projet (.zip) "
+          "donne tous les fichiers",
+}
+
+
+def rules(project: str | None, kind: str | None, lang: str | None = None) -> str:
+    """System-prompt rules for a developer-mode conversation (in English for the model; role names and the
+    "how to open it" sentence in the user's language)."""
+    lang = "fr" if str(lang or "").lower().startswith("fr") else "en"
+    coder, tester = ROLE_NAMES[lang]
     where = f"projects/{project}/" if project else "projects/<short-name>/"
     k = {"web": "a static website (index.html, style.css, script.js; no internet files, no build step)",
          "python": "a Python program (main.py + test_main.py with unittest tests; standard library only)"}.get(
         kind or "", "a small project (static website or Python program, as the user asks)")
+    folder = where.rstrip("/")
     return (
         "DEVELOPER MODE (beginner-friendly):\n"
-        f"- The project lives in {where} and is {k}. Only create or change files inside it.\n"
-        "- Work as a small team with spawn_agent, one helper at a time:\n"
-        f"  1) spawn_agent with a task starting with 'Coder:' that writes the files in {where} with write_file / edit_file;\n"
-        f"  2) then spawn_agent with a task starting with 'Tester:' that reads the files, runs the tests in the sandbox "
-        f"(`python -m unittest discover -s {where.rstrip('/')} -v` for Python; for a website it checks every link and file "
-        "exists) and reports problems in plain words;\n"
+        f"- The project lives in {where} and is {k}. Only create or change files inside it "
+        f"(paths always start with {where}; writes anywhere else are refused).\n"
+        "- Work as a small team with spawn_agent, one helper at a time (do not pass allowed_tools):\n"
+        f"  1) spawn_agent with a task starting with '{coder}:' that writes the files in {where} with "
+        "write_file / edit_file;\n"
+        f"  2) then spawn_agent with a task starting with '{tester}:' that reads the files, runs the tests in the "
+        f"sandbox (`python -m unittest discover -s {folder} -v` for Python; for a website `ls -R {folder}` and "
+        "it checks every link and file exists) and reports problems in plain words;\n"
         "  3) if the Tester found problems, ask a Coder to fix them, then test again.\n"
+        "- Shell: one simple command per call (no ; | > or cd; only `a && b`).\n"
         "- Finish with a short, friendly answer for a beginner: what was built, how to open it "
-        "(Developer page -> Preview, or Download the project (.zip)), and what to try next.\n")
+        f"({OPEN_HOW[lang]}), and what to try next. Never mention an IDE.\n")
+
+
+def child_rules(project: str | None, lang: str | None = None) -> str:
+    """What every helper (Coder / Tester) is told in developer mode."""
+    if not project:
+        return ""
+    where = f"projects/{project}/"
+    return ("DEVELOPER MODE helper:\n"
+            f"- The project folder is {where}. Create and change files ONLY there (paths start with {where}); "
+            "never write files at the top of the work folder.\n"
+            f"- Shell: one simple command per call, paths from the work folder (e.g. `ls -R {where.rstrip('/')}`, "
+            f"`python -m unittest discover -s {where.rstrip('/')} -v`); no ; | > or cd.\n")

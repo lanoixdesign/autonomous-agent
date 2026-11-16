@@ -131,7 +131,7 @@ def test_markdown_export_in_french(server, ws):  # noqa: F811
     tid = call(base, "POST", "/tasks", {"task": "what is here?"})[1]["id"]
     finished(base, tid)
     fr = urllib.request.urlopen(f"{base}/tasks/{tid}/export?format=md&lang=fr").read().decode()
-    assert "## Consommation" in fr and "## Piste d'audit" in fr and "### Vous — tour 1" in fr
+    assert "## Consommation" in fr and "## Piste d'audit" in fr and "### Toi — tour 1" in fr
     assert "**Statut:** terminé" in fr and "| `list_files` (lecture) | autorisé |" in fr
     en = urllib.request.urlopen(f"{base}/tasks/{tid}/export?format=md").read().decode()
     assert "## Usage" in en and "## Audit trail" in en and "| `list_files` (read) | allowed |" in en

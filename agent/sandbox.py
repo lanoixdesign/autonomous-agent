@@ -43,10 +43,42 @@ class SandboxError(Exception):
     """The command is not allowed in the sandbox (the message explains why, in plain words)."""
 
 
+MAX_CHAIN = 5          # `a && b && c`: at most this many simple commands, run one after the other
+
+
 def help_text() -> str:
-    return ("Sandbox is on: only simple commands inside the work folder, no internet, no pipes or redirections. "
-            "Allowed: " + ", ".join(ALLOWED) + ". Python: `python file.py`, `python -m pytest`, `pytest`. "
+    return ("Sandbox is on: only simple commands inside the work folder, no internet. Run ONE command per shell "
+            "call: no ; | > < $ ` ( ) (only `a && b` is accepted: it runs a, then b if a worked). "
+            "Allowed: " + ", ".join(ALLOWED) + ". Python: `python file.py`, `python -m pytest folder/`, "
+            "`pytest folder/`. There is no `cd`: give paths from the work folder (e.g. `ls -R projects/site`). "
             "To create or change files, use write_file / edit_file.")
+
+
+def split_chain(command: str) -> list[str]:
+    """`a && b` -> ["a", "b"] when every part is a simple command (quotes respected); otherwise the command
+    as it was (parse() then explains what is not allowed)."""
+    command = (command or "").strip()
+    if "&&" not in command:
+        return [command]
+    try:
+        lex = shlex.shlex(command, posix=True, punctuation_chars="&")
+        lex.whitespace_split = True
+        tokens = list(lex)
+    except ValueError:
+        return [command]
+    parts, cur = [], []
+    for tok in tokens:
+        if tok == "&&":
+            parts.append(cur)
+            cur = []
+        else:
+            cur.append(tok)
+    parts.append(cur)
+    if any(not p for p in parts) or len(parts) > MAX_CHAIN:
+        return [command]
+    if any(tok in ("&", "&&&") or set(tok) <= {"&"} for p in parts for tok in p):
+        return [command]
+    return [shlex.join(p) for p in parts]
 
 
 # ---------------------------------------------------------------- parsing and paths
@@ -68,6 +100,9 @@ def parse(command: str) -> list[str]:
     name = os.path.basename(argv[0])
     if name.lower().endswith(".exe"):
         name = name[:-4]
+    if name == "cd":
+        raise SandboxError("there is no cd in the sandbox: give paths from the work folder instead, "
+                           "e.g. `ls -R projects/site` or `python -m pytest projects/calc`")
     if name not in ALLOWED or ("/" in argv[0] or "\\" in argv[0]):
         raise SandboxError(f"'{argv[0]}' is not allowed in the sandbox. " + help_text())
     return [name] + argv[1:]
@@ -154,12 +189,22 @@ def _read_text(p: Path) -> str:
 
 # ---------------------------------------------------------------- built-in commands
 class Runner:
-    def __init__(self, ws: Path, deny: list[Path] | None = None):
+    def __init__(self, ws: Path, deny: list[Path] | None = None, write_root: Path | None = None):
         self.ws = Path(os.path.realpath(ws))
         self.deny = [Path(os.path.realpath(d)) for d in (deny or [])]
+        # developer mode: commands that create, change or delete files stay in the project folder
+        self.write_root = Path(os.path.realpath(write_root)) if write_root is not None else None
 
     def path(self, a: str) -> Path:
         return resolve(self.ws, a, self.deny)
+
+    def wpath(self, a: str) -> Path:
+        """A path this command will create / change / delete."""
+        p = self.path(a)
+        if self.write_root is not None and not inside(self.write_root, p):
+            raise SandboxError(f"path not allowed: {a!r}: in developer mode, files are only created or changed "
+                               f"in {_rel(self.ws, self.write_root)}/")
+        return p
 
     def _visible(self, p: Path) -> bool:
         return inside(self.ws, p) and not any(inside(d, p) for d in self.deny)
@@ -191,28 +236,48 @@ class Runner:
         o, rest = (({"n": True}, a[1:]) if a[:1] == ["-n"] else ({}, a))
         return 0, " ".join(rest)
 
+    def _ls_dir(self, p: Path, o: dict, out: list[str]) -> list[Path]:
+        """List one folder into `out`; returns its visible subfolders (for -R)."""
+        items = sorted(os.listdir(p))
+        if not o.get("a"):
+            items = [x for x in items if not x.startswith(".")]
+        subdirs = []
+        for x in items:
+            q = p / x
+            if not self._visible(q) and not os.path.islink(q):
+                continue
+            if q.is_dir() and not q.is_symlink():
+                subdirs.append(q)
+            if o.get("l"):
+                st = os.lstat(q)
+                kind = "l" if q.is_symlink() else ("d" if q.is_dir() else "-")
+                out.append(f"{kind} {st.st_size:>10} {time.strftime('%Y-%m-%d %H:%M', time.localtime(st.st_mtime))} {x}")
+            else:
+                out.append(x + ("/" if o.get("F") and q.is_dir() else ""))
+        return subdirs
+
     def c_ls(self, a):
         o, rest = _split(a)
         _check_opts("ls", o, "alh1RF")
-        out = []
+        out: list[str] = []
+        limit = 2000                      # -R on a big tree: stop listing after this many lines
         for t in rest or ["."]:
             p = self.path(t)
             if p.is_dir():
-                items = sorted(os.listdir(p))
-                if not o.get("a"):
-                    items = [x for x in items if not x.startswith(".")]
+                if o.get("R"):            # recursive: "folder:" then its entries, folder after folder
+                    queue = [p]
+                    while queue and len(out) < limit:
+                        d = queue.pop(0)
+                        if out:
+                            out.append("")
+                        out.append((_rel(self.ws, d) or ".") + ":")
+                        queue = self._ls_dir(d, o, out) + queue
+                    if queue:
+                        out.append(f"... (stopped after {limit} lines)")
+                    continue
                 if len(rest) > 1:
                     out.append(f"{t}:")
-                for x in items:
-                    q = p / x
-                    if not self._visible(q) and not os.path.islink(q):
-                        continue
-                    if o.get("l"):
-                        st = os.lstat(q)
-                        kind = "l" if q.is_symlink() else ("d" if q.is_dir() else "-")
-                        out.append(f"{kind} {st.st_size:>10} {time.strftime('%Y-%m-%d %H:%M', time.localtime(st.st_mtime))} {x}")
-                    else:
-                        out.append(x + ("/" if o.get("F") and q.is_dir() else ""))
+                self._ls_dir(p, o, out)
             else:
                 if not p.exists():
                     return 2, f"ls: no such file or folder: {t}"
@@ -375,12 +440,12 @@ class Runner:
         o, rest = _split(a)
         _check_opts("mkdir", o, "p")
         for t in rest:
-            self.path(t).mkdir(parents=bool(o.get("p")), exist_ok=bool(o.get("p")))
+            self.wpath(t).mkdir(parents=bool(o.get("p")), exist_ok=bool(o.get("p")))
         return 0, ""
 
     def c_touch(self, a):
         for t in a:
-            p = self.path(t)
+            p = self.wpath(t)
             p.touch()
         return 0, ""
 
@@ -393,10 +458,13 @@ class Runner:
                 parent = Path(os.path.realpath(full.parent))
                 if not self._visible(parent):
                     raise SandboxError(f"path not allowed: {t!r} is outside the work folder")
+                if self.write_root is not None and not inside(self.write_root, parent):
+                    raise SandboxError(f"path not allowed: {t!r}: in developer mode, files are only changed "
+                                       f"in {_rel(self.ws, self.write_root)}/")
                 os.unlink(full)
                 continue
-            p = self.path(t)
-            if p == self.ws:
+            p = self.wpath(t)
+            if p == self.ws or p == self.write_root:
                 raise SandboxError("rm: not allowed on the whole work folder")
             if p.is_dir():
                 if not (o.get("r") or o.get("R")):
@@ -413,8 +481,8 @@ class Runner:
         _check_opts(cmd, o, flags)
         if len(rest) < 2:
             raise SandboxError(f"{cmd} needs a source and a destination")
-        srcs = [self.path(t) for t in rest[:-1]]
-        dst = self.path(rest[-1])
+        srcs = [self.wpath(t) if cmd == "mv" else self.path(t) for t in rest[:-1]]
+        dst = self.wpath(rest[-1])
         return o, srcs, dst
 
     def c_cp(self, a):
@@ -655,14 +723,22 @@ def _kill(p: subprocess.Popen) -> None:
 
 
 def run(ws: Path, command: str, timeout: int = MAX_TIMEOUT, max_output: int = 12000,
-        deny: list[Path] | None = None) -> str:
-    """Run one command in the sandbox. Returns 'exit=N\\n<output>' like the normal shell tool."""
-    argv = parse(command)
-    runner = Runner(ws, deny)
-    if argv[0] in ("python", "python3", "py", "pytest"):
-        code, out = run_python(runner, argv, timeout, max_output)
-    else:
-        code, out = runner.run(argv)
+        deny: list[Path] | None = None, write_root: Path | None = None) -> str:
+    """Run one command in the sandbox. Returns 'exit=N\\n<output>' like the normal shell tool.
+    `a && b` (up to MAX_CHAIN simple commands) runs them one after the other and stops at the first failure."""
+    parts = split_chain(command)
+    argvs = [parse(p) for p in parts]          # every part is checked before anything runs
+    runner = Runner(ws, deny, write_root)
+    outs, code = [], 0
+    for part, argv in zip(parts, argvs):
+        if argv[0] in ("python", "python3", "py", "pytest"):
+            code, out = run_python(runner, argv, timeout, max_output)
+        else:
+            code, out = runner.run(argv)
+        outs.append(f"$ {part}\n{out}".rstrip() if len(parts) > 1 else out)
+        if code != 0:
+            break
+    out = "\n".join(outs)
     if len(out) > max_output:
         out = out[:max_output] + f"\n... ({len(out) - max_output} chars truncated)"
     return f"exit={code}\n{out}".rstrip()

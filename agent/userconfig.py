@@ -43,7 +43,7 @@ PRICING_FIELDS = ("input_per_1m", "output_per_1m", "per_image", "per_audio_minut
 MAX_SECRET = 500
 
 PRESETS: dict[str, dict[str, Any]] = {
-    "groq": {"base_url": "https://api.groq.com/openai/v1", "model": "openai/gpt-oss-120b", "key": True,
+    "groq": {"base_url": "https://api.groq.com/openai/v1", "model": "openai/gpt-oss-20b", "key": True,
              "prefix": "gsk_", "keys_url": "https://console.groq.com/keys"},
     "openai": {"base_url": "https://api.openai.com/v1", "model": "gpt-4o-mini", "key": True,
                "prefix": "sk-", "keys_url": "https://platform.openai.com/api-keys"},

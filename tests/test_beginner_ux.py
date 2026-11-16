@@ -232,7 +232,7 @@ def test_plain_language_questions_in_both_languages():
              "plain('simple','read_file',{path:'notes.txt'},'root','read')",
              "plain('simple','web_search',{query:'prix'},'root','network')"]
     fr = _run("fr", calls)
-    assert fr[0] == "L'agent veut créer 3 assistants pour vous aider : Chercheur, Analyste, Rédacteur"
+    assert fr[0] == "L'agent veut créer 3 assistants pour t'aider : Chercheur, Analyste, Rédacteur"
     assert fr[1] == "L'agent veut écrire le fichier report.md"
     assert fr[2].startswith("Assistant 2 veut") and "rm -rf" not in fr[2]          # the raw command stays in the details
     en = _run("en", calls)

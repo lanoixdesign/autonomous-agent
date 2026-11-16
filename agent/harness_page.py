@@ -99,7 +99,7 @@ async function api(method, path, body){
 function num(v,d){ return (v||0).toLocaleString(LANG,{maximumFractionDigits:d,minimumFractionDigits:0}); }
 $("launch").onclick = async () => {
   const x = $("task").value.trim(); if(!x) return;
-  try { const r = await api("POST","/tasks",{task:x}); $("task").value=""; $("msg").textContent=t("dash.started",{id:r.id}); select(r.id); }
+  try { const r = await api("POST","/tasks",{task:x,lang:LANG}); $("task").value=""; $("msg").textContent=t("dash.started",{id:r.id}); select(r.id); }
   catch(e){ fail(e); }
 };
 $("cancel").onclick = async () => { if(cur) try{ await api("POST","/tasks/"+cur+"/cancel",{}); }catch(e){} };
@@ -118,6 +118,7 @@ function evLine(e){
   else if(e.kind==="message") txt = (e.final?t("ev.answer"):"")+e.content;
   else if(e.kind==="approval") txt = t("ev.approval",{tool:e.tool,status:tr("status",e.status)});
   else if(e.kind==="keys") txt = keysText(e)||("keys "+e.action);
+  else if(e.kind==="retry") txt = t("trace.retryN",{n:e.attempt||1,max:e.max||3});
   else txt = e.kind+" "+(e.status?tr("status",e.status):(e.reason?tr("status",e.reason):""));
   d.append(el("span","muted",e.ts.slice(11,19)+" "), el("b",null,who), el("span",null,txt)); return d;
 }
@@ -198,7 +199,7 @@ async function refreshRules(){
     d.append(el("span",null,x.tool+" ["+tr("cat",x.category)+"] · "+tr("scope",x.scope)+(x.scope==="conversation"?" "+x.task_id:"")+" · "+t("rules.used",{n:x.uses})), b); box.append(d); });
 }
 async function refreshHealth(){ try{ const h=await api("GET","/health"); $("health").className="";
-  const keys = t(h.keys.mode==="router"?"keys.mode.router":(h.keys.mode==="demo"?"keys.mode.demo":"keys.mode.single"))+(h.keys.keys?" "+h.keys.keys.map(k=>k.name+" "+k.key).join(", "):(h.keys.key?" "+h.keys.provider+" "+h.keys.key:""));
+  const keys = t({router:"keys.mode.router",settings:"keys.mode.settings",demo:"keys.mode.demo"}[h.keys.mode]||"keys.mode.single")+(h.keys.keys?" "+h.keys.keys.map(k=>k.name+" "+k.key).join(", "):(h.keys.key?" "+h.keys.provider+" "+h.keys.key:""));
   $("health").textContent=[t("health.line",{status:tr("status",h.status),up:num(Math.round(h.uptime_s),0),running:h.running,max:h.max_tasks,approvals:h.pending_approvals}),
     t("health.keys",{keys}), t("health.persistence",{p:h.persistence||t("health.memoryOnly")})].join("\n"); }catch(e){} }
 $("stopall").onclick=async()=>{ if(!confirm(t("confirm.stopall"))) return;

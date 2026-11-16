@@ -72,15 +72,28 @@ def _search(ctx: ToolContext, a: dict) -> str:
     return "\n".join(hits) or "no match"
 
 
+def _writable(ctx: ToolContext, rel: str) -> Path:
+    """resolve() + developer mode: files are only created or changed in the project folder."""
+    p = resolve(ctx, rel)
+    root = ctx.write_root()
+    if root is not None:
+        r = Path(os.path.realpath(root))
+        rp = Path(os.path.realpath(p))
+        if rp != r and r not in rp.parents:
+            raise ToolError(f"path not allowed: {rel!r}: in developer mode, create and change files only in "
+                            f"{ctx.write_prefix} (for example {ctx.write_prefix}index.html)")
+    return p
+
+
 def _write(ctx: ToolContext, a: dict) -> str:
-    p = resolve(ctx, a["path"])
+    p = _writable(ctx, a["path"])
     p.parent.mkdir(parents=True, exist_ok=True)
     p.write_text(a.get("content", ""), encoding="utf-8")
     return f"wrote {len(a.get('content', ''))} chars to {a['path']}"
 
 
 def _edit(ctx: ToolContext, a: dict) -> str:
-    p = resolve(ctx, a["path"])
+    p = _writable(ctx, a["path"])
     if not p.is_file():
         raise ToolError(f"not a file: {a['path']}")
     text = p.read_text(encoding="utf-8")

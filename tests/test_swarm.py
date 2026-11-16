@@ -120,7 +120,7 @@ def test_child_budget_capped_by_parent(make_agent, tmp_path):
     res = make_agent(llm, perms=Permissions.from_dict(ALLOW_DELEGATE), swarm=SwarmConfig(),
                      budget=Budget(max_steps=4, max_repeats=99)).run("x")
     spawn = [l for l in audit_lines(tmp_path) if l.get("event") == "spawn"][0]
-    assert spawn["budget"]["max_steps"] == 3
+    assert spawn["budget"]["max_steps"] == 2          # 4 - 1 used - 1 kept for the parent's own answer (0.8.2)
     assert res.stop_reason == "max_steps"
 
 

@@ -171,11 +171,13 @@ NAV_CSS = r"""
  a.back{display:inline-flex;align-items:center;gap:6px;padding:6px 12px;border-radius:999px;border:1px solid rgba(0,212,255,.45);color:var(--blue)!important;
   text-decoration:none;font:600 13px var(--font);white-space:nowrap;background:rgba(0,212,255,.08)}
  a.back:hover{background:rgba(0,212,255,.16)}
- @media (max-width:760px){
-  nav.tabs{display:flex;overflow-x:auto;max-width:100%;order:10;flex:1 1 100%;justify-content:space-between}
-  nav.tabs a{padding:9px 10px;min-height:38px;flex:1;text-align:center;font-size:13px}
+ @media (max-width:760px){   /* every tab visible without scrolling: one row of 6, or 2 rows of 3 on a phone */
+  nav.tabs{display:grid;grid-template-columns:repeat(6,minmax(0,1fr));overflow:visible;max-width:100%;order:10;flex:1 1 100%;border-radius:16px}
+  nav.tabs a{padding:8px 4px;min-height:38px;text-align:center;font-size:12.5px;white-space:normal;overflow-wrap:anywhere;
+   display:flex;align-items:center;justify-content:center;border-radius:12px}
   .apphead{gap:8px;padding:8px 10px}
  }
+ @media (max-width:560px){ nav.tabs{grid-template-columns:repeat(3,minmax(0,1fr))} }
 """
 
 NAV_JS = r"""
