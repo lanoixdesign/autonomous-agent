@@ -188,15 +188,35 @@ def _read_text(p: Path) -> str:
 
 
 # ---------------------------------------------------------------- built-in commands
+def _default_globs() -> list[str]:
+    from .permissions import DEFAULT_PATH_DENY
+    return list(DEFAULT_PATH_DENY)
+
+
+def glob_denied(ws: Path, real: Path, globs: list[str]) -> bool:
+    """v0.9.3: protected files of the work folder (.env, keys, .git, .agent...) stay out of reach in the sandbox."""
+    from .permissions import _match_path
+    try:
+        rel = Path(real).relative_to(ws).as_posix()
+    except ValueError:
+        return False
+    return rel not in ("", ".") and bool(_match_path(rel, globs))
+
+
 class Runner:
-    def __init__(self, ws: Path, deny: list[Path] | None = None, write_root: Path | None = None):
+    def __init__(self, ws: Path, deny: list[Path] | None = None, write_root: Path | None = None,
+                 globs: list[str] | None = None):
         self.ws = Path(os.path.realpath(ws))
+        self.globs = list(globs) if globs is not None else _default_globs()
         self.deny = [Path(os.path.realpath(d)) for d in (deny or [])]
         # developer mode: commands that create, change or delete files stay in the project folder
         self.write_root = Path(os.path.realpath(write_root)) if write_root is not None else None
 
     def path(self, a: str) -> Path:
-        return resolve(self.ws, a, self.deny)
+        p = resolve(self.ws, a, self.deny)
+        if glob_denied(self.ws, p, self.globs):
+            raise SandboxError(f"path not allowed: {a!r} (protected file: secrets, keys or app data)")
+        return p
 
     def wpath(self, a: str) -> Path:
         """A path this command will create / change / delete."""
@@ -207,7 +227,8 @@ class Runner:
         return p
 
     def _visible(self, p: Path) -> bool:
-        return inside(self.ws, p) and not any(inside(d, p) for d in self.deny)
+        return inside(self.ws, p) and not any(inside(d, p) for d in self.deny) and \
+            not glob_denied(self.ws, Path(os.path.realpath(p)), self.globs)
 
     def run(self, argv: list[str]) -> tuple[int, str]:
         cmd, args = argv[0], argv[1:]
@@ -244,9 +265,10 @@ class Runner:
         subdirs = []
         for x in items:
             q = p / x
-            if not self._visible(q) and not os.path.islink(q):
+            named = inside(self.ws, q) and not any(inside(d, q) for d in self.deny)   # names of protected files
+            if not named and not os.path.islink(q):                                    # are listed, never read
                 continue
-            if q.is_dir() and not q.is_symlink():
+            if q.is_dir() and not q.is_symlink() and self._visible(q):
                 subdirs.append(q)
             if o.get("l"):
                 st = os.lstat(q)
@@ -569,12 +591,27 @@ def _w(p, what):
     r = _real(p)
     if r is None or r in ("/dev/null", "nul", "NUL") or os.path.basename(r).upper() == "NUL":
         return
-    if not _in(r, WS) or any(_in(r, d) for d in DENY):
+    if not _in(r, WS) or any(_in(r, d) for d in DENY) or _globbed(r):
         raise Blocked("sandbox: %s outside the work folder is not allowed: %s" % (what, p))
+import fnmatch as _fn
+GLOBS = [g.casefold() for g in os.environ.pop("AGENT_SBX_DENY", "").split("\n") if g]
+def _globbed(r):
+    if not _in(r, WS) or r == WS:
+        return False
+    parts = os.path.relpath(r, WS).replace(os.sep, "/").casefold().split("/")
+    sfx = ["/".join(parts[i:]) for i in range(len(parts))]
+    for g in GLOBS:
+        cands = [g] + ([g[3:]] if g.startswith("**/") else []) + ([g[:-3]] if g.endswith("/**") else [])
+        for c in cands:
+            if ("/" not in c and _fn.fnmatchcase(parts[-1], c)) or any(_fn.fnmatchcase(x, c) for x in sfx):
+                return True
+    return False
 def _r(p, what):
     r = _real(p)
     if r is None:
         return
+    if _globbed(r):
+        raise Blocked("sandbox: %s a protected file (secrets, keys or app data) is not allowed: %s" % (what, p))
     if any(_in(r, d) for d in DENY) or not any(_in(r, x) for x in READ):
         raise Blocked("sandbox: %s outside the work folder is not allowed: %s" % (what, p))
 def hook(ev, args):
@@ -582,6 +619,8 @@ def hook(ev, args):
         raise Blocked("sandbox: no network access from commands")
     if ev in PROC:
         raise Blocked("sandbox: starting other programs or native code is not allowed (%s)" % ev)
+    if ev == "import" and args and str(args[0]).split(".")[-1] in NOPROC_MODS:
+        raise BlockedImport("sandbox: starting other programs or native code is not allowed (%s)" % args[0])
     if ev == "import" and args and str(args[0]).split(".")[0] in ("ctypes", "_ctypes", "cffi", "_cffi_backend"):
         raise Blocked("sandbox: native code (%s) is not allowed" % args[0])
     if ev == "open":
@@ -594,6 +633,31 @@ def hook(ev, args):
         _r(args[0], "reading"); _w(args[1], "changing files")
     elif ev in READ1:
         _r(args[0] if args else ".", "reading")
+# v0.9.3: low-level process creation has no audit event (_posixsubprocess.fork_exec): disable it, refuse to load a
+# fresh copy of these modules (and of the C test modules that can corrupt memory).
+NOPROC_MODS = ("_posixsubprocess", "_testcapi", "_testinternalcapi")
+class BlockedImport(ImportError):
+    pass
+def _noproc(*a, **k):
+    raise Blocked("sandbox: starting other programs or native code is not allowed (low-level process call)")
+for _m in ("_posixsubprocess",):
+    try:
+        _mod = __import__(_m)
+        _mod.fork_exec = _noproc
+    except ImportError:
+        pass
+try:
+    import _imp
+    for _f in ("create_builtin", "create_dynamic"):
+        _orig = getattr(_imp, _f, None)
+        if _orig is not None:
+            def _guard(spec, *a, _o=_orig):
+                if getattr(spec, "name", "").split(".")[-1] in NOPROC_MODS:
+                    _noproc()
+                return _o(spec, *a)
+            setattr(_imp, _f, _guard)
+except ImportError:
+    pass
 os.chdir(WS)
 sys.addaudithook(hook)
 import runpy
@@ -693,7 +757,9 @@ def run_python(runner: Runner, argv: list[str], timeout: int, max_output: int) -
         kw["preexec_fn"] = _limits(t)
         kw["start_new_session"] = True
     try:
-        p = subprocess.Popen(full, cwd=runner.ws, env=child_env(runner.ws), stdin=subprocess.DEVNULL,
+        env = child_env(runner.ws)
+        env["AGENT_SBX_DENY"] = "\n".join(runner.globs)
+        p = subprocess.Popen(full, cwd=runner.ws, env=env, stdin=subprocess.DEVNULL,
                              stdout=subprocess.PIPE, stderr=subprocess.PIPE, shell=False, **kw)
     except OSError as e:
         return 127, f"could not start python: {e}"
@@ -723,12 +789,12 @@ def _kill(p: subprocess.Popen) -> None:
 
 
 def run(ws: Path, command: str, timeout: int = MAX_TIMEOUT, max_output: int = 12000,
-        deny: list[Path] | None = None, write_root: Path | None = None) -> str:
+        deny: list[Path] | None = None, write_root: Path | None = None, globs: list[str] | None = None) -> str:
     """Run one command in the sandbox. Returns 'exit=N\\n<output>' like the normal shell tool.
     `a && b` (up to MAX_CHAIN simple commands) runs them one after the other and stops at the first failure."""
     parts = split_chain(command)
     argvs = [parse(p) for p in parts]          # every part is checked before anything runs
-    runner = Runner(ws, deny, write_root)
+    runner = Runner(ws, deny, write_root, globs)
     outs, code = [], 0
     for part, argv in zip(parts, argvs):
         if argv[0] in ("python", "python3", "py", "pytest"):

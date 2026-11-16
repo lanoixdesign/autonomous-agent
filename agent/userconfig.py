@@ -255,7 +255,8 @@ def probe_key(base_url: str, secret: str | None, timeout: float = 8.0) -> dict:
                                           **({"Authorization": f"Bearer {secret}"} if secret else {})})
     t0 = time.monotonic()
     try:
-        with urllib.request.urlopen(req, timeout=timeout) as r:
+        from .netguard import open_url         # v0.9.3: the key never follows a redirect to another host
+        with open_url(req, timeout, ssrf=False, same_origin_redirects=True) as r:
             body = r.read(2_000_000)
             status = r.status
     except urllib.error.HTTPError as e:

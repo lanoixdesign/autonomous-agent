@@ -8,6 +8,7 @@ import urllib.parse
 import urllib.request
 
 from .. import USER_AGENT
+from .. import netguard
 from . import Tool, ToolContext, ToolError, params, s
 
 TAG = re.compile(r"<(script|style)[\s\S]*?</\1>|<[^>]+>", re.I)
@@ -22,9 +23,13 @@ def html_to_text(raw: str) -> str:
 def _get(url: str, timeout: int = 20) -> tuple[str, str]:
     if not url.startswith(("http://", "https://")):
         raise ToolError("only http(s) URLs are allowed")
+    try:
+        netguard.check_url(url)                         # v0.9.3: no localhost / metadata / private network
+    except netguard.BlockedURL as e:
+        raise ToolError(str(e))
     req = urllib.request.Request(url, headers={"User-Agent": USER_AGENT, "Accept": "text/html,application/json,text/plain,*/*"})
     try:
-        with urllib.request.urlopen(req, timeout=timeout) as r:
+        with netguard.open_url(req, timeout) as r:
             ctype = r.headers.get("Content-Type", "")
             body = r.read(2_000_000).decode(r.headers.get_content_charset() or "utf-8", errors="replace")
     except Exception as e:  # noqa: BLE001
@@ -36,7 +41,7 @@ def _fetch(ctx: ToolContext, a: dict) -> str:
     ctype, body = _get(a["url"])
     text = html_to_text(body) if "html" in ctype else body
     n = int(a.get("max_chars") or ctx.max_output)
-    return text[:n] + ("\n... (truncated)" if len(text) > n else "")
+    return netguard.untrusted(a["url"], text[:n] + ("\n... (truncated)" if len(text) > n else ""))
 
 
 def _search_base(_args: dict | None = None) -> str:
@@ -54,7 +59,9 @@ def _search(ctx: ToolContext, a: dict) -> str:
         results.append(f"- {html_to_text(m.group(2))} — {q[0] if q else href}")
         if len(results) >= int(a.get("limit") or 8):
             break
-    return "\n".join(results) or "no results (search endpoint may block automated requests; use web_fetch on a known URL)"
+    if results:
+        return netguard.untrusted("web search: " + str(a["query"])[:80], "\n".join(results))
+    return "no results (search endpoint may block automated requests; use web_fetch on a known URL)"
 
 
 TOOLS = [

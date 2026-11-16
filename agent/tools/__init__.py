@@ -14,6 +14,11 @@ class ToolError(Exception):
     """Expected tool failure; the message is returned to the model as the observation."""
 
 
+def _default_path_deny() -> list[str]:
+    from ..permissions import DEFAULT_PATH_DENY
+    return DEFAULT_PATH_DENY
+
+
 @dataclass
 class ToolContext:
     workspace: Path
@@ -28,6 +33,8 @@ class ToolContext:
     # workspace-relative folder, e.g. "projects/site/"; None = anywhere in the workspace
     write_prefix: str | None = None
     apis: Any = None          # apis.ApiRegistry: business APIs added in the Connect tab (v0.9)
+    # v0.9.3: protected files (permissions `paths.deny`), checked again on the REAL path (symlinks, "..", case)
+    path_deny: list[str] = field(default_factory=lambda: list(_default_path_deny()))
 
     def write_root(self) -> Path | None:
         return (Path(self.workspace) / self.write_prefix) if self.write_prefix else None

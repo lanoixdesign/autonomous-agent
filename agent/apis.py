@@ -208,7 +208,8 @@ def _clean(text: str, secret: str | None) -> str:
 def _http(method: str, url: str, headers: dict, data: bytes | None, limit: int) -> tuple[int, str]:
     req = urllib.request.Request(url, data=data, headers=headers, method=method)
     try:
-        with urllib.request.urlopen(req, timeout=TIMEOUT) as r:
+        from .netguard import open_url          # v0.9.3: never follow a redirect to another host with the key
+        with open_url(req, TIMEOUT, ssrf=False, same_origin_redirects=True) as r:
             return r.status, r.read(limit).decode("utf-8", "replace")
     except urllib.error.HTTPError as e:
         return e.code, e.read(limit).decode("utf-8", "replace")
@@ -250,7 +251,9 @@ def _list(ctx: ToolContext, a: dict) -> str:
 
 
 def _get(ctx: ToolContext, a: dict) -> str:
-    return _reg(ctx).call(a.get("api"), "GET", a.get("path") or "/", a.get("query"), None, ctx.max_output)
+    from .netguard import untrusted
+    out = _reg(ctx).call(a.get("api"), "GET", a.get("path") or "/", a.get("query"), None, ctx.max_output)
+    return untrusted(f"api {a.get('api')} GET {str(a.get('path') or '/')[:120]}", out)
 
 
 def _method(a: dict) -> str:

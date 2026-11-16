@@ -90,7 +90,8 @@ def openai_embed(base_url: str, model: str, api_key: str | None, texts: list[str
     if api_key:
         headers["Authorization"] = f"Bearer {api_key}"
     req = urllib.request.Request(base_url.rstrip("/") + "/embeddings", data=body, headers=headers, method="POST")
-    with urllib.request.urlopen(req, timeout=timeout) as r:
+    from .netguard import open_url             # v0.9.3: the key never follows a redirect to another host
+    with open_url(req, timeout, ssrf=False, same_origin_redirects=True) as r:
         data = json.loads(r.read().decode("utf-8"))
     items = sorted(data.get("data") or [], key=lambda d: d.get("index", 0))
     vecs = [[float(x) for x in (d.get("embedding") or [])] for d in items]

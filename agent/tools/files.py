@@ -13,7 +13,27 @@ def resolve(ctx: ToolContext, rel: str) -> Path:
     p = (root / (rel or ".")).resolve()
     if p != root and root not in p.parents:
         raise ToolError(f"path escapes the workspace: {rel}")
+    if p != root and protected(ctx, p, root):
+        raise ToolError(f"protected file (permissions paths.deny or app data): {rel}")
     return p
+
+
+def protected(ctx: ToolContext, p: Path, root: Path) -> bool:
+    """v0.9.3: the deny patterns are checked on the real path (after symlinks and "..") and the app's
+    private data (keys, memory, audit) is never reachable, even when the work folder contains it."""
+    from ..permissions import _match_path
+    for d in ctx.deny_paths or []:
+        try:
+            dr = Path(d).resolve()
+        except OSError:
+            continue
+        if p == dr or dr in p.parents:
+            return True
+    try:
+        rel = p.relative_to(root).as_posix()
+    except ValueError:
+        return True
+    return bool(_match_path(rel, list(ctx.path_deny or [])))
 
 
 def _read(ctx: ToolContext, a: dict) -> str:
@@ -56,11 +76,14 @@ def _search(ctx: ToolContext, a: dict) -> str:
     root = ctx.workspace.resolve()
     hits = []
     for dirpath, dirnames, filenames in os.walk(root):
-        dirnames[:] = [d for d in dirnames if not d.startswith(".") and d not in ("node_modules", "__pycache__")]
+        dirnames[:] = [d for d in dirnames if not d.startswith(".") and d not in ("node_modules", "__pycache__")
+                       and not (Path(dirpath) / d).is_symlink()]
         for f in filenames:
             if not fnmatch.fnmatch(f, glob):
                 continue
             fp = Path(dirpath) / f
+            if fp.is_symlink() or protected(ctx, fp, root):      # v0.9.3: no secret read through search
+                continue
             try:
                 for i, line in enumerate(fp.read_text(encoding="utf-8", errors="ignore").splitlines(), 1):
                     if needle in line.lower():
