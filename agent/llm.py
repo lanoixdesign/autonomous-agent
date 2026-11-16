@@ -119,7 +119,8 @@ class OpenAICompatible:
             req = urllib.request.Request(self.base_url + "/chat/completions", data=data, headers=headers, method="POST")
             wait = 2.0 ** attempt
             try:
-                with urllib.request.urlopen(req, timeout=self.timeout) as r:
+                from .netguard import open_url     # v0.9.3: the key never follows a redirect to another host
+                with open_url(req, self.timeout, ssrf=False, same_origin_redirects=True) as r:
                     rl = _rl_headers(r.headers)
                     body = json.loads(r.read().decode("utf-8"))
                 break

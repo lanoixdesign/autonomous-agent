@@ -30,6 +30,11 @@ SAFE_DEFAULTS = {
     "delegate": "ask",   # launch sub-agents (multi-agent mode)
 }
 YOLO_PROTECTED = ("send", "spend")
+# v0.9.3: an allow pattern (commands.allow / domains.allow) only skips the question for these categories;
+# actions visible to others (send) and money (spend) are always asked.
+PATTERN_ALLOW_CATEGORIES = ("read", "network", "execute", "write", "delegate")
+# a command with one of these is a chain / substitution / redirection: allow patterns never apply to it
+SHELL_META = set(";|&<>`$()\n\r")
 
 DEFAULT_PATH_DENY = [
     ".env", "**/.env", ".env.*", "**/*.pem", "**/*.key", "**/id_rsa*", "**/id_ed25519*",
@@ -127,15 +132,15 @@ class Permissions:
             hit = _match_path(subject, self.path_deny)
             if hit:
                 return Decision("deny", f"path '{subject}' matches deny pattern '{hit}'")
-            if self.path_allow and not _match_path(subject, self.path_allow):
+            if self.path_allow and not _match_path(subject, self.path_allow, anywhere=False):
                 return Decision("deny", f"path '{subject}' not in paths.allow")
         elif subject is not None and subject_kind == "command":
             cmd = " ".join(subject.split())
             hit = _first(cmd, self.command_deny)
             if hit:
                 return Decision("deny", f"command matches deny pattern '{hit}'")
-            hit = _first(cmd, self.command_allow)
-            if hit and mode == "ask":
+            hit = _first(cmd, self.command_allow) if not (set(subject) & SHELL_META) else None
+            if hit and mode == "ask" and category in PATTERN_ALLOW_CATEGORIES:
                 return Decision("allow", f"command matches allow pattern '{hit}'")
         elif subject is not None and subject_kind == "api_get":    # business API reads (v0.9)
             auto = subject.lower() in self.api_auto_get
@@ -152,7 +157,7 @@ class Permissions:
             host = (urlparse(subject).hostname or "").lower()
             if _match_domain(host, self.domain_deny):
                 return Decision("deny", f"domain '{host}' is in domains.deny")
-            if _match_domain(host, self.domain_allow) and mode == "ask":
+            if _match_domain(host, self.domain_allow) and mode == "ask" and category in PATTERN_ALLOW_CATEGORIES:
                 return Decision("allow", f"domain '{host}' is in domains.allow")
 
         if mode == "ask" and self.yolo:
@@ -181,19 +186,27 @@ def _first(text: str, patterns: list[str]) -> str | None:
     return None
 
 
-def _match_path(rel: str, patterns: list[str]) -> str | None:
-    rel = rel.replace("\\", "/")
+def _match_path(rel: str, patterns: list[str], anywhere: bool = True) -> str | None:
+    """v0.9.3: "a/../.env", "./x/.ENV" and a nested "projects/site/.git/hooks/x" all match: the path is
+    normalized, compared case-insensitively (macOS / Windows file systems) and at any depth."""
+    import posixpath
+    rel = posixpath.normpath(rel.replace("\\", "/")).lstrip("/").casefold()
     while rel.startswith("./"):
         rel = rel[2:]
-    name = rel.rsplit("/", 1)[-1]
+    parts = [p for p in rel.split("/") if p not in ("", ".")]
+    suffixes = (["/".join(parts[i:]) for i in range(len(parts))] if anywhere else ["/".join(parts)]) or [rel]
+    name = parts[-1] if parts else rel
     for pat in patterns:
-        cands = [pat]
-        if pat.startswith("**/"):
-            cands.append(pat[3:])
-        if pat.endswith("/**"):
-            cands.append(pat[:-3])
+        low = pat.replace("\\", "/").casefold()
+        cands = [low]
+        if low.startswith("**/"):
+            cands.append(low[3:])
+        if low.endswith("/**"):
+            cands.append(low[:-3])
         for c in cands:
-            if fnmatch.fnmatchcase(rel, c) or ("/" not in c and fnmatch.fnmatchcase(name, c)):
+            if "/" not in c and fnmatch.fnmatchcase(name, c):
+                return pat
+            if any(fnmatch.fnmatchcase(sfx, c) for sfx in suffixes):
                 return pat
     return None
 

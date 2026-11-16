@@ -13,7 +13,7 @@ def _shell(ctx: ToolContext, a: dict) -> str:
     if ctx.sandbox_on():
         try:
             return sandbox.run(ctx.workspace, cmd, int(a.get("timeout") or ctx.shell_timeout),
-                               ctx.max_output, ctx.deny_paths, ctx.write_root())
+                               ctx.max_output, ctx.deny_paths, ctx.write_root(), list(ctx.path_deny))
         except sandbox.SandboxError as e:
             raise ToolError(str(e))
     timeout = min(int(a.get("timeout") or ctx.shell_timeout), 600)

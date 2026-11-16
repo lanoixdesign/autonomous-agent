@@ -34,7 +34,8 @@ def request(method: str, path: str, body: dict | None = None) -> str:
             "X-GitHub-Api-Version": "2022-11-28", "User-Agent": USER_AGENT,
             **({"Content-Type": "application/json"} if data else {})})
         try:
-            with urllib.request.urlopen(req, timeout=30) as r:
+            from ..netguard import open_url     # v0.9.3: the token never follows a redirect to another host
+            with open_url(req, 30, ssrf=False, same_origin_redirects=True) as r:
                 return r.read().decode("utf-8", errors="replace")
         except urllib.error.HTTPError as e:
             raise ToolError(f"GitHub HTTP {e.code}: {e.read().decode('utf-8', 'replace')[:500]}")
@@ -58,7 +59,8 @@ def _short(text: str, n: int) -> str:
 
 
 def _get(ctx: ToolContext, a: dict) -> str:
-    return _short(request("GET", a["path"]), ctx.max_output)
+    from ..netguard import untrusted
+    return untrusted("github " + str(a["path"])[:120], _short(request("GET", a["path"]), ctx.max_output))
 
 
 def _write(ctx: ToolContext, a: dict) -> str:

@@ -38,20 +38,23 @@ class Store:
             pass
 
     def put(self, table: str, id: str, data: dict) -> None:
-        assert table in TABLES
+        if table not in TABLES:
+            raise ValueError(f"unknown table: {table!r}")
         blob = json.dumps(data, ensure_ascii=False)
         with self._lock:
             self._db.execute(f"INSERT OR REPLACE INTO {table} (id, data) VALUES (?, ?)", (id, blob))
 
     def delete(self, table: str, id: str) -> None:
-        assert table in TABLES
+        if table not in TABLES:
+            raise ValueError(f"unknown table: {table!r}")
         with self._lock:
             self._db.execute(f"DELETE FROM {table} WHERE id = ?", (id,))
             if table == "tasks":
                 self._db.execute("DELETE FROM events WHERE task_id = ?", (id,))
 
     def all(self, table: str) -> list[dict]:
-        assert table in TABLES
+        if table not in TABLES:
+            raise ValueError(f"unknown table: {table!r}")
         with self._lock:
             rows = self._db.execute(f"SELECT data FROM {table} ORDER BY rowid").fetchall()
         return [json.loads(r[0]) for r in rows]

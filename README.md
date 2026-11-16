@@ -840,6 +840,17 @@ an `<iframe sandbox="allow-scripts allow-forms allow-modals">` (opaque origin: t
 app or the internet). **Download the project (.zip)** = `GET /dev/zip?project=<name>` (caches and hidden
 files left out). API: `GET /dev/projects`, `POST /dev/projects {name, kind}`, `POST /dev/test {project}`.
 
+### Security (0.9.3)
+
+A full security audit was done in 0.9.3 and every high / medium finding was fixed. In short: the app only listens
+on your computer, every send or payment asks you first (even in YOLO mode, even if the domain is allow-listed),
+chained commands like `git log && curl …` always ask, the sandbox blocks the low-level way to start programs,
+`.env` / keys / `.git` stay unreachable (even via `..`, a symbolic link or capital letters), the web tools refuse
+`localhost`, your local network and cloud metadata addresses, keys never follow a redirect to another site, outside
+content is marked "data, not instructions" for the model, and pages cannot be embedded by another site.
+Check a download with `SHA256SUMS.txt` and `gh attestation verify` (see [SECURITY.md](SECURITY.md)). Found a
+problem? Report it privately, see [SECURITY.md](SECURITY.md). The apps are not code-signed yet.
+
 ### Left sidebar (0.9.2)
 
 The tab bar at the top is gone: every page now has one quiet left sidebar with an icon and a label per destination (Chat, Dashboard, Dev, Settings, Connect), the current page lightly marked with the accent. Help, the day / night theme, Simple / Expert, the language and Quit sit at the bottom. The « ‹ » button folds it to icons only (remembered in this browser; icons only by default on mid-size screens). On a phone it is a drawer opened with ☰, listing every destination. In the chat, the sidebar also holds your conversations and "My files", so the page is just sidebar, conversation and input box. Page headers keep only a title; long help texts became small "?" tooltips and rarely used items moved under "Advanced options".
@@ -1825,6 +1836,19 @@ téléphone) avec `Content-Security-Policy: sandbox allow-scripts …; connect-s
 une `<iframe sandbox="allow-scripts allow-forms allow-modals">` (origine opaque : la page ne peut appeler ni
 l'app ni internet). **Télécharger le projet (.zip)** = `GET /dev/zip?project=<nom>` (caches et fichiers
 cachés exclus). API : `GET /dev/projects`, `POST /dev/projects {name, kind}`, `POST /dev/test {project}`.
+
+### Sécurité (0.9.3)
+
+Un audit de sécurité complet a été fait pour la 0.9.3 et chaque problème important ou moyen a été corrigé. En bref :
+l'application n'écoute que sur ton ordinateur, chaque envoi ou paiement te demande ton accord (même en mode YOLO,
+même si le domaine est dans la liste autorisée), les commandes enchaînées comme `git log && curl …` demandent
+toujours, le bac à sable bloque le moyen bas niveau de lancer des programmes, `.env` / clés / `.git` restent
+inaccessibles (même via `..`, un lien symbolique ou des majuscules), les outils web refusent `localhost`, ton réseau
+local et les adresses de métadonnées du cloud, tes clés ne suivent jamais une redirection vers un autre site, le
+contenu venu de l'extérieur est marqué « données, pas des instructions » pour le modèle, et aucun autre site ne peut
+intégrer les pages. Vérifie un téléchargement avec `SHA256SUMS.txt` et `gh attestation verify` (voir
+[SECURITY.md](SECURITY.md)). Tu as trouvé un problème ? Signale-le en privé, voir [SECURITY.md](SECURITY.md).
+Les applications ne sont pas encore signées.
 
 ### Barre latérale à gauche (0.9.2)
 

@@ -63,7 +63,7 @@ class Memory:
     @staticmethod
     def _item_id(it: dict) -> str:
         if it.get("kind") == "profile" and it.get("id") in (None, "profile"):
-            return "p:" + hashlib.sha1(it["text"].encode("utf-8")).hexdigest()[:12]
+            return "p:" + hashlib.sha1(it["text"].encode("utf-8"), usedforsecurity=False).hexdigest()[:12]
         return "j:" + str(it.get("id"))
 
     def _vectors(self, items: list[dict], limit_new: int = 64) -> dict[str, list[float]]:

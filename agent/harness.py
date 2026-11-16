@@ -1249,6 +1249,11 @@ SSE_PING = 15.0
 
 
 LOOPBACK = ("127.0.0.1", "::1", "::ffff:127.0.0.1")
+# v0.9.3: the app's own pages. Everything comes from this app (no CDN); nobody else may frame them.
+PAGE_CSP = ("default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline'; "
+            "img-src 'self' data: blob:; media-src 'self' data: blob:; connect-src 'self'; frame-src 'self'; "
+            "worker-src 'self'; manifest-src 'self'; object-src 'none'; base-uri 'none'; "
+            "frame-ancestors 'none'; form-action 'self'")
 
 
 def make_handler(h: Harness, token: str | None, local_only: bool, auth: "remote.Auth | None" = None):
@@ -1266,6 +1271,12 @@ def make_handler(h: Harness, token: str | None, local_only: bool, auth: "remote.
                 body = json.dumps(obj, ensure_ascii=False).encode("utf-8")
             extra = dict(extra or {})
             cache = extra.pop("Cache-Control-Override", "no-store")
+            if ctype.startswith("text/html"):         # v0.9.3: no clickjacking of approval cards, strict sources
+                keys = {k.lower() for k in extra}
+                if "x-frame-options" not in keys:
+                    extra["X-Frame-Options"] = "DENY"
+                if "content-security-policy" not in keys:
+                    extra["Content-Security-Policy"] = PAGE_CSP
             self.send_response(code)
             self.send_header("Content-Type", ctype)
             for k, v in extra.items():
