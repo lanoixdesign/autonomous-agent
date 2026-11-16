@@ -2,6 +2,8 @@
 
 EN_V09 = {
     "ui.advanced": "Advanced options",
+    "nav.menu": "Menu", "nav.collapse": "Collapse or expand the menu", "nav.theme": "Theme", "nav.quit": "Quit", "files.btn": "My files",
+    "nav.modeSimple": "Simple mode", "nav.modeExpert": "Expert mode", "nav.modeTip": "Switch between Simple and Expert",
     # Critic / self-evaluation
     "who.critic": "Critic",
     "human.handoff": "{who} wants to hand the task over to « {role} »",
@@ -84,6 +86,8 @@ FR_V09 = {
     "human.apiPay": "💳 {who} veut faire un PAIEMENT / une commande avec {api} : {method} {path}",
     "simple.apiPay": "💳 {who} a appelé {api} (paiement) : {method} {path}",
     "ui.advanced": "Options avancées",
+    "nav.menu": "Menu", "nav.collapse": "Réduire ou agrandir le menu", "nav.theme": "Thème", "nav.quit": "Quitter", "files.btn": "Mes fichiers",
+    "nav.modeSimple": "Mode simple", "nav.modeExpert": "Mode expert", "nav.modeTip": "Passer de Simple à Expert et inversement",
     "critic.task": "Critique : vérifier la réponse (tour {n})",
     "critic.toggle": "Vérifier la réponse avant de l'envoyer",
     "critic.toggle.title": "Un Critique relit le brouillon de réponse (ce que tu as demandé, l'exactitude, la langue). Si ce n'est pas assez bon, l'agent corrige. Consomme un peu plus de jetons.",

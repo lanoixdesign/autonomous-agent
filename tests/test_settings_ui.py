@@ -362,13 +362,13 @@ def test_navigation_on_every_page(name, page):
     for href in ('href="/"', 'href="/dashboard"', 'href="/settings"', 'href="/connect"'):
         assert href in page, href
     assert 'aria-current' in page
-    if name != "chat":
-        assert 'class="back" href="/"' in page          # always a way back to the chat
+    assert 'id="sidenav"' in page and page.count('id="sidenav"') == 1   # v0.9.2: one left sidebar (Chat link inside)
+    assert 'class="back"' not in page and 'href="/help"' in page
 
 
 def test_chat_history_and_drawer_nav():
     assert "history.pushState" in CHAT_PAGE and 'addEventListener("popstate"' in CHAT_PAGE
-    assert CHAT_PAGE.count('class="tabs"') == 2          # header (desktop) + drawer (mobile)
+    assert CHAT_PAGE.count('class="tabs"') == 1          # v0.9.2: the sidebar is also the phone drawer
     assert 'sessionStorage.getItem("chatCur")' in CHAT_PAGE
 
 

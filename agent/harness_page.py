@@ -2,7 +2,7 @@
 Plain HTML + JS, no external resources. Bilingual (EN/FR): strings come from agent/i18n.py."""
 from .i18n_js import I18N_JS, LANG_CSS, LANG_SWITCH
 from .ratebar import RATE_CSS, RATE_JS
-from .theme import APPROVAL_JS, BASE_CSS, DASH_CSS, NAV_CSS, NAV_HTML, NAV_JS, THEME_BTN, TIP_CSS, TIP_JS
+from .theme import APPROVAL_JS, BASE_CSS, DASH_CSS, MENU_BTN, NAV_CSS, NAV_HTML, NAV_JS, THEME_BTN, TIP_CSS, TIP_JS, sidebar
 
 DASH_EXTRA = r"""
  .prog{height:6px;background:var(--sunk);border:1px solid var(--line);border-radius:4px;overflow:hidden;margin:4px 0 2px}
@@ -52,9 +52,9 @@ PAGE = r"""<!doctype html>
  }
 /*THEME*/
 </style></head><body data-page="dashboard">
-<header class="apphead"><a class="back" href="/" data-i18n="nav.back"></a><h1 data-i18n="dash.heading"></h1>/*NAV*/<span class="sp"></span>
- /*LANG_SWITCH*/
- <button id="stopall" data-i18n="btn.stopall" data-i18n-title="title.stopall"></button>
+/*SIDEBAR*/
+<header class="apphead">/*MENU_BTN*/<h1 data-i18n="nav.dashboard"></h1><span class="sp"></span>
+ <button id="stopall" hidden data-i18n="btn.stopall" data-i18n-title="title.stopall"></button>
  <label id="tokwrap" hidden><span data-i18n="token.label"></span> <input id="token" type="password" data-i18n-placeholder="token.placeholder"></label></header>
 <main>
  <section><h2 data-i18n="dash.newTask"></h2>
@@ -108,6 +108,7 @@ function select(id){ cur=id; since=0; evcache=[]; $("events").replaceChildren();
 function badge(s){ return el("span","st "+s,tr("status",s)); }
 async function refreshTasks(){
   const {tasks} = await api("GET","/tasks"); const box=$("tasks"); box.replaceChildren();
+  $("stopall").hidden = !tasks.some(x=>["queued","running","cancelling"].includes(x.status));
   if(!tasks.length){ box.append(el("div","muted",t("dash.noTasks"))); return; }
   tasks.slice().reverse().forEach(x => { const d=el("div","task"+(x.id===cur?" sel":""));
     d.append(el("span",null,x.task.slice(0,60)), badge(x.status)); d.onclick=()=>select(x.id); box.append(d); });
@@ -217,4 +218,4 @@ setInterval(refresh, 1000); refresh(); setInterval(slow, 5000); slow(); setInter
 """
 PAGE = PAGE.replace("/*LANG_CSS*/", LANG_CSS).replace("/*LANG_SWITCH*/", THEME_BTN + LANG_SWITCH).replace("/*I18N_JS*/", I18N_JS)
 PAGE = PAGE.replace("/*THEME*/", BASE_CSS + DASH_CSS + DASH_EXTRA + NAV_CSS + TIP_CSS + RATE_CSS).replace("/*APPROVAL_JS*/", APPROVAL_JS)
-PAGE = PAGE.replace("/*NAV*/", NAV_HTML).replace("/*NAV_JS*/", NAV_JS).replace("/*TIP_JS*/", TIP_JS + RATE_JS)
+PAGE = PAGE.replace("/*SIDEBAR*/", sidebar()).replace("/*MENU_BTN*/", MENU_BTN).replace("/*NAV*/", NAV_HTML).replace("/*NAV_JS*/", NAV_JS).replace("/*TIP_JS*/", TIP_JS + RATE_JS)

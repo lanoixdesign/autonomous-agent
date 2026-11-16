@@ -1,7 +1,7 @@
 """The /connect page: sign in with the token or a one-time pairing code (QR), and show a pairing QR code
 for a phone. Plain HTML + JS, no external resources, EN/FR."""
 from .i18n_js import I18N_JS, LANG_CSS, LANG_SWITCH
-from .theme import BASE_CSS, CONNECT_CSS, NAV_CSS, NAV_HTML, NAV_JS, THEME_BTN, TIP_CSS, TIP_JS
+from .theme import BASE_CSS, CONNECT_CSS, MENU_BTN, NAV_CSS, NAV_HTML, NAV_JS, THEME_BTN, TIP_CSS, TIP_JS, sidebar
 
 CONNECT_PAGE = r"""<!doctype html>
 <html lang="en"><head><meta charset="utf-8">
@@ -30,7 +30,8 @@ CONNECT_PAGE = r"""<!doctype html>
 /*LANG_CSS*/
 /*THEME*/
 </style></head><body data-page="connect">
-<header class="apphead"><a class="back" href="/" data-i18n="nav.back"></a><h1 data-i18n="connect.heading"></h1>/*NAV*/<span class="sp"></span>/*LANG_SWITCH*/</header>
+/*SIDEBAR*/
+<header class="apphead">/*MENU_BTN*/<h1 data-i18n="connect.heading"></h1></header>
 <main>
  <section id="signin" hidden><h2 data-i18n="connect.signin"></h2>
   <p class="muted" data-i18n="connect.signinHelp"></p>
@@ -38,14 +39,14 @@ CONNECT_PAGE = r"""<!doctype html>
   <button id="login" data-i18n="connect.loginBtn"></button>
   <p id="msg" aria-live="polite"></p></section>
  <section id="signed" hidden><h2 data-i18n="connect.signedIn"></h2><p id="via" class="muted"></p>
-  <a class="btn" href="/" data-i18n="connect.openChat"></a></section>
+  <a class="btn mobonly" href="/" data-i18n="connect.openChat"></a></section>
  <section id="pairing" hidden><h2 data-i18n="connect.pairTitle"></h2>
   <p class="muted" data-i18n="connect.pairHelp"></p>
   <button id="newqr" data-i18n="connect.showQr"></button>
   <div id="qr"></div><p id="qrurl" hidden></p><p id="qrexp" class="muted"></p><p id="qrwarn" class="warn" hidden></p>
   <button id="revoke" class="danger" data-i18n="connect.revokeAll"></button>
   <button id="logout" class="lite" data-i18n="connect.logout"></button></section>
- <section id="apis" hidden><h2 data-i18n="apis.title"></h2><p class="muted" data-i18n="apis.help"></p>
+ <section id="apis" hidden><h2><span data-i18n="apis.title"></span><button class="tip" data-tip="apis.help"></button></h2>
   <div id="apilist"></div>
   <details id="apiadd"><summary data-i18n="apis.addTitle"></summary>
   <form id="apiform" autocomplete="off">
@@ -60,10 +61,10 @@ CONNECT_PAGE = r"""<!doctype html>
    <label class="ck"><input type="checkbox" id="apispend"><span data-i18n="apis.spends"></span></label>
    <button id="apisave" type="submit" data-i18n="apis.add"></button><button id="apicancel" type="button" class="lite" hidden data-i18n="apis.cancel"></button>
    <p id="apimsg" aria-live="polite"></p></form></details>
-  <p class="muted" data-i18n="apis.how"></p></section>
- <section><h2 data-i18n="connect.howTitle"></h2>
+  <details class="adv"><summary data-i18n="ui.advanced"></summary><p class="muted" data-i18n="apis.how"></p></details></section>
+ <section><details><summary><h2 style="display:inline" data-i18n="connect.howTitle"></h2></summary>
   <ol><li data-i18n="connect.how1"></li><li data-i18n="connect.how2"></li><li data-i18n="connect.how3"></li></ol>
-  <p class="muted" data-i18n="connect.howMore"></p></section>
+  <p class="muted" data-i18n="connect.howMore"></p></details></section>
 </main>
 <script>
 /*I18N_JS*/
@@ -154,4 +155,4 @@ onLang = () => { refresh(); drawApis(); edit(APIS.find(a => a.id === editing) ||
 """
 CONNECT_PAGE = CONNECT_PAGE.replace("/*LANG_CSS*/", LANG_CSS).replace("/*LANG_SWITCH*/", THEME_BTN + LANG_SWITCH).replace("/*I18N_JS*/", I18N_JS)
 CONNECT_PAGE = CONNECT_PAGE.replace("/*THEME*/", BASE_CSS + CONNECT_CSS + NAV_CSS + TIP_CSS)
-CONNECT_PAGE = CONNECT_PAGE.replace("/*NAV*/", NAV_HTML).replace("/*NAV_JS*/", NAV_JS).replace("/*TIP_JS*/", TIP_JS)
+CONNECT_PAGE = CONNECT_PAGE.replace("/*SIDEBAR*/", sidebar()).replace("/*MENU_BTN*/", MENU_BTN).replace("/*NAV*/", NAV_HTML).replace("/*NAV_JS*/", NAV_JS).replace("/*TIP_JS*/", TIP_JS)

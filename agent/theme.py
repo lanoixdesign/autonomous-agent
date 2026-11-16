@@ -154,40 +154,155 @@ TIP_JS = r"""
 })();
 """
 
-# Navigation shared by every page: Chat | Dashboard | Settings | Help | Connect. Plain links, so the browser's
-# back / forward buttons and history work as usual. The current page is marked from <body data-page>.
-NAV_HTML = ('<nav class="tabs" data-i18n-aria="nav.label">'
-            '<a href="/" data-nav="chat" data-i18n="nav.chat"></a>'
-            '<a href="/dashboard" data-nav="dashboard" data-i18n="nav.dashboard"></a>'
-            '<a href="/dev" data-nav="dev" data-i18n="nav.dev"></a>'
-            '<a href="/settings" data-nav="settings" data-i18n="nav.settings"></a>'
-            '<a href="/help" data-nav="help" data-i18n="nav.help"></a>'
-            '<a href="/connect" data-nav="connect" data-i18n="nav.connect"></a></nav>')
+# v0.9.2 navigation: one calm left sidebar on every page (icon + label per destination, the current one marked with
+# the accent and aria-current), secondary items grouped at the bottom (Help, theme, Simple / Expert, language, Quit).
+# Collapsible to icons only (remembered in this browser); on a phone it is a drawer opened from the ☰ button.
+# Plain links, so the browser's back / forward buttons and history work as usual.
+def _ic(paths: str) -> str:
+    return '<svg class="ni" viewBox="0 0 24 24" aria-hidden="true">' + paths + '</svg>'
+
+
+ICONS = {
+    "chat": _ic('<path d="M4 5h16v11H9l-5 4z"/>'),
+    "dashboard": _ic('<rect x="3.5" y="3.5" width="7" height="8" rx="1.5"/><rect x="13.5" y="3.5" width="7" height="5" rx="1.5"/>'
+                     '<rect x="13.5" y="11.5" width="7" height="9" rx="1.5"/><rect x="3.5" y="14.5" width="7" height="6" rx="1.5"/>'),
+    "dev": _ic('<path d="M8.5 8 4.5 12l4 4M15.5 8l4 4-4 4"/>'),
+    "settings": _ic('<path d="M4 7h9M17 7h3M4 12h3M11 12h9M4 17h11M19 17h1"/><circle cx="15" cy="7" r="2"/>'
+                    '<circle cx="9" cy="12" r="2"/><circle cx="17" cy="17" r="2"/>'),
+    "connect": _ic('<rect x="7" y="3" width="10" height="18" rx="2"/><path d="M11 18h2"/>'),
+    "help": _ic('<circle cx="12" cy="12" r="8.5"/><path d="M9.6 9.6a2.5 2.5 0 1 1 3.4 2.3c-.6.3-1 .8-1 1.5v.4M12 16.8v.1"/>'),
+    "theme": _ic('<circle cx="12" cy="12" r="8"/><path d="M12 4a8 8 0 0 1 0 16z" fill="currentColor" stroke="none"/>'),
+    "mode": _ic('<path d="M4 7h16M4 12h10M4 17h6"/>'),
+    "files": _ic('<path d="M3.5 7.5a2 2 0 0 1 2-2h4l2 2h7a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2h-13a2 2 0 0 1-2-2z"/>'),
+    "quit": _ic('<path d="M12 3.5v8"/><path d="M6.6 7a7.5 7.5 0 1 0 10.8 0"/>'),
+    "collapse": _ic('<path d="M14.5 6.5 9 12l5.5 5.5"/>'),
+    "menu": _ic('<path d="M4 7h16M4 12h16M4 17h16"/>'),
+}
+
+
+def _navlink(href: str, key: str) -> str:
+    return (f'<a href="{href}" data-nav="{key}" data-i18n-title="nav.{key}">{ICONS[key]}'
+            f'<span class="nl" data-i18n="nav.{key}"></span></a>')
+
+
+NAV_HTML = ('<nav class="tabs" data-i18n-aria="nav.label">' + _navlink("/", "chat") + _navlink("/dashboard", "dashboard")
+            + _navlink("/dev", "dev") + _navlink("/settings", "settings") + _navlink("/connect", "connect") + '</nav>')
+
+# Button that opens the sidebar drawer on a phone (hidden on a computer).
+MENU_BTN = ('<button type="button" class="snmenu" data-sn-open aria-controls="sidenav" aria-expanded="false" '
+            'data-i18n-aria="nav.menu" data-i18n-title="nav.menu">' + ICONS["menu"] + '</button>')
+
+
+def sidebar(slot: str = "", extra: str = "") -> str:
+    """The sidebar. `slot` = page content placed under the destinations (the chat puts its conversations there),
+    `extra` = more items at the top of the bottom group (the chat's "My files")."""
+    from .i18n_js import LANG_SWITCH
+    return ('<aside id="sidenav" class="sidenav">'
+            '<div class="sn-head"><span class="sn-brand">autonomous-agent</span>'
+            '<button type="button" class="sn-collapse" aria-controls="sidenav" aria-expanded="true" '
+            'data-i18n-aria="nav.collapse" data-i18n-title="nav.collapse">' + ICONS["collapse"] + '</button></div>'
+            + NAV_HTML + '<div class="sn-slot">' + slot + '</div>'
+            '<div class="sn-foot">' + extra + _navlink("/help", "help").replace("<a ", '<a class="sn-item" ', 1)
+            + '<button type="button" class="sn-item" data-theme-btn>' + ICONS["theme"]
+            + '<span class="nl" data-i18n="nav.theme"></span></button>'
+            '<button type="button" class="sn-item" id="snmode" hidden data-i18n-title="nav.modeTip">' + ICONS["mode"]
+            + '<span class="nl"><span class="m-s" data-i18n="nav.modeSimple"></span><span class="m-e" data-i18n="nav.modeExpert"></span></span></button>'
+            '<div class="sn-lang">' + LANG_SWITCH + '</div>'
+            '<button type="button" class="sn-item sn-quit" id="snquit" hidden data-i18n-title="nav.quit">' + ICONS["quit"]
+            + '<span class="nl" data-i18n="nav.quit"></span></button></div></aside>'
+            '<div class="sn-scrim" data-sn-close></div>')
+
 
 NAV_CSS = r"""
- nav.tabs{display:inline-flex;gap:3px;padding:3px;border:1px solid var(--line);border-radius:999px;background:var(--card2);flex-shrink:0}
- nav.tabs a{padding:6px 14px;border-radius:999px;color:var(--soft)!important;text-decoration:none;font:600 13px var(--font);white-space:nowrap;line-height:1.3}
- nav.tabs a:hover{color:var(--strong)!important;background:var(--panel2)}
- nav.tabs a.on{color:#fff!important;background:var(--accent);}
- .apphead{display:flex;align-items:center;gap:12px;padding:10px 16px;padding-top:max(10px,env(safe-area-inset-top));flex-wrap:wrap;
-  background:var(--card2)!important;border-bottom:1px solid var(--line);position:sticky;top:0;z-index:20}
- .apphead .brand{font:700 15px var(--font);color:var(--text);white-space:nowrap}
+ :root{--snw:212px} html.sn-mini{--snw:60px}
+ .sidenav{position:fixed;top:0;left:0;bottom:0;width:var(--snw);z-index:40;display:flex;flex-direction:column;gap:2px;
+  padding:12px 8px;padding-top:max(12px,env(safe-area-inset-top));background:var(--panel);border-right:1px solid var(--line);
+  overflow-y:auto;overflow-x:hidden;color:var(--soft);box-sizing:border-box}
+ body:has(> #sidenav):not([data-page=chat]){padding-left:var(--snw)}
+ .sn-head{display:flex;align-items:center;justify-content:space-between;gap:6px;padding:2px 2px 10px 10px}
+ .sn-brand{font:600 14px var(--font);color:var(--strong);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+ .sidenav nav.tabs{display:flex;flex-direction:column;gap:2px;padding:0;margin:0;border:0!important;background:none!important;border-radius:0}
+ .sidenav nav.tabs a,.sn-item{display:flex;align-items:center;gap:10px;width:100%;min-height:38px;padding:7px 10px;border:0!important;
+  border-radius:8px;background:none!important;color:var(--soft)!important;font:500 14px/1.3 var(--font)!important;text-decoration:none;
+  text-align:left;cursor:pointer;box-sizing:border-box;white-space:nowrap;margin:0}
+ .sidenav .sn-item{justify-content:flex-start!important;text-align:left!important;letter-spacing:0!important;text-transform:none!important}
+ .sidenav #lang button{padding:3px 8px!important;min-height:0!important;font:600 11px var(--font)!important}
+ .sidenav nav.tabs a:hover,.sn-item:hover{background:var(--panel2)!important;color:var(--strong)!important}
+ .sidenav nav.tabs a.on,.sidenav .sn-item.on{background:rgba(var(--accent-rgb),.16)!important;color:var(--strong)!important;font-weight:600!important}
+ .sidenav a.on .ni,.sidenav .sn-item.on .ni{color:var(--accent-text)}
+ .ni{width:18px;height:18px;flex:0 0 18px;fill:none;stroke:currentColor;stroke-width:1.75;stroke-linecap:round;stroke-linejoin:round}
+ .sn-slot{display:flex;flex-direction:column;min-height:0}
+ .sn-slot:empty{display:none}
+ .sn-foot{margin-top:auto;display:flex;flex-direction:column;gap:2px;padding-top:8px;border-top:1px solid var(--line)}
+ .sn-lang{padding:6px 10px}
+ .sidenav .sn-quit{color:var(--bad)!important}
+ #snmode .m-e{display:none} #snmode[aria-pressed=true] .m-e{display:inline} #snmode[aria-pressed=true] .m-s{display:none}
+ .sn-collapse,.snmenu{width:32px;height:32px;min-height:0;min-width:0;padding:0;border:0!important;border-radius:8px;background:none!important;
+  color:var(--muted)!important;cursor:pointer;display:inline-flex;align-items:center;justify-content:center;flex:0 0 auto}
+ .sn-collapse:hover,.snmenu:hover{background:var(--panel2)!important;color:var(--strong)!important}
+ .snmenu .ni{width:22px;height:22px}
+ html.sn-mini .sn-collapse .ni{transform:rotate(180deg)}
+ html.sn-mini .sidenav .nl,html.sn-mini .sn-brand{position:absolute!important;width:1px;height:1px;overflow:hidden;clip:rect(0 0 0 0);white-space:nowrap}
+ html.sn-mini .sn-head{justify-content:center;padding:2px 0 10px}
+ html.sn-mini .sidenav nav.tabs a,html.sn-mini .sidenav .sn-item{justify-content:center!important;padding:7px 0}
+ html.sn-mini .sn-lang,html.sn-mini .sn-slot{display:none}
+ .snmenu{display:none} .sn-scrim{display:none}
+ .apphead{display:flex;align-items:center;gap:12px;padding:14px 24px;padding-top:max(14px,env(safe-area-inset-top));
+  border-bottom:1px solid var(--line);position:sticky;top:0;z-index:20;flex-wrap:wrap}
+ .apphead h1{font:600 18px var(--font)!important;margin:0;color:var(--strong);letter-spacing:0;text-transform:none}
  .apphead .sp{flex:1}
- a.back{display:inline-flex;align-items:center;gap:6px;padding:6px 12px;border-radius:999px;border:1px solid rgba(var(--accent-rgb),0.27);color:var(--blue)!important;
-  text-decoration:none;font:600 13px var(--font);white-space:nowrap;background:rgba(var(--accent-rgb),0.048)}
- a.back:hover{background:rgba(var(--accent-rgb),0.096)}
- @media (max-width:760px){   /* every tab visible without scrolling: one row of 6, or 2 rows of 3 on a phone */
-  nav.tabs{display:grid;grid-template-columns:repeat(6,minmax(0,1fr));overflow:visible;max-width:100%;order:10;flex:1 1 100%;border-radius:16px}
-  nav.tabs a{padding:8px 4px;min-height:38px;text-align:center;font-size:12.5px;white-space:normal;overflow-wrap:anywhere;
-   display:flex;align-items:center;justify-content:center;border-radius:12px}
-  .apphead{gap:8px;padding:8px 10px}
+ .apphead.mob{display:none}
+ @media (max-width:760px){
+  body:has(> #sidenav):not([data-page=chat]){padding-left:0}
+  .sidenav{width:84vw;max-width:300px;transform:translateX(-102%);transition:transform .2s ease}
+  html.sn-open .sidenav{transform:none}
+  html.sn-mini .sidenav .nl,html.sn-mini .sn-brand{position:static!important;width:auto;height:auto;overflow:visible;clip:auto}
+  html.sn-mini .sn-head{justify-content:space-between;padding:2px 2px 10px 10px}
+  html.sn-mini .sidenav nav.tabs a,html.sn-mini .sidenav .sn-item{justify-content:flex-start!important;padding:10px 12px}
+  html.sn-mini .sn-lang{display:block} html.sn-mini .sn-slot{display:flex}
+  .sn-collapse{display:none}
+  .sidenav nav.tabs a,.sn-item{min-height:44px;font-size:15px!important;padding:10px 12px}
+  html.sn-open .sn-scrim{display:block;position:fixed;inset:0;z-index:35;background:rgba(0,0,0,.35)}
+  .snmenu{display:inline-flex}
+  .apphead,.apphead.mob{display:flex;gap:8px;padding:8px 12px;padding-top:max(8px,env(safe-area-inset-top))}
+  .apphead h1{font-size:17px!important}
  }
- @media (max-width:560px){ nav.tabs{grid-template-columns:repeat(3,minmax(0,1fr))} }
 """
 
 NAV_JS = r"""
-document.querySelectorAll("nav.tabs a").forEach(a => { const on = a.dataset.nav === document.body.dataset.page;
+(function(){
+ const R = document.documentElement, page = document.body.dataset.page;
+ document.querySelectorAll("[data-nav]").forEach(a => { const on = a.dataset.nav === page;
   a.classList.toggle("on", on); if(on) a.setAttribute("aria-current", "page"); else a.removeAttribute("aria-current"); });
+ const sn = document.getElementById("sidenav"); if(!sn) return;
+ const col = sn.querySelector(".sn-collapse");
+ function mini(v, save){ R.classList.toggle("sn-mini", v); if(col) col.setAttribute("aria-expanded", String(!v));
+  if(save){ try{ localStorage.setItem("navMini", v ? "1" : "0"); }catch(e){} }
+  try{ document.dispatchEvent(new CustomEvent("navresize")); }catch(e){} }
+ mini(R.classList.contains("sn-mini"), false);
+ if(col) col.addEventListener("click", () => mini(!R.classList.contains("sn-mini"), true));
+ function open(v){ R.classList.toggle("sn-open", v);
+  document.querySelectorAll("[data-sn-open]").forEach(b => b.setAttribute("aria-expanded", String(v)));
+  if(v){ const f = sn.querySelector("a.on, a, button"); if(f) f.focus(); } }
+ window.sideNav = open;
+ document.querySelectorAll("[data-sn-open]").forEach(b => b.addEventListener("click", () => open(!R.classList.contains("sn-open"))));
+ document.querySelectorAll("[data-sn-close]").forEach(b => b.addEventListener("click", () => open(false)));
+ document.addEventListener("keydown", e => { if(e.key === "Escape" && R.classList.contains("sn-open")) open(false); });
+ // Simple / Expert and Quit: only on the computer itself (same rule as Settings)
+ let ST = {}; const md = document.getElementById("snmode"), q = document.getElementById("snquit");
+ function hdr(){ const h = {"Content-Type": "application/json", "X-CSRF-Token": ST.csrf || ""};
+  try{ const k = sessionStorage.getItem("harnessToken"); if(k) h.Authorization = "Bearer " + k; }catch(e){} return h; }
+ function drawMode(){ if(md) md.setAttribute("aria-pressed", String(ST.ui_mode === "expert")); }
+ fetch("/app/status").then(r => r.json()).then(s => { ST = s || {}; if(!ST.available) return;
+  if(md){ md.hidden = !ST.editable; drawMode(); } if(q) q.hidden = !ST.editable; }).catch(() => {});
+ if(md) md.addEventListener("click", async () => { const v = ST.ui_mode === "expert" ? "simple" : "expert";
+  try{ const r = await fetch("/app/settings", {method: "POST", headers: hdr(), body: JSON.stringify({ui_mode: v})});
+   if(r.ok){ ST.ui_mode = v; drawMode(); location.reload(); } }catch(e){} });
+ if(q) q.addEventListener("click", async () => { if(!confirm(t("set.confirmQuit"))) return;
+  try{ await fetch("/app/quit", {method: "POST", headers: hdr(), body: "{}"}); }catch(e){}
+  const d = document.createElement("p"); d.className = "sys"; d.style.padding = "40px"; d.textContent = t("set.stopped");
+  document.body.replaceChildren(d); });
+})();
 """
 
 
@@ -213,6 +328,7 @@ if(mq){if(mq.addEventListener)mq.addEventListener("change",apply);else if(mq.add
 window.addEventListener("storage",function(ev){if(ev.key===K)apply();});
 document.addEventListener("click",function(ev){var b=ev.target&&ev.target.closest&&ev.target.closest("[data-theme-btn]");if(b){window.toggleTheme();}
  else if(ev.target&&ev.target.closest&&ev.target.closest("#lang"))setTimeout(label,0);});
+try{var mn=localStorage.getItem("navMini");if(mn==="1"||(mn===null&&innerWidth>760&&innerWidth<=1100))R.classList.add("sn-mini");}catch(e){}
 apply();document.addEventListener("DOMContentLoaded",label);window.addEventListener("load",label);})();</script>"""
 
 
@@ -263,7 +379,8 @@ CALM_CSS = r"""
  .sample span.b.ok{background:var(--accent)!important;color:var(--on-accent)!important}
  .sample span.b.no{background:var(--chip)!important;color:var(--text)!important}
  .bwhy{font-weight:500!important;color:var(--soft)!important}
- .pill{background:var(--chip)!important;color:var(--soft)!important}
+ .pill,.bdg{background:var(--chip)!important;color:var(--soft)!important}
+ @media (min-width:761px){ .mobonly{display:none!important} }
  .pill.ok{color:var(--ok)!important} .pill.bad{color:var(--bad)!important} .pill.warn{color:var(--warn)!important}
  details.adv{margin-top:10px;border-top:1px solid var(--line);padding-top:4px}
  details summary{color:var(--accent-text)!important;font-weight:500!important}

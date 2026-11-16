@@ -86,17 +86,16 @@ def test_pages_apply_the_theme_in_head_with_the_settings_default(app):
     for name, p in PAGES.items():
         out = render_page(p, "fr", None, "nonsense").decode()
         assert 'var D="auto"' in out, name                                                   # unknown -> auto
-        assert out.count("data-theme-btn></button>") >= 1, name
+        assert out.count("data-theme-btn") >= 1, name
 
 
 def test_sun_moon_button_in_every_header_and_the_phone_menu():
-    for name in ("dashboard", "connect", "settings", "help"):
-        hdr = PAGES[name].split("<header", 1)[1].split("</header>", 1)[0]
-        assert "data-theme-btn" in hdr, name
+    # v0.9.2: the theme switch lives in the sidebar's bottom group (also the phone drawer)
+    for name in ("dashboard", "connect", "settings", "help", "chat"):
+        side = PAGES[name].split('<aside id="sidenav"', 1)[1].split("</aside>", 1)[0]
+        foot = side.split('class="sn-foot"', 1)[1]
+        assert "data-theme-btn" in foot, name
     assert "data-theme-btn" in WELCOME_PAGE
-    top = CHAT_PAGE.split('<div id="top">', 1)[1].split("</div>", 1)[0]
-    aside = CHAT_PAGE.split("<aside", 1)[1].split("</aside>", 1)[0]
-    assert "data-theme-btn" in top and "data-theme-btn" in aside
     assert THEME_BTN.startswith("<button") and 'type="button"' in THEME_BTN
 
 
