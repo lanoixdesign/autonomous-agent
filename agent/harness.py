@@ -74,22 +74,29 @@ from .harness_page import PAGE
 from .harness_chat import CHAT_PAGE
 from .harness_connect import CONNECT_PAGE
 from .harness_settings import SETTINGS_PAGE, WELCOME_PAGE
+from .harness_help import HELP_PAGE
+
+FILE_DOWNLOAD_MAX = 200 * 1024 * 1024   # "My files" downloads
+FILES_LIST_MAX = 500
 from . import pwa, qr, remote
 from .redact import redact
 from . import __version__, export, i18n, schedule, uploads
 from .idc import IDC, IDCConfig
+from .theme import THEME_HEAD
 
 LOCAL_HOSTS = ("127.0.0.1", "localhost", "::1")
 _I18N_DATA = json.dumps(i18n.ui_strings(), ensure_ascii=False).replace("</", "<\\/")
 
 
-def render_page(page: str, lang: str | None = None, default_lang: str | None = None) -> bytes:
+def render_page(page: str, lang: str | None = None, default_lang: str | None = None, theme: str | None = None) -> bytes:
     """Insert the EN/FR dictionaries; `?lang=` also sets <html lang> (the page then remembers it).
     `default_lang` (Settings page choice) is used by a browser that has no saved choice yet."""
     out = page.replace("/*I18N_DATA*/{}", _I18N_DATA)
     if default_lang in i18n.LANGS:
         out = out.replace("const I18N_DEFAULT = null;", f'const I18N_DEFAULT = "{default_lang}";', 1)
-    out = out.replace('<meta charset="utf-8">', '<meta charset="utf-8">\n' + pwa.HEAD, 1)
+    # day / night theme: applied in <head> before the first paint (no flash); `theme` = Settings choice
+    th = THEME_HEAD.replace('"__THEME_DEFAULT__"', json.dumps(theme if theme in ("auto", "light", "dark") else "auto"))
+    out = out.replace('<meta charset="utf-8">', '<meta charset="utf-8">\n' + pwa.HEAD + "\n" + th, 1)
     out = out.replace("width=device-width, initial-scale=1", "width=device-width, initial-scale=1, viewport-fit=cover", 1)
     out = out.replace("</script></body></html>", pwa.REGISTER_JS + "\n</script></body></html>", 1)
     if lang:
@@ -792,6 +799,62 @@ class Harness:
             return c.router
         return self.key_router
 
+    # -- "My files": the work folder as a simple list (download / add), for people who never open folders
+    def list_files(self, limit: int = FILES_LIST_MAX) -> dict:
+        """Regular files of the work folder, newest first. Hidden entries and symlinks are skipped."""
+        import os
+        root = Path(self.workspace).resolve()
+        out: list[dict] = []
+        truncated = False
+        for d, dirs, files in os.walk(root, followlinks=False):
+            dirs[:] = sorted(x for x in dirs if not x.startswith(".") and not (Path(d) / x).is_symlink())
+            if len(Path(d).relative_to(root).parts) >= 6:
+                dirs[:] = []
+            for name in files:
+                f = Path(d) / name
+                if name.startswith(".") or f.is_symlink() or not f.is_file():
+                    continue
+                st = f.stat()
+                out.append({"path": f.relative_to(root).as_posix(), "name": name, "bytes": st.st_size,
+                            "mtime": int(st.st_mtime), "upload": f.relative_to(root).parts[0] == "uploads"})
+                if len(out) >= limit * 4:
+                    truncated = True
+                    break
+            if truncated:
+                break
+        out.sort(key=lambda x: (-x["mtime"], x["path"]))
+        return {"files": out[:limit], "truncated": truncated or len(out) > limit, "folder": str(root)}
+
+    def workspace_path(self, rel: str) -> Path:
+        """A regular, non-hidden file inside the work folder (no symlink, no escape), else FileNotFoundError."""
+        if self.workspace is None or not rel or "\x00" in rel:
+            raise FileNotFoundError(rel)
+        root = Path(self.workspace).resolve()
+        cand = root / rel
+        parts = Path(rel).parts
+        if Path(rel).is_absolute() or any(x in ("..", "") or x.startswith(".") for x in parts):
+            raise FileNotFoundError(rel)
+        cur = root
+        for x in parts:
+            cur = cur / x
+            if cur.is_symlink():
+                raise FileNotFoundError(rel)
+        path = cand.resolve()
+        if root not in path.parents or not path.is_file():
+            raise FileNotFoundError(rel)
+        return path
+
+    def add_files(self, files: Any) -> list[dict]:
+        """Files added from "My files" (not attached to a message): saved at the top of the work folder."""
+        if self.workspace is None:
+            raise uploads.UploadError(400, "uploads are disabled (no workspace)")
+        decoded = uploads.decode(files, self.upload_limits)
+        if not decoded:
+            raise uploads.UploadError(400, "no file")
+        saved = uploads.public(uploads.save_in(Path(self.workspace), decoded))
+        self._audit(None, event="files_added", files=[x["path"] for x in saved])
+        return saved
+
     # -- usage
     def usage(self) -> dict:
         with self._lock:
@@ -923,7 +986,7 @@ class Harness:
                 counts[t.status] = counts.get(t.status, 0) + 1
             n_sched = sum(1 for s in self.schedules.values() if s["enabled"])
         router = self.active_router()
-        if self.control is not None and self.control.demo():
+        if self.control is not None and (self.control.demo() or (router is None and self.control.effective_mode() == "demo")):
             keys = {"mode": "demo", "provider": "mock", "model": "mock", "key": None}
             urls = []
         elif router is not None:
@@ -1103,7 +1166,8 @@ def make_handler(h: Harness, token: str | None, local_only: bool, auth: "remote.
                 return self._send(404, {"error": "settings are not available in this mode"})
             if not self._settings_allowed():
                 return self._send(403, {"error": "settings can only be changed from the computer running the agent "
-                                                 "(set AGENT_REMOTE_SETTINGS=1 to allow signed-in devices)", "locked": True})
+                                                 "(set AGENT_REMOTE_SETTINGS=1 to allow signed-in devices)", "locked": True,
+                                        "code": "locked"})
             if path == "/app/settings":
                 return self._send(200, c.view())
             if path == "/app/providers":
@@ -1118,9 +1182,10 @@ def make_handler(h: Harness, token: str | None, local_only: bool, auth: "remote.
                 return self._send(404, {"error": "settings are not available in this mode"})
             if not self._settings_allowed():
                 return self._send(403, {"error": "settings can only be changed from the computer running the agent "
-                                                 "(set AGENT_REMOTE_SETTINGS=1 to allow signed-in devices)", "locked": True})
+                                                 "(set AGENT_REMOTE_SETTINGS=1 to allow signed-in devices)", "locked": True,
+                                        "code": "locked"})
             if not _hmac.compare_digest(str(self.headers.get(CSRF_HEADER) or ""), self._csrf()):
-                return self._send(403, {"error": "missing or invalid CSRF token (reload the page)", "csrf": True})
+                return self._send(403, {"error": "missing or invalid CSRF token (reload the page)", "csrf": True, "code": "csrf"})
             try:
                 if path == "/app/settings":
                     return self._send(200, c.update(data))
@@ -1136,7 +1201,7 @@ def make_handler(h: Harness, token: str | None, local_only: bool, auth: "remote.
                     return self._send(200, c.new_token())
                 if path in ("/app/restart", "/app/quit"):
                     if not c.request_stop(path == "/app/restart"):
-                        return self._send(409, {"error": "restart / quit is not available in this mode"})
+                        return self._send(409, {"error": "restart / quit is not available in this mode", "code": "no_restart"})
                     return self._send(202, {"ok": True, "restart": path == "/app/restart"})
                 m = PROVIDER_RE.match(path)
                 if m:
@@ -1147,9 +1212,9 @@ def make_handler(h: Harness, token: str | None, local_only: bool, auth: "remote.
                         return self._send(200, c.test_provider(pid))
                     return self._send(200, c.save_provider(data, pid))
             except KeyError:
-                return self._send(404, {"error": "unknown key"})
+                return self._send(404, {"error": "unknown key", "code": "unknown_key"})
             except ValueError as e:
-                return self._send(400, {"error": str(e)})
+                return self._send(400, {"error": str(e), "code": getattr(e, "code", None), "params": getattr(e, "params", {})})
             return self._send(404, {"error": "not found"})
 
         def _guard(self, post: bool, query_token: str | None = None) -> bool:
@@ -1294,7 +1359,7 @@ def make_handler(h: Harness, token: str | None, local_only: bool, auth: "remote.
             except (BrokenPipeError, ConnectionResetError, ConnectionAbortedError, OSError):
                 pass
 
-        def _task_file(self, task: Task, rel: str) -> None:
+        def _task_file(self, task: Task, rel: str, download: bool = False) -> None:
             """A file written during the current turn of this conversation (swarm graph link), read-only."""
             if h.workspace is None or not rel or rel not in task.graph()["files"]:
                 return self._send(404, {"error": "not a file written in this turn"})
@@ -1312,7 +1377,22 @@ def make_handler(h: Harness, token: str | None, local_only: bool, auth: "remote.
                 ctype = "application/octet-stream"
             name = re.sub(r'[^A-Za-z0-9._-]', "_", path.name) or "file"
             self._send(200, body=data, ctype=ctype,
-                       extra={"Content-Disposition": f'inline; filename="{name}"',
+                       extra={"Content-Disposition": f'{"attachment" if download else "inline"}; filename="{name}"',
+                              "Content-Security-Policy": "sandbox; default-src 'none'"})
+
+        def _workspace_file(self, rel: str) -> None:
+            """Download one file of the work folder ("My files"), as an attachment."""
+            try:
+                path = h.workspace_path(rel)
+            except FileNotFoundError:
+                return self._send(404, {"error": "file not found"})
+            if path.stat().st_size > FILE_DOWNLOAD_MAX:
+                return self._send(413, {"error": "file too large to download here"})
+            name = re.sub(r'[^\w.() -]', "_", path.name, flags=re.UNICODE) or "file"
+            ascii_name = re.sub(r'[^A-Za-z0-9._-]', "_", path.name) or "file"
+            from urllib.parse import quote
+            self._send(200, body=path.read_bytes(), ctype="application/octet-stream",
+                       extra={"Content-Disposition": f'attachment; filename="{ascii_name}"; filename*=UTF-8\'\'{quote(name)}',
                               "Content-Security-Policy": "sandbox; default-src 'none'"})
 
         def do_GET(self) -> None:  # noqa: N802
@@ -1327,13 +1407,14 @@ def make_handler(h: Harness, token: str | None, local_only: bool, auth: "remote.
                 return self._send(200, {"authenticated": who is not None, "via": who, "remote": auth.remote,
                                         "required": auth.required, "public_url": h.public_url})
             html_settings = path == "/settings" and "text/html" in (self.headers.get("Accept") or "")
-            if path in ("/", "/chat", "/dashboard", "/connect", "/welcome") or html_settings:
+            if path in ("/", "/chat", "/dashboard", "/connect", "/welcome", "/help") or html_settings:
                 page = {"/dashboard": PAGE, "/connect": CONNECT_PAGE, "/settings": SETTINGS_PAGE,
-                        "/welcome": WELCOME_PAGE}.get(path, CHAT_PAGE)
+                        "/welcome": WELCOME_PAGE, "/help": HELP_PAGE}.get(path, CHAT_PAGE)
                 if self._host_ok():
                     lang = (q.get("lang") or [None])[0]
                     default = h.control.cfg.get("lang") if h.control is not None else None
-                    self._send(200, body=render_page(page, lang, default), ctype="text/html; charset=utf-8")
+                    theme = h.control.theme() if h.control is not None else None
+                    self._send(200, body=render_page(page, lang, default, theme), ctype="text/html; charset=utf-8")
                 else:
                     self._send(403, {"error": "bad Host header"})
                 return
@@ -1358,8 +1439,15 @@ def make_handler(h: Harness, token: str | None, local_only: bool, auth: "remote.
             if path == "/keys":
                 router = h.active_router()
                 if router is None:
-                    return self._send(200, {"mode": "single-key (.env)", "keys": [], "categories": {}})
+                    demo = h.control is not None and h.control.effective_mode() == "demo"
+                    return self._send(200, {"mode": "demo" if demo else "single-key (.env)", "keys": [], "categories": {}})
                 return self._send(200, {"mode": "settings" if router is not h.key_router else "router", **router.status()})
+            if path == "/files":
+                if h.workspace is None:
+                    return self._send(200, {"available": False, "files": []})
+                return self._send(200, {"available": True, **h.list_files()})
+            if path == "/files/download":
+                return self._workspace_file((q.get("path") or [""])[0])
             if path == "/config":
                 lim = h.upload_limits
                 return self._send(200, {"uploads": h.workspace is not None,
@@ -1374,7 +1462,8 @@ def make_handler(h: Harness, token: str | None, local_only: bool, auth: "remote.
                 if m.group(2) == "/graph":
                     return self._send(200, task.graph())
                 if m.group(2) == "/file":
-                    return self._task_file(task, (q.get("path") or [""])[0])
+                    return self._task_file(task, (q.get("path") or [""])[0],
+                                           download=(q.get("download") or ["0"])[0] == "1")
                 if m.group(2) == "/stream":
                     return self._stream(task, q)
                 if m.group(2) == "/export":
@@ -1446,6 +1535,11 @@ def make_handler(h: Harness, token: str | None, local_only: bool, auth: "remote.
                     return self._send(404, {"error": "unknown task"})
                 except Busy as e:
                     return self._send(409, {"error": str(e)})
+            if path == "/files":
+                try:
+                    return self._send(201, {"saved": h.add_files(data.get("files"))})
+                except uploads.UploadError as e:
+                    return self._send(e.status, {"error": str(e)})
             if path == "/settings":
                 try:
                     return self._send(200, h.update_settings(data))

@@ -103,8 +103,17 @@ def save(workspace: Path, conv_id: str, files: list[tuple[str, bytes]]) -> list[
     """Write files under <workspace>/uploads/<conv_id>/; returns metadata with workspace-relative paths."""
     if not files:
         return []
-    d = _safe_dir(Path(workspace), conv_id)
+    return _write(Path(workspace).resolve(), _safe_dir(Path(workspace), conv_id), files)
+
+
+def save_in(workspace: Path, files: list[tuple[str, bytes]]) -> list[dict]:
+    """Write files at the top of the workspace ("My files"); never overwrites (name-1.ext, name-2.ext...)."""
     root = Path(workspace).resolve()
+    root.mkdir(parents=True, exist_ok=True)
+    return _write(root, root, files)
+
+
+def _write(root: Path, d: Path, files: list[tuple[str, bytes]]) -> list[dict]:
     saved = []
     for name, data in files:
         stem, dot, ext = name.rpartition(".")
