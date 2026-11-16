@@ -152,6 +152,7 @@ SETTINGS_PAGE = r"""<!doctype html>
   <div class="row" style="justify-content:space-between"><span><label class="switch"><input type="checkbox" id="demo"><span data-i18n="set.demo"></span></label><button class="tip" data-tip="tip.demo"></button></span><span id="modebadge" class="pill"></span></div>
   <p id="storage" class="muted"></p>
   <p class="muted"><span data-i18n="set.keys.failover"></span><button class="tip" data-tip="tip.failover"></button></p>
+  <p class="bwhy" id="backuphint" data-i18n="set.keys.backupHint"></p>
   <div id="poolbox" class="poolbox"><label class="f" for="parsel" style="display:inline"><span data-i18n="pool.title"></span></label><select id="parsel"></select>
    <p id="poolnow" class="muted"></p><p class="bwhy" data-i18n="bulk.why"></p><p class="muted" data-i18n="pool.share"></p></div>
   <div id="plist"></div>
@@ -260,6 +261,7 @@ function drawKeys(){
   $("storage").textContent=V.storage==="keyring" ? t("set.storage.keyring") : t("set.storage.file",{home:V.secrets_dir||V.home});
   drawPool(); $("jobsb").hidden=!P.length;
   const box=$("plist"); box.replaceChildren();
+  { const bh=document.getElementById("backuphint"); if(bh) bh.hidden=P.filter(p=>p.enabled!==false).length>=2; }
   if(!P.length){ box.append(el("p","muted",t("set.keys.none"))); return; }
   P.forEach((p,i)=>{ const c=el("div","pcard"+(p.enabled?"":" off"));
     const top=el("div","ptop"); top.append(el("span","rank","#"+(i+1)), el("span","pname",p.name), el("span","pill blue",tr("prov",p.provider)));

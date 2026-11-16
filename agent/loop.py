@@ -9,6 +9,8 @@ ONE of these is true, and never resumes on its own:
   - max_tokens (prompt+completion, as reported) reached  -> "max_tokens"
   - the same tool call (name+args) repeated `max_repeats` times in a row -> "no_progress"
   - the LLM backend fails                                -> "llm_error"
+    (a rate limit / timeout / 5xx is NOT a failure: the key router switches to a backup key or waits for
+    one to come back, see RoutedLLM; only keys that cannot come back end the run)
   - the `cancel` event is set (harness)                  -> "cancelled"
 Sub-agents (see swarm.py) run inside this budget: their usage is deducted from the parent's.
 You can pass your own `stop_rule(state) -> str | None` to add a criterion.
@@ -193,6 +195,8 @@ class Agent:
             try:
                 reply = self._chat(self.tool_schemas())
             except LLMError as e:
+                if self.cancel is not None and self.cancel.is_set():
+                    return self._stop(st, "cancelled", "Stopped: cancelled.")
                 return self._stop(st, "llm_error", f"LLM error: {e}")
             st.steps += 1
             st.tokens += reply.total_tokens
@@ -234,7 +238,9 @@ class Agent:
         return f"{id(self.swarm_state) if self.swarm_state is not None else id(self)}:{self.agent_id}"
 
     def _chat(self, tools: list[dict]) -> Any:
-        token = CALLER.set({"holder": self.holder, "task": self.key_task, "label": self.agent_id})
+        token = CALLER.set({"holder": self.holder, "task": self.key_task, "label": self.agent_id,
+                            "cancel": self.cancel,     # a pause waiting for a key wakes up on cancel
+                            "notify": lambda kind, data: self.on_event("keys", {"action": kind, **data})})
         try:
             return self.llm.chat(self.messages, tools)
         finally:

@@ -2,8 +2,10 @@
 from __future__ import annotations
 
 import contextvars
+import http.client
 import json
 import os
+import re
 import threading
 import time
 import urllib.error
@@ -24,9 +26,43 @@ PROVIDERS: dict[str, dict[str, Any]] = {
 
 
 class LLMError(Exception):
-    def __init__(self, message: str, status: int | None = None, retry_after: float | None = None):
+    def __init__(self, message: str, status: int | None = None, retry_after: float | None = None,
+                 ratelimit: dict | None = None, code: str | None = None):
         super().__init__(message)
-        self.status, self.retry_after = status, retry_after
+        self.status, self.retry_after, self.ratelimit, self.code = status, retry_after, ratelimit, code
+
+
+TRANSIENT = (408, 409, 425, 429, 500, 502, 503, 504, 520, 522, 524, 529)   # worth another try (other key / later)
+MAX_WAIT = 60.0          # one pause when every key is paused is at most this long ...
+MAX_WAITS = 6            # ... and a call waits at most this many times before giving up
+MAX_WAIT_TOTAL = 300.0   # a key that comes back later than this is not worth waiting for
+_AGAIN = re.compile(r"try again in\s+((?:\d+(?:\.\d+)?(?:ms|h|m|s))+)", re.I)
+
+
+def _rl_headers(headers: Any) -> dict:
+    try:
+        return {k.lower(): v for k, v in headers.items() if k.lower().startswith(("x-ratelimit", "retry-after"))}
+    except Exception:   # noqa: BLE001 - headers are informative only
+        return {}
+
+
+def notify(kind: str, **data: Any) -> None:
+    """Tell the current agent (CALLER["notify"]) about a key switch / pause. Never raises."""
+    fn = (CALLER.get() or {}).get("notify")
+    if callable(fn):
+        try:
+            fn(kind, data)
+        except Exception:   # noqa: BLE001
+            pass
+
+
+def _pause(seconds: float) -> bool:
+    """Sleep `seconds`, waking up early when the current task is cancelled. False when cancelled."""
+    ev = (CALLER.get() or {}).get("cancel")
+    if ev is None:
+        time.sleep(seconds)
+        return True
+    return not ev.wait(seconds)
 
 
 @dataclass
@@ -39,6 +75,7 @@ class LLMReply:
     key_mask: str | None = None    # its masked form ("gsk_…a1b2"), never the secret
     key_task: str | None = None    # the task type the agent asked for (research, writing, …)
     key_match: bool = False        # True when the key is tagged for that task
+    ratelimit: dict | None = None  # the provider's x-ratelimit-* headers of this answer (per-minute counter)
 
     @property
     def total_tokens(self) -> int:
@@ -71,27 +108,47 @@ class OpenAICompatible:
             headers["Authorization"] = f"Bearer {self._api_key}"
         data = json.dumps(payload).encode("utf-8")
         last = None
+        rl: dict = {}
         for attempt in range(self.retries + 1):
             req = urllib.request.Request(self.base_url + "/chat/completions", data=data, headers=headers, method="POST")
+            wait = 2.0 ** attempt
             try:
                 with urllib.request.urlopen(req, timeout=self.timeout) as r:
+                    rl = _rl_headers(r.headers)
                     body = json.loads(r.read().decode("utf-8"))
                 break
             except urllib.error.HTTPError as e:
                 detail = e.read().decode("utf-8", "replace")[:800]
+                retry_after = None
                 try:
-                    retry_after = float(e.headers.get("Retry-After")) if e.headers.get("Retry-After") else None
+                    if e.headers.get("Retry-After"):
+                        retry_after = float(e.headers.get("Retry-After"))
                 except (TypeError, ValueError):
                     retry_after = None
+                if retry_after is None and e.code == 429:   # Groq also says "Please try again in 4.5s"
+                    m = _AGAIN.search(detail)
+                    if m:
+                        from .keys import parse_duration
+                        retry_after = parse_duration(m.group(1))
                 last = LLMError(f"HTTP {e.code} from {self.base_url}: {redact(detail, [self._api_key or ''])}",
-                                status=e.code, retry_after=retry_after)
-                if e.code not in (429, 500, 502, 503, 504) or attempt == self.retries:
+                                status=e.code, retry_after=retry_after, ratelimit=_rl_headers(e.headers or {}))
+                if e.code not in TRANSIENT or attempt == self.retries:
                     raise last
-            except (urllib.error.URLError, TimeoutError) as e:
+                if retry_after:
+                    wait = min(MAX_WAIT, max(0.5, retry_after))
+            except (urllib.error.URLError, TimeoutError, http.client.HTTPException, ConnectionError, OSError) as e:
                 last = LLMError(f"cannot reach {self.base_url}: {e}")
                 if attempt == self.retries:
                     raise last
-            time.sleep(2 ** attempt)
+            except ValueError as e:   # not JSON (proxy error page...)
+                last = LLMError(f"unexpected response from {self.base_url}: {e}", status=502)
+                if attempt == self.retries:
+                    raise last
+            from .keys import mask
+            notify("wait", seconds=round(wait, 1), key_mask=mask(self._api_key) if self._api_key else "(no key)",
+                   status=last.status, reason="all_paused")
+            if not _pause(wait):
+                raise LLMError("cancelled", code="cancelled")
         try:
             msg = body["choices"][0]["message"]
         except (KeyError, IndexError, TypeError):
@@ -103,7 +160,7 @@ class OpenAICompatible:
                                     "function": {"name": tc["function"]["name"],
                                                  "arguments": tc["function"].get("arguments") or "{}"}}
                                    for i, tc in enumerate(msg["tool_calls"])]
-        return LLMReply(clean, usage.get("prompt_tokens", 0), usage.get("completion_tokens", 0))
+        return LLMReply(clean, usage.get("prompt_tokens", 0), usage.get("completion_tokens", 0), ratelimit=rl or None)
 
 
 class MockLLM:
@@ -178,7 +235,7 @@ def make_llm(provider: str | None = None, model: str | None = None) -> Any:
     key = os.environ.get("AGENT_API_KEY") or (os.environ.get(cfg["key_env"]) if cfg["key_env"] else None)
     if cfg["key_env"] and not key and provider != "custom":
         raise LLMError(f"missing API key: set {cfg['key_env']} (see .env.example)")
-    return OpenAICompatible(base, model, key)
+    return OpenAICompatible(base, model, key, retries=MAX_WAITS)   # single .env key: wait out rate limits
 
 
 # Which swarm agent is calling (set by the agent loop around llm.chat): the key router gives each agent
@@ -190,40 +247,77 @@ class RoutedLLM:
     """Chat backend that takes its key from a KeyRouter (agent/keys.py) for one category (text, code...).
 
     Per call: reserve a request on the best key (prompt tokens estimated generously at chars/3, and the
-    completion capped with `max_tokens` to what the limits allow), call it, commit the real usage. On a
-    429 / 5xx / network error the key cools down and the next key is tried; when no key is left the
-    call fails with a clear LLMError (the agent loop stops with "llm_error")."""
+    completion capped with `max_tokens` to what the limits allow), call it, commit the real usage.
 
-    def __init__(self, router: Any, category: str = "text", client_factory: Any = None):
+    Failover (v0.8.1): on a 429 (rate limit / quota), a timeout, a network error or a 5xx, the key cools
+    down and the SAME call goes at once to the next free key: a key for the same task type first, then any
+    other key of the category, then (last resort) a key of the other chat category. When every key is only
+    paused, the call waits for the first one to come back (Retry-After respected; at most MAX_WAIT s per
+    pause, MAX_WAITS pauses) and resumes: the agent keeps all its progress. The call fails only when no key
+    can come back by waiting (missing, refused by the provider on every key, daily / monthly limit).
+    Each switch / pause is reported to the agent (CALLER["notify"]) with MASKED keys only."""
+
+    def __init__(self, router: Any, category: str = "text", client_factory: Any = None,
+                 max_wait: float = MAX_WAIT, max_waits: int = MAX_WAITS, max_wait_total: float = MAX_WAIT_TOTAL):
         self.router, self.category = router, category
         self.client_factory = client_factory or (lambda base_url, model, key, max_tokens: OpenAICompatible(
             base_url, model, key, retries=0, max_tokens=max_tokens))
         self.model = f"router:{category}"
+        self.max_wait, self.max_waits, self.max_wait_total = max_wait, max_waits, max_wait_total
 
     def chat(self, messages: list[dict], tools: list[dict] | None = None) -> LLMReply:
         from .keys import KEY_ERRORS, KeysExhausted, mask
 
         est_prompt = (len(json.dumps(messages, ensure_ascii=False)) + len(json.dumps(tools or []))) // 3 + 16
-        errors = []
+        errors: list[str] = []
+        waits = 0
+        failed: dict | None = None    # the key that just failed (for the "switching to backup" message)
         while True:
+            caller = CALLER.get() or {}
             try:
-                caller = CALLER.get() or {}
                 lease = self.router.acquire(self.category, prompt_tokens=est_prompt, holder=caller.get("holder"),
                                             task=caller.get("task"), label=caller.get("label"))
             except KeysExhausted as e:
-                raise LLMError(str(e) + (f"; errors: {' | '.join(errors)}" if errors else ""))
+                detail = str(e) + (f"; errors: {' | '.join(errors[-4:])}" if errors else "")
+                if e.refused:
+                    notify("refused")
+                    raise LLMError("every API key was refused by its provider (invalid, revoked or no credit): "
+                                   "check them in Settings -> Keys. " + detail, code="keys_refused")
+                if e.wait_s is None or e.wait_s > self.max_wait_total or waits >= self.max_waits:
+                    notify("exhausted")
+                    raise LLMError(detail, code="keys_exhausted")
+                pause = min(self.max_wait, max(0.5, e.wait_s))
+                waits += 1
+                notify("wait", seconds=round(pause, 1), key_mask=(failed or {}).get("key_mask"),
+                       status=(failed or {}).get("status"), reason="all_paused")
+                if not _pause(pause):
+                    raise LLMError("cancelled", code="cancelled")
+                continue
             if not lease.base_url or not lease.model:
                 lease.release()
                 raise LLMError(f"key {lease.name}: base_url and a model for '{self.category}' are required")
+            key_mask = mask(lease.api_key) if lease.entry.needs_key else "(no key)"
+            if failed is not None and failed["key"] != lease.name:
+                ent, ht = lease.entry, getattr(lease, "holder_task", None)
+                own = self.category in ent.categories
+                tagged = not ent.tasks or "general" in ent.tasks or ht in ent.tasks
+                notify("switch", key_mask=failed["key_mask"], to_mask=key_mask, status=failed.get("status"),
+                       backup_kind="same" if own and tagged else ("other_task" if own else "other_category"))
             client = self.client_factory(lease.base_url, lease.model, lease.api_key, lease.max_completion_tokens)
             try:
                 reply = client.chat(messages, tools)
             except LLMError as e:
-                if e.status is not None and e.status != 429 and e.status < 500 and e.status not in KEY_ERRORS:
+                if getattr(e, "ratelimit", None):
+                    self.router.note_rate(lease.name, e.ratelimit)
+                if e.code == "cancelled":
+                    lease.release()
+                    raise
+                if e.status is not None and e.status not in TRANSIENT and e.status not in KEY_ERRORS:
                     lease.fail(e.status)
-                    raise   # a 4xx other than 429 is not a key problem: do not burn the other keys
+                    raise   # a 4xx like 400 is not a key problem: do not burn the other keys
                 lease.fail(e.status, e.retry_after)
                 errors.append(f"{lease.name}: {e}")
+                failed = {"key": lease.name, "key_mask": key_mask, "status": e.status}
                 continue
             except Exception:
                 lease.fail(None)
@@ -231,11 +325,15 @@ class RoutedLLM:
             pt, ct = reply.prompt_tokens, reply.completion_tokens
             if not pt and not ct:   # provider did not report usage: keep the estimate
                 pt, ct = est_prompt, len(json.dumps(reply.message)) // 3
+            if getattr(reply, "ratelimit", None):
+                self.router.note_rate(lease.name, reply.ratelimit)
             lease.commit(pt, ct)
             reply.cost, reply.key = lease.entry.cost(pt, ct), lease.name
-            reply.key_mask = mask(lease.api_key) if lease.entry.needs_key else "(no key)"
+            reply.key_mask = key_mask
             reply.key_task = getattr(lease, "holder_task", None)
             reply.key_match = bool(reply.key_task and reply.key_task in (lease.entry.tasks or []))
+            if waits or failed:
+                notify("resume", key_mask=key_mask)
             return reply
 
     def release_holder(self, holder: str) -> None:

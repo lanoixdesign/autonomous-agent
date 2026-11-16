@@ -610,7 +610,8 @@ class AppControl:
         st = self.router.status()
         keys = [{"name": k["name"], "key": k["key"], "provider": k.get("provider"), "available": k.get("available"),
                  "tasks": k.get("tasks", []), "agents": k.get("agents", []), "in_flight": k.get("in_flight", 0),
-                 "cooldown_s": k.get("cooldown_s", 0), "used": k.get("used", {}), "limits": k.get("limits", {})}
+                 "cooldown_s": k.get("cooldown_s", 0), "used": k.get("used", {}), "limits": k.get("limits", {}),
+                 "rate": k.get("rate", {}), "refused": k.get("refused", False)}
                 for k in st.get("keys", [])]
         return {"keys": keys, "parallel": self.parallel_limit("text"), "mode": self.effective_mode()}
 

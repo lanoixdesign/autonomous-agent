@@ -27,6 +27,7 @@ from __future__ import annotations
 
 import json
 import math
+import re
 import os
 import threading
 import time
@@ -48,6 +49,8 @@ MIN_COMPLETION = 16                   # a chat request needs at least this many 
 COOLDOWN_429 = 60.0
 COOLDOWN_ERROR = 30.0
 KEY_ERRORS = (401, 402, 403)            # the KEY is refused (revoked, no credit): cool it down, try another
+REFUSED_TTL = 600.0                    # a refused key (401/402/403) is set aside this long (or until keys change)
+DEFAULT_TPM = {"groq": 8000}           # tokens per minute assumed for the "estimated" counter (free tiers)
 HOLD_TTL = 120.0                       # an agent that has not called for this long no longer counts as busy
 TASKS = ("research", "writing", "code", "analysis", "vision", "general")
 # role words (EN/FR) -> task; checked in this order, on the role name first, then on the whole task text
@@ -78,10 +81,57 @@ def role_task(task: str | None) -> str:
 
 
 class KeysExhausted(Exception):
-    def __init__(self, category: str, reasons: dict[str, str]):
-        self.category, self.reasons = category, reasons
+    """No key can take the request now. `wait_s`: seconds until the first key that is only paused (cooldown
+    after an error, or the per-minute limit) can serve again; None when no key will come back by waiting
+    (missing, refused by the provider, daily / monthly limit). `refused`: every configured key was refused."""
+
+    def __init__(self, category: str, reasons: dict[str, str], wait_s: float | None = None,
+                 refused: bool = False):
+        self.category, self.reasons, self.wait_s, self.refused = category, reasons, wait_s, refused
         detail = "; ".join(f"{k}: {v}" for k, v in reasons.items()) or "no key configured for it"
         super().__init__(f"no API key can serve category '{category}' without exceeding a limit ({detail})")
+
+
+_DUR = re.compile(r"(\d+(?:\.\d+)?)(ms|h|m|s)")
+
+
+def parse_duration(v: Any) -> float | None:
+    """Provider reset values: "7.66s", "2m59.56s", "1h2m", "120ms", or a plain number of seconds."""
+    if v is None:
+        return None
+    text = str(v).strip().lower()
+    try:
+        return max(0.0, float(text))
+    except ValueError:
+        pass
+    parts = _DUR.findall(text)
+    if not parts:
+        return None
+    mult = {"h": 3600, "m": 60, "s": 1, "ms": 0.001}
+    return round(sum(float(n) * mult[u] for n, u in parts), 3)
+
+
+def parse_ratelimit(headers: Any) -> dict:
+    """x-ratelimit-{limit,remaining,reset}-{tokens,requests} (Groq, OpenAI and compatible) -> numbers."""
+    if not headers:
+        return {}
+    try:
+        h = {str(k).lower(): v for k, v in dict(headers).items()}
+    except (TypeError, ValueError):
+        return {}
+    out: dict[str, float] = {}
+    for kind in ("tokens", "requests"):
+        for part, key in (("limit", "limit"), ("remaining", "remaining")):
+            v = h.get(f"x-ratelimit-{part}-{kind}")
+            try:
+                if v is not None:
+                    out[f"{kind}_{key}"] = float(v)
+            except (TypeError, ValueError):
+                pass
+        r = parse_duration(h.get(f"x-ratelimit-reset-{kind}"))
+        if r is not None:
+            out[f"{kind}_reset_s"] = r
+    return out
 
 
 def mask(secret: str | None) -> str:
@@ -231,7 +281,11 @@ class Lease:
 
     @property
     def model(self) -> str | None:
-        return self.entry.model_for(self.category)
+        m = self.entry.model_for(self.category)
+        if m is None and self.category in CHAT_CATEGORIES:   # backup key of another chat category
+            m = next((self.entry.model_for(c) for c in self.entry.categories
+                      if c in CHAT_CATEGORIES and self.entry.model_for(c)), None)
+        return m
 
     def commit(self, prompt_tokens: int = 0, completion_tokens: int = 0, images: float = 0,
                audio_minutes: float = 0) -> None:
@@ -244,9 +298,11 @@ class Lease:
         counted (requests per minute / day); tokens, cost, images and audio are not charged."""
         cool = None
         if status == 429:
-            cool = retry_after or COOLDOWN_429
-        elif status is None or status >= 500 or status in KEY_ERRORS:
-            cool = COOLDOWN_ERROR
+            cool = retry_after or self.router.rate_reset(self.entry.name) or COOLDOWN_429
+        elif status is None or status >= 500 or status in KEY_ERRORS or status in (408, 409, 425):
+            cool = retry_after or COOLDOWN_ERROR
+        if status in KEY_ERRORS:
+            self.router.mark_refused(self.entry.name, status)
         self.router._finish(self, {"tokens": 0, "cost": 0, "images": 0, "audio_minutes": 0}, cooldown=cool, status=status)
 
     def release(self) -> None:
@@ -277,6 +333,9 @@ class KeyRouter:
         self._pending: dict[str, dict[str, float]] = {e.name: {} for e in self.entries}
         self._logged: set[tuple] = set()
         self._holders: dict[str, dict] = {}      # holder -> {"key", "label", "task", "last"}
+        self._refused: dict[str, tuple[float, int]] = {}   # key name -> (until, HTTP status)
+        self._rate: dict[str, dict] = {}         # key name -> last rate-limit headers from the provider
+        self._window: dict[str, list] = {}       # key name -> [(time, tokens)] of the last 60 s (estimate)
         self._load()
 
     @classmethod
@@ -292,6 +351,9 @@ class KeyRouter:
             self.entries = sorted(entries, key=lambda e: e.priority)
             for e in self.entries:
                 self._pending.setdefault(e.name, {})
+            for name in self._refused:                    # keys were edited: give refused keys a new chance
+                self._usage.get(name, {}).pop("cooldown_until", None)
+            self._refused.clear()
             if currency is not None:
                 self.currency = currency
 
@@ -334,7 +396,17 @@ class KeyRouter:
         return sum(1 for h, r in self._holders.items()
                    if h != holder and r["key"] == name and now - r["last"] < HOLD_TTL)
 
+    def _backups(self, category: str) -> list[KeyEntry]:
+        """Last resort for a chat call: keys of the OTHER chat category (text <-> code) that have a model."""
+        if category not in CHAT_CATEGORIES:
+            return []
+        return [e for e in self.entries if category not in e.categories
+                and any(c in CHAT_CATEGORIES and e.model_for(c) for c in e.categories)]
+
     def _order(self, category: str, holder: str | None, task: str | None, now: float) -> list[KeyEntry]:
+        return self._order_own(category, holder, task, now) + self._backups(category)
+
+    def _order_own(self, category: str, holder: str | None, task: str | None, now: float) -> list[KeyEntry]:
         keys = self.keys_for(category)
         if holder is None:
             return keys                                   # plain priority order (single agent / CLI)
@@ -383,17 +455,30 @@ class KeyRouter:
         """Reserve one request on the best key for `category`, or raise KeysExhausted. `holder` (a swarm
         agent) gets its own key from the pool, matched to its `task` type; see the module docstring."""
         reasons: dict[str, str] = {}
+        waits: list[float] = []
+        n_keys = n_refused = 0
         with self._lock:
             now = self.clock()
             for e in self._order(category, holder, task, now):
+                n_keys += 1
                 if not e.available():
                     reasons[e.name] = e.missing_reason()
                     continue
-                cool = self._usage.get(e.name, {}).get("cooldown_until", 0)
-                if cool > now:
-                    reasons[e.name] = f"cooling down for {math.ceil(cool - now)}s after an error"
+                ref = self._refused.get(e.name)
+                if ref and ref[0] > now:
+                    reasons[e.name] = f"key refused by the provider (HTTP {ref[1]})"
+                    n_refused += 1
                     continue
                 u, pend = self._u(e.name, now), self._pending[e.name]
+                cool = self._usage.get(e.name, {}).get("cooldown_until", 0)
+                if cool > now:
+                    final = self._final_limit(e, u)
+                    if final:
+                        reasons[e.name] = final
+                    else:
+                        reasons[e.name] = f"cooling down for {math.ceil(cool - now)}s after an error"
+                        waits.append(cool - now)
+                    continue
                 chat = category in CHAT_CATEGORIES
                 completion = 0
                 if chat:
@@ -421,6 +506,10 @@ class KeyRouter:
                 if hit:
                     reasons[e.name] = hit
                     self._log_limit(e, category, hit, now)
+                    if hit.startswith("requests_per_minute") and u["minute"]:
+                        waits.append(max(0.5, u["minute"][0] + 60 - now))
+                    elif pend.get("requests", 0) and not self._final_limit(e, u):
+                        waits.append(2.0)                 # in-flight calls hold the budget: they end soon
                     continue
                 for k, v in amounts.items():
                     pend[k] = pend.get(k, 0) + v
@@ -440,7 +529,75 @@ class KeyRouter:
                                           key=mask(e.secret()) if e.needs_key else "(no key)", previous=prev)
                 lease.holder_task = task if task in TASKS else "general"
                 return lease
-        raise KeysExhausted(category, reasons)
+        raise KeysExhausted(category, reasons, wait_s=min(waits) if waits else None,
+                            refused=bool(n_keys) and n_refused == n_keys)
+
+    @staticmethod
+    def _final_limit(e: KeyEntry, u: dict) -> str | None:
+        """A daily / monthly limit already used up: waiting a few seconds will not help."""
+        for f, (counter, _) in LIMIT_MAP.items():
+            if f in e.limits and u[counter] >= e.limits[f] - 1e-9:
+                return f"{f} limit reached"
+        return None
+
+    def mark_refused(self, name: str, status: int) -> None:
+        with self._lock:
+            self._refused[name] = (self.clock() + REFUSED_TTL, status)
+
+    # ---------------- per-minute counter (provider headers, else a local estimate)
+    def note_rate(self, name: str, headers: dict | None) -> None:
+        """Remember the provider's rate-limit headers (x-ratelimit-*) of the last answer of key `name`."""
+        rl = parse_ratelimit(headers)
+        if rl:
+            with self._lock:
+                rl["at"] = self.clock()
+                self._rate[name] = rl
+
+    def rate_reset(self, name: str) -> float | None:
+        """Seconds until the provider refills the token budget of `name` (from its last headers)."""
+        with self._lock:
+            rl = self._rate.get(name)
+            if not rl or rl.get("tokens_reset_s") is None:
+                return None
+            left = rl["at"] + rl["tokens_reset_s"] - self.clock()
+            return left if left > 0 else None
+
+    def _rate_view(self, e: KeyEntry, now: float) -> dict:
+        win = [(t, n) for t, n in self._window.get(e.name, []) if now - t < 60]
+        self._window[e.name] = win
+        rl = self._rate.get(e.name)
+        out: dict[str, Any] = {}
+        if rl and rl.get("tokens_limit") and now - rl["at"] < 3600:
+            lim, rem, reset = rl["tokens_limit"], rl.get("tokens_remaining"), rl.get("tokens_reset_s") or 0
+            el = now - rl["at"]
+            if rem is None:
+                rem = lim
+            elif reset > 0:                               # the provider refills its bucket steadily
+                rem = rem + (lim - rem) * min(1.0, el / reset)
+            else:
+                rem = lim
+            out.update(source="provider", tokens_limit=int(lim), tokens_left=int(max(0, min(lim, rem))),
+                       tokens_reset_s=max(0, math.ceil(rl["at"] + reset - now)))
+            if rl.get("requests_limit"):
+                rr = rl.get("requests_reset_s") or 0
+                rq = rl.get("requests_remaining", rl["requests_limit"])
+                if rr and el >= rr:
+                    rq = rl["requests_limit"]
+                out.update(requests_limit=int(rl["requests_limit"]), requests_left=int(max(0, rq)),
+                           requests_reset_s=max(0, math.ceil(rl["at"] + rr - now)))
+            return out
+        used = sum(n for _, n in win)
+        lim = e.limits.get("tokens_per_minute") or (rl or {}).get("tokens_limit") or DEFAULT_TPM.get(e.provider or "")
+        if not lim and e.base_url and "groq.com" in e.base_url:
+            lim = DEFAULT_TPM["groq"]
+        out.update(source="estimate", tokens_used=int(used), tokens_limit=int(lim) if lim else None,
+                   tokens_left=int(max(0, lim - used)) if lim else None,
+                   tokens_reset_s=max(0, math.ceil(win[0][0] + 60 - now)) if win else 0)
+        if "requests_per_minute" in e.limits:
+            n = len(self._usage.get(e.name, {}).get("minute", []))
+            out.update(requests_limit=int(e.limits["requests_per_minute"]),
+                       requests_left=int(max(0, e.limits["requests_per_minute"] - n)))
+        return out
 
     @staticmethod
     def _would_exceed(e: KeyEntry, u: dict, pend: dict, amounts: dict) -> str | None:
@@ -478,6 +635,8 @@ class KeyRouter:
             u["cost_day"] = round(u["cost_day"] + used.get("cost", 0), 8)
             u["cost_month"] = round(u["cost_month"] + used.get("cost", 0), 8)
             u["images_day"] += used.get("images", 0)
+            if used.get("tokens"):
+                self._window.setdefault(name, []).append((now, used["tokens"]))
             u["audio_minutes_day"] += used.get("audio_minutes", 0)
             if cooldown:
                 u["cooldown_until"] = now + cooldown   # persisted: survives a restart
@@ -504,7 +663,8 @@ class KeyRouter:
                              "available": e.available(),
                              "cooldown_s": max(0, math.ceil(u.get("cooldown_until", 0) - now)),
                              "limits": limits, "used": {f: round(v, 6) for f, v in used.items()},
-                             "tasks": list(e.tasks),
+                             "tasks": list(e.tasks), "rate": self._rate_view(e, now),
+                             "refused": bool(self._refused.get(e.name) and self._refused[e.name][0] > now),
                              "in_flight": int(self._pending.get(e.name, {}).get("requests", 0)),
                              "agents": sorted(r["label"] for r in self._holders.values()
                                               if r["key"] == e.name and now - r["last"] < HOLD_TTL)})
