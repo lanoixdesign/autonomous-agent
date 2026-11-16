@@ -3,7 +3,7 @@ Dark "neon" theme (agent/theme.py), live swarm graph (GET /tasks/{id}/graph). Li
 Bilingual (EN/FR): every visible string comes from agent/i18n.py through t(); see agent/i18n_js.py."""
 from .i18n_js import I18N_JS, LANG_CSS, LANG_SWITCH
 from .ratebar import RATE_CSS, RATE_JS
-from .theme import APPROVAL_JS, BASE_CSS, NAV_CSS, NAV_HTML, NAV_JS, THEME_BTN, TIP_CSS, TIP_JS
+from .theme import APPROVAL_JS, BASE_CSS, ICONS, NAV_CSS, NAV_HTML, NAV_JS, THEME_BTN, TIP_CSS, TIP_JS, sidebar
 
 CHAT_PAGE = r"""<!doctype html>
 <html lang="en"><head><meta charset="utf-8">
@@ -12,12 +12,13 @@ CHAT_PAGE = r"""<!doctype html>
 <style>
 /*THEME*/
  *{box-sizing:border-box} body{margin:0;font-size:14px;line-height:1.45;height:100vh;display:flex;color:var(--soft)}
- aside{width:270px;background:var(--card);border-right:1px solid var(--line);color:var(--soft);display:flex;flex-direction:column;}
- body.collapsed aside{display:none}
- aside h1{font-size:15px;margin:16px 16px 10px;color:var(--text);letter-spacing:.01em}
- aside button.new{margin:0 12px 12px;padding:10px;border:1px solid transparent;border-radius:999px;color:#fff;cursor:pointer;font:600 13px var(--font);
+ body[data-page=chat]{--snw:256px} html.sn-mini body[data-page=chat]{--snw:60px}
+ body[data-page=chat] .sn-slot{flex:1 1 auto;min-height:0;margin-top:10px}
+ .sn-opts{padding:8px 6px 4px;font-size:12.5px;color:var(--muted);border-top:1px solid var(--line)} .sn-opts input#token{width:100%;margin-top:4px;padding:6px 8px}
+ .sn-opts details.adv{margin:0;border:0;padding:0} .sn-opts summary{font-size:12.5px}
+ aside button.new{margin:0 2px 8px;padding:10px;border:1px solid transparent;border-radius:999px;color:#fff;cursor:pointer;font:600 13px var(--font);
   background:var(--accent);}
- #convs{flex:1;overflow:auto;padding:0 6px} .conv{padding:9px 12px;cursor:pointer;border-radius:12px;border:1px solid transparent;margin:2px 0}
+ #convs{flex:1;overflow:auto;padding:0} .conv{padding:9px 12px;cursor:pointer;border-radius:12px;border:1px solid transparent;margin:2px 0}
  .conv:hover{background:var(--panel2)} .conv.sel{background:rgba(var(--accent-rgb),0.084);border-color:rgba(var(--accent-rgb),0.21);}
  .conv .t{white-space:nowrap;overflow:hidden;text-overflow:ellipsis;color:var(--text)} .conv small{color:var(--muted)}
  #quota{max-height:38vh;overflow:auto;padding:4px 12px;font-size:11.5px;border-top:1px solid var(--line)}
@@ -27,7 +28,9 @@ CHAT_PAGE = r"""<!doctype html>
  .ql{display:flex;justify-content:space-between;color:var(--soft)} .bar{height:3px;background:var(--chip);border-radius:2px;margin:1px 0 3px}
  .bar i{display:block;height:3px;background:var(--ok);border-radius:2px} .bar i.hi{background:var(--warn)} .bar i.full{background:var(--bad)}
  aside footer{padding:12px;font-size:12px;color:var(--muted);border-top:1px solid var(--line)} aside footer input{width:100%;margin-top:4px;padding:6px 8px}
- main{flex:1;display:flex;flex-direction:column;min-width:0;position:relative}
+ main{flex:1;display:flex;flex-direction:column;min-width:0;position:relative;margin-left:var(--snw)}
+ @media (min-width:761px){ #menu,#compose{display:none!important} }
+ html.sn-mini #compose{display:inline-flex!important}
  #top{padding:10px 16px;border-bottom:1px solid var(--line);background:var(--card2);display:flex;gap:10px;align-items:center}
  #brand{font-weight:700;color:var(--text);font-size:16px;white-space:nowrap}
  #title{flex:1;color:var(--muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;font-size:13px}
@@ -170,18 +173,14 @@ CHAT_PAGE = r"""<!doctype html>
  .trbody .row{margin:4px 0} .trbody .bubble{font-size:13px}
  #demobadge{font:600 11.5px var(--font);color:var(--t-violet);background:rgba(var(--accent-rgb),0.096);border:1px solid rgba(var(--accent-rgb),0.27);border-radius:999px;padding:4px 10px;text-decoration:none;white-space:nowrap}
  #demobadge[hidden]{display:none}
- aside nav.tabs{display:none}
  #quitlink{background:none;border:0;color:var(--t-bad);cursor:pointer;font:600 12px var(--font);padding:0}
  #quitlink[hidden]{display:none}
  /* phones and small tablets: drawer sidebar, bottom-sheet approval cards, big touch targets, vertical swarm */
  @media (max-width:760px){
   body{height:100vh;height:100dvh}
-  aside{position:fixed;top:0;bottom:0;left:0;width:84vw;max-width:320px;z-index:30;transform:translateX(-102%);transition:transform .2s ease;padding-top:env(safe-area-inset-top);background:var(--sunk)}
-  body.collapsed aside{display:flex}
-  body.nav aside{transform:none;}
-  body.nav #scrim{display:block;position:fixed;inset:0;background:var(--card2);z-index:25}
+  main{margin-left:0}
   #top{flex-wrap:wrap;padding:8px 10px;padding-top:max(8px,env(safe-area-inset-top));gap:6px}
-  #brand{flex:1} #title{order:5;flex:1 1 100%;font-size:12px} #mode,#expmd,#expjson{display:none!important}
+  #title{flex:1;font-size:13px} #mode,#expmd,#expjson{display:none!important}
   .tbtn{padding:8px 12px;min-height:36px}
   #log{padding:10px 12px 16px} .bubble{max-width:88%} .step{margin-left:2px;font-size:11.5px;word-break:break-word}
   #popups{left:8px;right:8px;top:auto;bottom:calc(80px + env(safe-area-inset-bottom));width:auto;max-height:66vh}
@@ -192,9 +191,6 @@ CHAT_PAGE = r"""<!doctype html>
   #idcpanel{padding:6px 12px} #idcpanel ol{max-height:16vh}
   aside button.new{padding:12px} .conv{padding:12px 14px} #idcdefrow input,#critrow input{width:20px;height:20px}
   #swarm{margin:8px 10px 0}
-  #top nav.tabs{display:none}
-  aside nav.tabs{display:flex;flex-direction:column;border-radius:16px;margin:0 12px 12px;order:0;flex:0 0 auto;overflow:visible}
-  aside nav.tabs a{text-align:left;padding:11px 14px;font-size:14px}
   #demobadge{order:4}
   .trhead{min-height:44px}
   .swbody{display:flex;flex-direction:column;align-items:stretch;gap:12px;padding:12px 12px 14px 12px;max-height:40vh}
@@ -237,7 +233,7 @@ CHAT_PAGE = r"""<!doctype html>
  .card .ok{background:#16A34A;} .card .ok:hover{background:#15803D}
  .card .no{background:#4B5563} .card .no:hover{background:#6B7280}
  body.simple .card .ctop .cat,body.simple #idcbox,body.simple #expjson,body.simple #mode,body.simple #quota,body.simple #idcdefrow{display:none!important}
- body.simple.notoken aside footer .toklbl,body.simple.notoken #token{display:none}
+ body.simple.notoken .toklbl,body.simple.notoken #token{display:none}
  .sys.bad{color:var(--t-bad)} .sys.bad a{color:var(--blue);font-weight:600}
  #tour{position:fixed;inset:0;z-index:70;pointer-events:none} #tour[hidden]{display:none}
  #tourcard{pointer-events:auto;position:fixed;left:50%;bottom:110px;transform:translateX(-50%);width:min(440px,92vw);background:var(--panel2);border:1px solid rgba(var(--accent-rgb),0.33);
@@ -257,21 +253,11 @@ CHAT_PAGE = r"""<!doctype html>
 
 /*LANG_CSS*/
 </style></head><body data-page="chat" class="fullh simple notoken">
-<aside><h1>autonomous-agent</h1>
- /*NAV*/
- <button class="new" id="new" data-i18n="chat.new"></button>
- <div id="convs"></div>
- <div id="quota"></div>
- <footer><span class="toklbl" data-i18n="token.label"></span><input id="token" type="password">
-  <a id="connectlink" href="/connect" data-i18n="chat.connect"></a>
-  <label id="critrow" data-i18n-title="critic.toggle.title"><input type="checkbox" id="critdef"><span data-i18n="critic.toggle"></span></label>
-  <label id="idcdefrow" data-i18n-title="idc.default.title"><input type="checkbox" id="idcdef"><span data-i18n="idc.default"></span></label>
-  <div style="margin-top:6px;display:flex;justify-content:space-between;align-items:center"><button id="quitlink" type="button" hidden data-i18n="nav.quit"></button>/*LANG_SWITCH*/</div></footer></aside>
+/*SIDEBAR*/
 <main>
- <div id="top"><button id="menu" class="ibtn" data-i18n-title="chat.sidebar" aria-controls="convs">☰</button><span id="brand" data-i18n="chat.brand"></span>/*NAV*/<span class="tophdtheme">/*THEME_BTN*/</span><a id="demobadge" href="/settings#keys" hidden data-i18n="chat.demoBadge" data-i18n-title="chat.demoTitle"></a><span id="title"></span><span id="status"></span><span id="mode"></span>
+ <div id="top"><button id="menu" class="snmenu" data-i18n-title="nav.menu" data-i18n-aria="nav.menu" aria-controls="sidenav" aria-expanded="false">/*MENU_IC*/</button><a id="demobadge" href="/settings#keys" hidden data-i18n="chat.demoBadge" data-i18n-title="chat.demoTitle"></a><span id="title"></span><span id="status"></span><span id="mode"></span>
   <label id="idcbox"><input type="checkbox" id="idc"><span data-i18n="idc.label"></span></label>
   <button id="cancel" class="tbtn" style="display:none" data-i18n="chat.stop"></button>
-  <button id="filesbtn" class="tbtn" aria-controls="filesp" aria-expanded="false" data-i18n="files.btn"></button>
   <button id="expmd" class="tbtn" style="display:none" data-i18n-title="chat.expmd.title">⇩ MD</button>
   <button id="expjson" class="tbtn" style="display:none" data-i18n-title="chat.expjson.title">⇩ JSON</button>
   <button id="stopall" class="tbtn" style="display:none" data-i18n="btn.stopall" data-i18n-title="title.stopall"></button>
@@ -351,23 +337,20 @@ async function api(method, path, body){
 }
 function errMsg(e){ if(e && !e.status && (e instanceof TypeError)) return t("err.offline"); return t("err.prefix",{msg:e.message}); }
 // ---- mobile: the sidebar is a drawer
-function nav(open){ document.body.classList.toggle("nav", open); }
-if(matchMedia("(min-width:761px) and (max-width:1100px)").matches) document.body.classList.add("collapsed");   // v0.9.1: more room on small screens
-$("menu").onclick=()=>{ if(narrow.matches) nav(!document.body.classList.contains("nav")); else { document.body.classList.toggle("collapsed"); requestAnimationFrame(lines); } };
+function nav(open){ if(window.sideNav) window.sideNav(open); }
+$("menu").onclick=()=>nav(!document.documentElement.classList.contains("sn-open"));
+document.addEventListener("navresize",()=>requestAnimationFrame(lines));
 $("scrim").onclick=()=>nav(false);
 // first launch on this computer: welcome wizard; demo badge; Quit button (this computer only)
 let APP={}, TRACE_TECH=false, DEMO=false, appSeen=false;
 async function appStatus(){ try{ APP=await api("GET","/app/status"); }catch(e){ return; }
   if(APP.first_run && APP.editable){ location.replace("/welcome"); return; }
-  $("demobadge").hidden=APP.mode!=="demo"; $("quitlink").hidden=!APP.editable;
+  $("demobadge").hidden=APP.mode!=="demo";
   document.body.classList.toggle("simple",(APP.ui_mode||"simple")!=="expert");
   const tech=APP.trace==="technical", demo=APP.mode==="demo", changed=tech!==TRACE_TECH || demo!==DEMO;
   TRACE_TECH=tech; DEMO=demo; document.body.classList.toggle("tracetech",tech); if(changed){ gsig=""; render(); drawSwarm(); }
   if(!appSeen){ appSeen=true; let done=null; try{ done=localStorage.getItem("tourDone"); }catch(e){}
     if(new URLSearchParams(location.search).get("tour")==="1" || (!done && !cur)) setTimeout(()=>tour(0),400); } }
-$("quitlink").onclick=async()=>{ if(!confirm(t("set.confirmQuit"))) return;
-  try{ await fetch("/app/quit",{method:"POST",headers:{"Content-Type":"application/json","X-CSRF-Token":APP.csrf||""},body:"{}"}); }catch(e){}
-  document.body.replaceChildren(el("div","sys",t("set.stopped"))); };
 // remote mode: a device that is not signed in goes to /connect
 fetch("/auth/status").then(r=>r.json()).then(s=>{ if(s.required) document.body.classList.remove("notoken");
   if(s.required && !s.authenticated && !tok.value) location.replace("/connect"); }).catch(()=>{});
@@ -680,12 +663,12 @@ $("fpick").onchange=async e=>{ const list=[...e.target.files]; e.target.value=""
     const r=await api("POST","/files",{files}); $("fmsg").textContent=t("files.added",{n:r.saved.length}); loadFiles(); }
   catch(err){ $("fmsg").textContent=errMsg(err); } };
 // ---- guided tour (4 steps): Esc or Skip closes it; remembered on this device
-const TOUR=[["1","#input"],["2","#attach"],["3","#filesbtn"],["4","#top nav.tabs"]];
+const TOUR=[["1","#input"],["2","#attach"],["3","#filesbtn"],["4","#sidenav nav.tabs"]];
 let tstep=-1;
 function tour(i){ document.querySelectorAll(".tour-hl").forEach(x=>x.classList.remove("tour-hl"));
   if(i<0 || i>=TOUR.length){ $("tour").hidden=true; tstep=-1; try{ localStorage.setItem("tourDone","1"); }catch(e){} return; }
   tstep=i; $("tour").hidden=false; const [k,sel]=TOUR[i];
-  const target=(narrow.matches && i===3) ? $("menu") : document.querySelector(sel);
+  const target=(narrow.matches && i>=2) ? $("menu") : document.querySelector(sel);
   if(target){ target.classList.add("tour-hl"); target.scrollIntoView({block:"nearest"}); }
   $("tourn").textContent=t("tour.step",{n:i+1,total:TOUR.length}); $("tourt").textContent=tr("tour",k+".t"); $("tourd").textContent=tr("tour",k+".d");
   $("tourback").hidden=i===0; $("tournext").textContent=t(i===TOUR.length-1?"tour.done":"tour.next"); $("tournext").focus(); }
@@ -836,5 +819,14 @@ render(); appStatus(); setInterval(appStatus,15000); loadConfig(); loadSettings(
 """
 CHAT_PAGE = CHAT_PAGE.replace("/*THEME*/", BASE_CSS).replace("/*APPROVAL_JS*/", APPROVAL_JS)
 CHAT_PAGE = CHAT_PAGE.replace("/*TIP_CSS*/", TIP_CSS + RATE_CSS).replace("/*TIP_JS*/", TIP_JS + RATE_JS)
+_SLOT = """<button class="new" id="new" data-i18n="chat.new"></button>
+ <div id="convs"></div>
+ <div id="quota"></div>
+ <div class="sn-opts"><span class="toklbl" data-i18n="token.label"></span><input id="token" type="password">
+  <details class="adv"><summary data-i18n="ui.advanced"></summary>
+  <label id="critrow" data-i18n-title="critic.toggle.title"><input type="checkbox" id="critdef"><span data-i18n="critic.toggle"></span></label>
+  <label id="idcdefrow" data-i18n-title="idc.default.title"><input type="checkbox" id="idcdef"><span data-i18n="idc.default"></span></label></details></div>"""
+_FILES = '<button id="filesbtn" type="button" class="sn-item" aria-controls="filesp" aria-expanded="false" data-i18n-title="files.btn">' + ICONS["files"] + '<span class="nl" data-i18n="files.btn"></span></button>'
+CHAT_PAGE = CHAT_PAGE.replace("/*SIDEBAR*/", sidebar(_SLOT, _FILES)).replace("/*MENU_IC*/", ICONS["menu"])
 CHAT_PAGE = CHAT_PAGE.replace("/*NAV_CSS*/", NAV_CSS).replace("/*NAV*/", NAV_HTML).replace("/*NAV_JS*/", NAV_JS)
 CHAT_PAGE = CHAT_PAGE.replace("/*THEME_BTN*/", THEME_BTN).replace("/*LANG_CSS*/", LANG_CSS).replace("/*LANG_SWITCH*/", THEME_BTN + LANG_SWITCH).replace("/*I18N_JS*/", I18N_JS)

@@ -103,21 +103,21 @@ continue** → ③ done, open the chat.
 - **Help** tab: how it works in 4 steps, a sample question card, FAQ, "Larger text".
 - **Simple / Expert** Settings: Simple hides permissions, limits, IDC and technical options; ❓ buttons
   explain each setting; error messages are translated (EN/FR).
-- **☀ Day / ☾ Night theme**: a sun/moon button at the top of every page (and in the ☰ phone menu) switches
+- **☀ Day / ☾ Night theme**: a "Theme" button at the bottom of the left sidebar (also in the ☰ phone drawer) switches
   between a calm light theme and a soft dark-grey night theme (both WCAG AA). Settings → General →
   Display → **Theme: Day / Night / Automatic** (default: Automatic = follows your computer or phone). The
   choice is remembered in this browser.
 
 | Chat, day theme | Chat, night theme |
 |---|---|
-| ![Chat, day theme](docs/v091-chat-light-fr.png) | ![Chat, night theme](docs/v091-chat-dark-fr.png) |
+| ![Chat, day theme](docs/v092-chat-light-fr.png) | ![Chat, night theme](docs/v092-chat-dark-fr.png) |
 
 | A question in plain words (phone, day) | My files | Settings: theme, Simple / Expert |
 |---|---|---|
 | ![Approval card](docs/v6-mobile-approval-light-fr.png) | ![My files](docs/v6-files-light-en.png) | ![Display settings](docs/v6-mobile-settings-light-fr.png) |
 
-**Everything else is in ⚙ Settings** (the tabs **Chat | Dashboard | Settings | Help | Connect** are at the
-top of every page, and in the ☰ menu on a phone):
+**Everything else is in ⚙ Settings** (the destinations **Chat | Dashboard | Dev | Settings | Connect | Help** are in the
+left sidebar of every page, and in the ☰ drawer on a phone):
 - **API keys & models**: add, edit, delete and test keys, per use (text, code, images, speech,
   transcription, embeddings), with limits (requests / tokens / cost per day or month) and a failover
   order (↑ ↓: when a key hits a limit or fails, the next one takes over). Keys are shown **masked**
@@ -840,6 +840,16 @@ an `<iframe sandbox="allow-scripts allow-forms allow-modals">` (opaque origin: t
 app or the internet). **Download the project (.zip)** = `GET /dev/zip?project=<name>` (caches and hidden
 files left out). API: `GET /dev/projects`, `POST /dev/projects {name, kind}`, `POST /dev/test {project}`.
 
+### Left sidebar (0.9.2)
+
+The tab bar at the top is gone: every page now has one quiet left sidebar with an icon and a label per destination (Chat, Dashboard, Dev, Settings, Connect), the current page lightly marked with the accent. Help, the day / night theme, Simple / Expert, the language and Quit sit at the bottom. The « ‹ » button folds it to icons only (remembered in this browser; icons only by default on mid-size screens). On a phone it is a drawer opened with ☰, listing every destination. In the chat, the sidebar also holds your conversations and "My files", so the page is just sidebar, conversation and input box. Page headers keep only a title; long help texts became small "?" tooltips and rarely used items moved under "Advanced options".
+
+| Before (0.9.1) | After (0.9.2) |
+|---|---|
+| ![Chat before](docs/v092-before-chat-light-fr.png) | ![Chat after](docs/v092-chat-light-fr.png) |
+| ![Settings before](docs/v092-before-settings-dark-fr.png) | ![Settings after](docs/v092-settings-dark-fr.png) |
+| ![Icons only](docs/v092-chat-mini-dark-fr.png) | ![Phone drawer](docs/v092-mobile-drawer-dark-fr.png) |
+
 ### A calmer interface (0.9.1)
 
 Same features, quieter screens. Neutral backgrounds (off-white by day, soft dark grey at night, never pure black), one muted blue accent, softened success / warning / error colours, and no halos, glows, gradients, blur or animated pulses. Text is 15 px with 1.5 line height and lines of about 70 characters; every text colour meets WCAG AA in both themes (checked by `tests/test_v091_theme.py`). Each page shows the essentials first: rarely used settings sit under **Advanced options** (keys pool and backup hint, critic rounds, phone tunnel, API header / OpenAPI / description), the event journal on the dashboard is folded, "Stop all" only appears while something runs, and the chat side panel starts folded on mid-size screens.
@@ -1033,21 +1043,21 @@ une vraie IA : choisis un service (**Groq** est recommandé et gratuit), suis le
 - Onglet **Aide** : le fonctionnement en 4 étapes, un exemple de question, une FAQ, « Texte plus grand ».
 - Réglages **Simple / Expert** : Simple masque autorisations, limites, IDC et options techniques ; des
   boutons ❓ expliquent chaque réglage ; les messages d'erreur sont traduits (EN/FR).
-- **Thème ☀ Jour / ☾ Nuit** : un bouton soleil/lune en haut de chaque page (et dans le menu ☰ du
+- **Thème ☀ Jour / ☾ Nuit** : un bouton « Thème » en bas de la barre latérale gauche (et dans le tiroir ☰ du
   téléphone) passe d'un thème clair et calme à un thème de nuit gris foncé doux (tous deux WCAG AA). Réglages →
   Général → Affichage → **Thème : Jour / Nuit / Automatique** (par défaut : Automatique = suit ton
   ordinateur ou téléphone). Le choix est mémorisé dans ce navigateur.
 
 | Chat, thème jour | Chat, thème nuit |
 |---|---|
-| ![Chat, thème jour](docs/v091-chat-light-fr.png) | ![Chat, thème nuit](docs/v091-chat-dark-fr.png) |
+| ![Chat, thème jour](docs/v092-chat-light-fr.png) | ![Chat, thème nuit](docs/v092-chat-dark-fr.png) |
 
 | Une question en mots simples (téléphone, jour) | Mes fichiers | Réglages : thème, Simple / Expert |
 |---|---|---|
 | ![Carte de validation](docs/v6-mobile-approval-light-fr.png) | ![Mes fichiers](docs/v6-files-light-fr.png) | ![Réglages d'affichage](docs/v6-mobile-settings-light-fr.png) |
 
-**Tout le reste est dans ⚙ Réglages** (les onglets **Chat | Tableau de bord | Réglages | Aide | Connexion**
-sont en haut de chaque page, et dans le menu ☰ sur téléphone) :
+**Tout le reste est dans ⚙ Réglages** (les destinations **Chat | Tableau de bord | Dév | Réglages | Connexion | Aide**
+sont dans la barre latérale gauche de chaque page, et dans le tiroir ☰ sur téléphone) :
 - **Clés d'API et modèles** : ajouter, modifier, supprimer et tester des clés, par usage (texte, code,
   images, voix, transcription, embeddings), avec des limites (requêtes / jetons / coût par jour ou par
   mois) et un ordre de relais (↑ ↓ : quand une clé atteint une limite ou échoue, la suivante prend le
@@ -1815,6 +1825,16 @@ téléphone) avec `Content-Security-Policy: sandbox allow-scripts …; connect-s
 une `<iframe sandbox="allow-scripts allow-forms allow-modals">` (origine opaque : la page ne peut appeler ni
 l'app ni internet). **Télécharger le projet (.zip)** = `GET /dev/zip?project=<nom>` (caches et fichiers
 cachés exclus). API : `GET /dev/projects`, `POST /dev/projects {name, kind}`, `POST /dev/test {project}`.
+
+### Barre latérale à gauche (0.9.2)
+
+Fini la barre d'onglets en haut : chaque page a maintenant une seule barre latérale discrète à gauche, avec une icône et un libellé par destination (Chat, Tableau de bord, Dév, Réglages, Connexion), la page en cours légèrement marquée par l'accent. Aide, le thème jour / nuit, Simple / Expert, la langue et Quitter sont regroupés en bas. Le bouton « ‹ » la replie en icônes seules (mémorisé dans ce navigateur ; icônes seules par défaut sur les écrans moyens). Sur téléphone, c'est un tiroir qui s'ouvre avec ☰ et liste toutes les destinations. Dans le chat, la barre contient aussi tes conversations et « Mes fichiers » : la page se résume à la barre, la conversation et la zone de saisie. Les en-têtes de page ne gardent qu'un titre ; les longs textes d'aide sont devenus de petites bulles « ? » et les éléments rares sont passés sous « Options avancées ».
+
+| Avant (0.9.1) | Après (0.9.2) |
+|---|---|
+| ![Chat avant](docs/v092-before-chat-light-fr.png) | ![Chat après](docs/v092-chat-light-fr.png) |
+| ![Réglages avant](docs/v092-before-settings-dark-fr.png) | ![Réglages après](docs/v092-settings-dark-fr.png) |
+| ![Icônes seules](docs/v092-chat-mini-dark-fr.png) | ![Tiroir sur téléphone](docs/v092-mobile-drawer-dark-fr.png) |
 
 ### Une interface plus calme (0.9.1)
 

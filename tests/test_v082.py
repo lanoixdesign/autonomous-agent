@@ -310,11 +310,13 @@ def test_french_readme_and_templates_use_tu():
 
 # ------------------------------------------------------------------------- 7. phone tab bar
 def test_phone_tab_bar_shows_every_tab_without_scrolling():
+    # v0.9.2: the top tab bar became a left sidebar; on a phone it is a drawer listing every destination
     css = theme.NAV_CSS
     mobile = css[css.index("@media (max-width:760px)"):]
-    assert "display:grid" in mobile and "overflow-x:auto" not in mobile
-    assert "repeat(3,minmax(0,1fr))" in mobile           # 2 rows of 3 on a phone
-    assert theme.NAV_HTML.count("<a ") == 6 and 'data-nav="connect"' in theme.NAV_HTML
+    assert "html.sn-open .sidenav{transform:none}" in mobile and ".snmenu{display:inline-flex}" in mobile
+    side = theme.sidebar()
+    for k in ("chat", "dashboard", "dev", "settings", "connect", "help"):
+        assert f'data-nav="{k}"' in side, k
 
 
 # ------------------------------------------------------------------------- 8. leftovers

@@ -2,7 +2,7 @@
 Coder + Tester team to build it, preview a website in a sandboxed iframe, run the tests (always in the
 sandbox) and download the project as a .zip. Plain HTML + JS, no external resources, EN/FR, light/dark."""
 from .i18n_js import I18N_JS, LANG_CSS, LANG_SWITCH
-from .theme import BASE_CSS, NAV_CSS, NAV_HTML, NAV_JS, THEME_BTN, TIP_CSS, TIP_JS
+from .theme import BASE_CSS, MENU_BTN, NAV_CSS, NAV_HTML, NAV_JS, THEME_BTN, TIP_CSS, TIP_JS, sidebar
 
 DEV_PAGE = r"""<!doctype html>
 <html lang="en"><head><meta charset="utf-8">
@@ -55,7 +55,8 @@ DEV_PAGE = r"""<!doctype html>
 /*NAV_CSS*/
 /*LANG_CSS*/
 </style></head><body data-page="dev">
-<header class="apphead"><a class="back" href="/" data-i18n="nav.back"></a><span class="brand">autonomous-agent</span>/*NAV*/<span class="sp"></span>/*LANG_SWITCH*/</header>
+/*SIDEBAR*/
+<header class="apphead mob">/*MENU_BTN*/<h1 data-i18n="nav.dev"></h1></header>
 <main>
  <h1 data-i18n="dev.title"></h1>
  <p class="intro" data-i18n="dev.intro"></p>
@@ -167,5 +168,5 @@ onLang=draw; load(); setInterval(()=>{ if(!document.hidden) load(); }, 15000);
 </script></body></html>
 """
 DEV_PAGE = DEV_PAGE.replace("/*THEME*/", BASE_CSS).replace("/*TIP_CSS*/", TIP_CSS).replace("/*NAV_CSS*/", NAV_CSS)
-DEV_PAGE = DEV_PAGE.replace("/*NAV*/", NAV_HTML).replace("/*LANG_CSS*/", LANG_CSS).replace("/*LANG_SWITCH*/", THEME_BTN + LANG_SWITCH)
+DEV_PAGE = DEV_PAGE.replace("/*SIDEBAR*/", sidebar()).replace("/*MENU_BTN*/", MENU_BTN).replace("/*NAV*/", NAV_HTML).replace("/*LANG_CSS*/", LANG_CSS).replace("/*LANG_SWITCH*/", THEME_BTN + LANG_SWITCH)
 DEV_PAGE = DEV_PAGE.replace("/*I18N_JS*/", I18N_JS).replace("/*NAV_JS*/", NAV_JS).replace("/*TIP_JS*/", TIP_JS)

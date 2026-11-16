@@ -4,7 +4,7 @@ parallel tasks, approval timeout, workspace, restart / quit. Plain HTML + JS, no
 Secrets are typed here and sent once to the server; they never come back (only masked)."""
 from .i18n_js import I18N_JS, LANG_CSS, LANG_SWITCH
 from .harness_keys import KEYS_CSS, KEYS_JS
-from .theme import BASE_CSS, NAV_CSS, NAV_HTML, NAV_JS, THEME_BTN, TIP_CSS, TIP_JS
+from .theme import BASE_CSS, MENU_BTN, NAV_CSS, NAV_HTML, NAV_JS, THEME_BTN, TIP_CSS, TIP_JS, sidebar
 
 COMMON_CSS = r"""
  *{box-sizing:border-box} body{margin:0;font-size:14px;line-height:1.5;min-height:100vh}
@@ -78,7 +78,7 @@ SETTINGS_PAGE = r"""<!doctype html>
 <style>
 /*THEME*/
 /*COMMON_CSS*/
- .wrap{display:grid;grid-template-columns:220px minmax(0,1fr);gap:18px;max-width:1180px;margin:0 auto;padding:18px}
+ .wrap{display:grid;grid-template-columns:minmax(0,1fr);gap:18px;max-width:920px;margin:0 auto;padding:18px} .wrap>nav.side{display:none!important}
  .side{position:sticky;top:76px;align-self:start;display:flex;flex-direction:column;gap:4px}
  .side a{padding:9px 14px;border-radius:12px;color:var(--soft)!important;text-decoration:none;font-weight:600;border:1px solid transparent}
  .side a:hover{background:var(--panel);border-color:var(--line)}
@@ -138,7 +138,8 @@ SETTINGS_PAGE = r"""<!doctype html>
 /*NAV_CSS*/
 /*LANG_CSS*/
 </style></head><body data-page="settings" class="simple">
-<header class="apphead"><a class="back" href="/" data-i18n="nav.back"></a><span class="brand">autonomous-agent</span>/*NAV*/<span class="sp"></span>/*LANG_SWITCH*/</header>
+/*SIDEBAR*/
+<header class="apphead">/*MENU_BTN*/<h1 data-i18n="nav.settings"></h1></header>
 <div id="lockbar" class="banner lock" hidden></div>
 <div id="warnbar" class="banner warn" hidden></div>
 <div id="restartbar" class="banner restart" hidden><span id="restartwhat"></span><button id="restart1" class="primary" data-i18n="set.restart"></button></div>
@@ -147,8 +148,7 @@ SETTINGS_PAGE = r"""<!doctype html>
   <a href="#keys" data-i18n="set.sec.keys"></a><a href="#general" data-i18n="set.sec.general"></a><a href="#sandbox" data-i18n="set.sec.sandbox"></a><a href="#critic" data-i18n="set.nav.critic"></a><a href="#safety" class="xp" data-i18n="set.sec.safety"></a>
   <a href="#idc" class="xp" data-i18n="set.sec.idc"></a><a href="#phone" data-i18n="set.sec.phone"></a><a href="#app" data-i18n="set.sec.app"></a></nav>
  <fieldset id="all" class="cols">
- <section id="keys" class="card"><h2 data-i18n="set.sec.keys"></h2>
-  <p class="muted" data-i18n="set.keys.help"></p>
+ <section id="keys" class="card"><h2><span data-i18n="set.sec.keys"></span><button class="tip" data-tip="set.keys.help"></button></h2>
   <div class="row" style="justify-content:space-between"><span><label class="switch"><input type="checkbox" id="demo"><span data-i18n="set.demo"></span></label><button class="tip" data-tip="tip.demo"></button></span><span id="modebadge" class="pill"></span></div>
   <div id="plist"></div>
   <details class="adv"><summary data-i18n="ui.advanced"></summary>
@@ -186,45 +186,43 @@ SETTINGS_PAGE = r"""<!doctype html>
   </form>
  </section>
  <section id="general" class="card"><h2 data-i18n="set.sec.general"></h2>
-  <label class="f" data-i18n="set.lang"></label><div class="langbtns" id="langbtns"></div><p class="muted" data-i18n="set.lang.help"></p>
+  <label class="f"><span data-i18n="set.lang"></span><button class="tip" data-tip="set.lang.help"></button></label><div class="langbtns" id="langbtns"></div>
   <h3 data-i18n="set.display"></h3>
   <div class="disp">
    <div><label class="f"><span data-i18n="set.theme"></span><button class="tip" data-tip="tip.theme"></button></label>
-    <div class="seg" role="radiogroup" data-i18n-aria="set.theme"><label><input type="radio" name="theme" value="light"><span data-i18n="set.theme.light"></span></label><label><input type="radio" name="theme" value="dark"><span data-i18n="set.theme.dark"></span></label><label><input type="radio" name="theme" value="auto"><span data-i18n="set.theme.auto"></span></label></div>
-    <p class="muted" data-i18n="set.theme.help"></p></div>
+    <div class="seg" role="radiogroup" data-i18n-aria="set.theme"><label><input type="radio" name="theme" value="light"><span data-i18n="set.theme.light"></span></label><label><input type="radio" name="theme" value="dark"><span data-i18n="set.theme.dark"></span></label><label><input type="radio" name="theme" value="auto"><span data-i18n="set.theme.auto"></span></label></div></div>
    <div><label class="f"><span data-i18n="set.uiMode"></span><button class="tip" data-tip="tip.uiMode"></button></label>
-    <div class="seg" role="radiogroup" data-i18n-aria="set.uiMode"><label><input type="radio" name="uimode" value="simple"><span data-i18n="set.ui.simple"></span></label><label><input type="radio" name="uimode" value="expert"><span data-i18n="set.ui.expert"></span></label></div>
-    <p class="muted" data-i18n="set.uiMode.help"></p></div>
+    <div class="seg" role="radiogroup" data-i18n-aria="set.uiMode"><label><input type="radio" name="uimode" value="simple"><span data-i18n="set.ui.simple"></span></label><label><input type="radio" name="uimode" value="expert"><span data-i18n="set.ui.expert"></span></label></div></div>
    <div><label class="f"><span data-i18n="set.traceMode"></span><button class="tip" data-tip="tip.trace"></button></label>
     <div class="seg" role="radiogroup" data-i18n-aria="set.traceMode"><label><input type="radio" name="trmode" value="simple"><span data-i18n="set.trace.simple"></span></label><label><input type="radio" name="trmode" value="technical"><span data-i18n="set.trace.technical"></span></label></div></div>
-   <div><label class="f" data-i18n="set.display"></label><label class="switch"><input type="checkbox" id="bigtext"><span data-i18n="set.big"></span></label></div>
+   <div><label class="f">&nbsp;</label><label class="switch"><input type="checkbox" id="bigtext"><span data-i18n="set.big"></span></label></div>
   </div>
   <div class="xp">
   <label class="f" for="ws"><span data-i18n="set.workspace"></span><button class="tip" data-tip="tip.workspace"></button></label><div class="row"><input id="ws" type="text" style="flex:1"></div>
   <p class="muted"><span data-i18n="set.workspace.help"></span> <span id="wsactive"></span></p>
-  <div class="grid2"><div><label class="f" for="maxt"><span data-i18n="set.maxTasks"></span><button class="tip" data-tip="tip.maxTasks"></button></label><input id="maxt" type="number" min="1" max="16"><p class="muted" data-i18n="set.maxTasks.help"></p></div>
-   <div><label class="f" for="tmo"><span data-i18n="set.timeout"></span><button class="tip" data-tip="tip.timeout"></button></label><input id="tmo" type="number" min="10" max="3600"><p class="muted" data-i18n="set.timeout.help"></p></div></div>
+  <div class="grid2"><div><label class="f" for="maxt"><span data-i18n="set.maxTasks"></span><button class="tip" data-tip="tip.maxTasks"></button></label><input id="maxt" type="number" min="1" max="16"></div>
+   <div><label class="f" for="tmo"><span data-i18n="set.timeout"></span><button class="tip" data-tip="tip.timeout"></button></label><input id="tmo" type="number" min="10" max="3600"></div></div>
   <div class="row"><button id="gsave" class="blue" data-i18n="set.save"></button></div>
   </div>
  </section>
- <section id="sandbox" class="card"><h2><span data-i18n="sbx.title"></span><button class="tip" data-tip="tip.sandbox"></button></h2><p class="muted" data-i18n="sbx.help"></p>
+ <section id="sandbox" class="card"><h2><span data-i18n="sbx.title"></span><button class="tip" data-tip="sbx.help"></button></h2>
   <div id="sbxstate" class="sbx" role="status"></div>
   <p id="sbxsimple" class="muted" data-i18n="sbx.simple"></p>
   <div class="xp"><label class="switch"><input type="checkbox" id="sbxon"><span data-i18n="sbx.switch"></span></label></div>
   <details><summary data-i18n="sbx.allowedT"></summary><p class="muted" data-i18n="sbx.allowed"></p><p class="muted" id="sbxlim"></p></details></section>
- <section id="critic" class="card"><h2><span data-i18n="set.sec.critic"></span><button class="tip" data-tip="tip.critic"></button></h2><p class="muted" data-i18n="set.critic.help"></p>
+ <section id="critic" class="card"><h2><span data-i18n="set.sec.critic"></span><button class="tip" data-tip="set.critic.help"></button></h2>
   <label class="switch"><input type="checkbox" id="criton"><span data-i18n="set.critic.enabled"></span></label>
   <details class="adv"><summary data-i18n="ui.advanced"></summary>
   <div class="row" style="margin-top:8px;align-items:center;gap:8px"><label class="f" for="critr" data-i18n="set.critic.rounds" style="margin:0"></label><select id="critr" style="width:auto"></select></div>
   <p id="memstate" class="muted"></p></details></section>
- <section id="safety" class="card xp"><h2><span data-i18n="set.sec.safety"></span><button class="tip" data-tip="tip.safety"></button></h2><p class="muted" data-i18n="set.safety.help"></p>
+ <section id="safety" class="card xp"><h2><span data-i18n="set.sec.safety"></span><button class="tip" data-tip="set.safety.help"></button></h2>
   <table class="perm"><tbody id="perms"></tbody></table><p id="permtools" class="muted"></p>
   <div class="row"><button id="psave" class="blue" data-i18n="set.save"></button></div></section>
- <section id="idc" class="card xp"><h2><span data-i18n="set.sec.idc"></span><button class="tip" data-tip="tip.idc"></button></h2><p class="muted" data-i18n="set.idc.help"></p>
+ <section id="idc" class="card xp"><h2><span data-i18n="set.sec.idc"></span><button class="tip" data-tip="set.idc.help"></button></h2>
   <label class="switch"><input type="checkbox" id="idcon"><span data-i18n="set.idc.enabled"></span></label>
   <details><summary data-i18n="set.f.advanced"></summary><div id="idcf" class="grid3"></div></details>
   <div class="row" style="margin-top:10px"><button id="isave" class="blue" data-i18n="set.save"></button></div></section>
- <section id="phone" class="card"><h2 data-i18n="set.sec.phone"></h2><p class="muted" data-i18n="set.phone.help"></p>
+ <section id="phone" class="card"><h2><span data-i18n="set.sec.phone"></span><button class="tip" data-tip="set.phone.help"></button></h2>
   <p id="phonestate" class="pill"></p>
   <label class="switch"><input type="checkbox" id="remon"><span data-i18n="set.phone.enable"></span></label>
   <details class="adv"><summary data-i18n="ui.advanced"></summary><div class="grid2"><div><label class="f" for="tunnel"><span data-i18n="set.phone.tunnel"></span><button class="tip" data-tip="tip.tunnel"></button></label><select id="tunnel"></select></div>
@@ -232,7 +230,7 @@ SETTINGS_PAGE = r"""<!doctype html>
   <div class="row" style="margin-top:10px"><button id="rsave" class="blue" data-i18n="set.save"></button><button id="qrb" data-i18n="set.phone.qr"></button><button id="newtok" class="grey xp" data-i18n="set.phone.newToken"></button></div>
   <div id="qrbox"></div><div id="tokbox" hidden></div>
   <p id="remset" class="muted"></p></section>
- <section id="app" class="card"><h2 data-i18n="set.sec.app"></h2><p class="muted" data-i18n="set.app.help"></p>
+ <section id="app" class="card"><h2><span data-i18n="set.sec.app"></span><button class="tip" data-tip="set.app.help"></button></h2>
   <p id="appinfo" class="muted"></p>
   <div class="row"><button id="restart2" class="primary" data-i18n="set.restart"></button><button id="quit" class="danger" data-i18n="set.quit"></button><a class="btn" href="/welcome" data-i18n="set.app.wizard"></a></div></section>
  <div id="simplebar" class="card row" style="justify-content:space-between"><span class="muted" data-i18n="set.hiddenSimple"></span><button id="toexpert" data-i18n="set.showExpert"></button></div>
@@ -553,7 +551,7 @@ onLang=()=>{ pickBtns(); drawProvs(); buildWBulk(); if(step==="2b") jobsStep(); 
 def _finish(page: str) -> str:
     page = page.replace("/*TIP_CSS*/", TIP_CSS).replace("/*TIP_JS*/", TIP_JS)
     page = page.replace("/*THEME*/", BASE_CSS).replace("/*COMMON_CSS*/", COMMON_CSS).replace("/*NAV_CSS*/", NAV_CSS)
-    page = page.replace("/*NAV*/", NAV_HTML).replace("/*LANG_CSS*/", LANG_CSS).replace("/*LANG_SWITCH*/", THEME_BTN + LANG_SWITCH)
+    page = page.replace("/*SIDEBAR*/", sidebar()).replace("/*MENU_BTN*/", MENU_BTN).replace("/*NAV*/", NAV_HTML).replace("/*LANG_CSS*/", LANG_CSS).replace("/*LANG_SWITCH*/", THEME_BTN + LANG_SWITCH)
     page = page.replace("/*KEYS_CSS*/", KEYS_CSS).replace("/*KEYS_JS*/", KEYS_JS)
     return page.replace("/*I18N_JS*/", I18N_JS).replace("/*NAV_JS*/", NAV_JS).replace("/*COMMON_JS*/", COMMON_JS)
 

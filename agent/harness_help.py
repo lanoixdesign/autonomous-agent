@@ -1,7 +1,7 @@
 """The Help page (/help): how the app works in 4 steps, a sample approval card, plain-language FAQ, display
 options (larger text) and a link back to the guided tour. Plain HTML + JS, no external resources, EN/FR."""
 from .i18n_js import I18N_JS, LANG_CSS, LANG_SWITCH
-from .theme import BASE_CSS, NAV_CSS, NAV_HTML, NAV_JS, THEME_BTN, TIP_CSS, TIP_JS
+from .theme import BASE_CSS, MENU_BTN, NAV_CSS, NAV_HTML, NAV_JS, THEME_BTN, TIP_CSS, TIP_JS, sidebar
 
 HELP_PAGE = r"""<!doctype html>
 <html lang="en"><head><meta charset="utf-8">
@@ -36,7 +36,8 @@ HELP_PAGE = r"""<!doctype html>
 /*NAV_CSS*/
 /*LANG_CSS*/
 </style></head><body data-page="help">
-<header class="apphead"><a class="back" href="/" data-i18n="nav.back"></a><span class="brand">autonomous-agent</span>/*NAV*/<span class="sp"></span>/*LANG_SWITCH*/</header>
+/*SIDEBAR*/
+<header class="apphead mob">/*MENU_BTN*/<h1 data-i18n="nav.help"></h1></header>
 <main>
  <h1 data-i18n="help.title"></h1>
  <p class="intro" data-i18n="help.intro"></p>
@@ -72,5 +73,5 @@ onLang = sample; sample();
 </script></body></html>
 """
 HELP_PAGE = HELP_PAGE.replace("/*THEME*/", BASE_CSS).replace("/*TIP_CSS*/", TIP_CSS).replace("/*NAV_CSS*/", NAV_CSS)
-HELP_PAGE = HELP_PAGE.replace("/*NAV*/", NAV_HTML).replace("/*LANG_CSS*/", LANG_CSS).replace("/*LANG_SWITCH*/", THEME_BTN + LANG_SWITCH)
+HELP_PAGE = HELP_PAGE.replace("/*SIDEBAR*/", sidebar()).replace("/*MENU_BTN*/", MENU_BTN).replace("/*NAV*/", NAV_HTML).replace("/*LANG_CSS*/", LANG_CSS).replace("/*LANG_SWITCH*/", THEME_BTN + LANG_SWITCH)
 HELP_PAGE = HELP_PAGE.replace("/*I18N_JS*/", I18N_JS).replace("/*NAV_JS*/", NAV_JS).replace("/*TIP_JS*/", TIP_JS)
