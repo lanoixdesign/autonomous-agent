@@ -104,13 +104,13 @@ continue** → ③ done, open the chat.
 - **Simple / Expert** Settings: Simple hides permissions, limits, IDC and technical options; ❓ buttons
   explain each setting; error messages are translated (EN/FR).
 - **☀ Day / ☾ Night theme**: a sun/moon button at the top of every page (and in the ☰ phone menu) switches
-  between a clean, high-contrast light theme (WCAG AA) and the neon night theme. Settings → General →
+  between a calm light theme and a soft dark-grey night theme (both WCAG AA). Settings → General →
   Display → **Theme: Day / Night / Automatic** (default: Automatic = follows your computer or phone). The
   choice is remembered in this browser.
 
 | Chat, day theme | Chat, night theme |
 |---|---|
-| ![Chat, day theme](docs/v6-chat-light-en.png) | ![Chat, night theme](docs/v6-chat-dark-en.png) |
+| ![Chat, day theme](docs/v091-chat-light-fr.png) | ![Chat, night theme](docs/v091-chat-dark-fr.png) |
 
 | A question in plain words (phone, day) | My files | Settings: theme, Simple / Expert |
 |---|---|---|
@@ -254,7 +254,7 @@ the logs).
   commitments, and a forced "good enough now" answer; saying "I don't know" costs less than an
   unsupported claim. A hypothesis to test, see [IDC mode](#idc-mode-optional-off-by-default).
 - **Harness** (`python -m agent serve`):
-  - dark neon web chat with **approval cards that ask a plain question** ("Allow writing report.md?"),
+  - calm web chat (day / night) with **approval cards that ask a plain question** ("Allow writing report.md?"),
     a **live swarm graph** of the sub-agents, and several conversations running in parallel;
   - **attachments**;
   - **several API keys per category with hard limits**, pasted all at once, **one key per helper** matched to
@@ -840,6 +840,15 @@ an `<iframe sandbox="allow-scripts allow-forms allow-modals">` (opaque origin: t
 app or the internet). **Download the project (.zip)** = `GET /dev/zip?project=<name>` (caches and hidden
 files left out). API: `GET /dev/projects`, `POST /dev/projects {name, kind}`, `POST /dev/test {project}`.
 
+### A calmer interface (0.9.1)
+
+Same features, quieter screens. Neutral backgrounds (off-white by day, soft dark grey at night, never pure black), one muted blue accent, softened success / warning / error colours, and no halos, glows, gradients, blur or animated pulses. Text is 15 px with 1.5 line height and lines of about 70 characters; every text colour meets WCAG AA in both themes (checked by `tests/test_v091_theme.py`). Each page shows the essentials first: rarely used settings sit under **Advanced options** (keys pool and backup hint, critic rounds, phone tunnel, API header / OpenAPI / description), the event journal on the dashboard is folded, "Stop all" only appears while something runs, and the chat side panel starts folded on mid-size screens.
+
+| Before (0.9.0) | After (0.9.1) |
+|---|---|
+| ![Chat before](docs/v091-before-chat-dark-fr.png) | ![Chat after](docs/v091-chat-dark-fr.png) |
+| ![Settings before](docs/v091-before-settings-light-fr.png) | ![Settings after](docs/v091-settings-light-fr.png) |
+
 ### Self-check, handoffs, memory by meaning and business APIs (0.9)
 
 - **Check the answer before sending it** (chat side panel, or Settings → Answer check; off by default because each check is one more model call). After the draft final answer, a *Critic* (same model, no tools, short prompt) checks the criteria you asked for, the consistency with the actions really done, and the language. Verdict `ok` → the answer is sent; `revise` → the issues are given back to the agent, which fixes its answer, at most 1–3 rounds (`POST /settings {"critic": true, "critic_rounds": 2}`). An unreadable or failed review never blocks the answer. Each review is a line in the trace and a 🔎 card (with its score) in the agents graph.
@@ -1025,13 +1034,13 @@ une vraie IA : choisis un service (**Groq** est recommandé et gratuit), suis le
 - Réglages **Simple / Expert** : Simple masque autorisations, limites, IDC et options techniques ; des
   boutons ❓ expliquent chaque réglage ; les messages d'erreur sont traduits (EN/FR).
 - **Thème ☀ Jour / ☾ Nuit** : un bouton soleil/lune en haut de chaque page (et dans le menu ☰ du
-  téléphone) passe d'un thème clair, net et très contrasté (WCAG AA) au thème néon de nuit. Réglages →
+  téléphone) passe d'un thème clair et calme à un thème de nuit gris foncé doux (tous deux WCAG AA). Réglages →
   Général → Affichage → **Thème : Jour / Nuit / Automatique** (par défaut : Automatique = suit ton
   ordinateur ou téléphone). Le choix est mémorisé dans ce navigateur.
 
 | Chat, thème jour | Chat, thème nuit |
 |---|---|
-| ![Chat, thème jour](docs/v6-chat-light-fr.png) | ![Chat, thème nuit](docs/v6-chat-dark-fr.png) |
+| ![Chat, thème jour](docs/v091-chat-light-fr.png) | ![Chat, thème nuit](docs/v091-chat-dark-fr.png) |
 
 | Une question en mots simples (téléphone, jour) | Mes fichiers | Réglages : thème, Simple / Expert |
 |---|---|---|
@@ -1189,7 +1198,7 @@ Terminal pour voir le journal).
   coûte moins cher qu'une affirmation non étayée. Une hypothèse à tester, voir
   [Mode IDC](#mode-idc-facultatif-désactivé-par-défaut).
 - **Harness** (`python -m agent serve`) :
-  - chat web au thème néon sombre avec des **cartes de validation qui posent une question claire**
+  - chat web calme (jour / nuit) avec des **cartes de validation qui posent une question claire**
     (« Autoriser l'écriture de report.md ? »), un **graphe de l'essaim en direct** et plusieurs conversations en parallèle ;
   - **pièces jointes** ;
   - **plusieurs clés d'API par catégorie avec limites strictes**, collées d'un coup, **une clé par assistant**
@@ -1806,6 +1815,16 @@ téléphone) avec `Content-Security-Policy: sandbox allow-scripts …; connect-s
 une `<iframe sandbox="allow-scripts allow-forms allow-modals">` (origine opaque : la page ne peut appeler ni
 l'app ni internet). **Télécharger le projet (.zip)** = `GET /dev/zip?project=<nom>` (caches et fichiers
 cachés exclus). API : `GET /dev/projects`, `POST /dev/projects {name, kind}`, `POST /dev/test {project}`.
+
+### Une interface plus calme (0.9.1)
+
+Les mêmes fonctions, des écrans plus reposants. Fonds neutres (blanc cassé le jour, gris foncé doux la nuit, jamais noir pur), un seul accent bleu sourd, des couleurs succès / attention / erreur adoucies, et plus aucun halo, lueur, dégradé, flou ni pulsation animée. Le texte fait 15 px, interligne 1,5, lignes d'environ 70 caractères ; chaque couleur de texte respecte le WCAG AA dans les deux thèmes (vérifié par `tests/test_v091_theme.py`). Chaque page montre d'abord l'essentiel : les réglages rares sont rangés sous **Options avancées** (groupe de clés et astuce de secours, tours du Critique, tunnel du téléphone, en-tête / OpenAPI / description des API), le journal des événements du tableau de bord est replié, « Tout arrêter » n'apparaît que pendant un travail, et le panneau latéral du chat démarre replié sur les écrans moyens.
+
+| Avant (0.9.0) | Après (0.9.1) |
+|---|---|
+| ![Chat avant](docs/v091-before-chat-dark-fr.png) | ![Chat après](docs/v091-chat-dark-fr.png) |
+| ![Réglages avant](docs/v091-before-settings-light-fr.png) | ![Réglages après](docs/v091-settings-light-fr.png) |
+| ![Téléphone, jour](docs/v091-mobile-chat-light-fr.png) | ![Tableau de bord, nuit](docs/v091-dashboard-dark-fr.png) |
 
 ### Auto-vérification, relais, mémoire par le sens et API métier (0.9)
 

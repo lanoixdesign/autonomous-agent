@@ -15,7 +15,7 @@ CONNECT_PAGE = r"""<!doctype html>
  section{background:#fff;border:1px solid #dde1e6;border-radius:12px;padding:16px;margin-bottom:14px}
  h2{font-size:16px;margin:0 0 8px} p{margin:6px 0} .muted{color:#5a6270;font-size:14px}
  input{width:100%;font-size:16px;padding:12px;border:1px solid #cfd4da;border-radius:10px}
- button,.btn{display:inline-block;width:100%;margin-top:10px;padding:13px;font:600 16px system-ui;border:0;border-radius:10px;background:#4062bb;color:#fff;cursor:pointer;text-align:center;text-decoration:none}
+ button,.btn{display:inline-block;width:100%;margin-top:10px;padding:13px;font:600 16px system-ui;border:0;border-radius:10px;background:var(--accent);color:#fff;cursor:pointer;text-align:center;text-decoration:none}
  button.lite{background:#e7ecfa;color:#2f4aa0} button.danger{background:#f7d4d4;color:#9a1d14}
  #qr svg{width:100%;max-width:300px;height:auto;display:block;margin:10px auto;border-radius:8px}
  #qrurl{word-break:break-all;font:13px ui-monospace,monospace;background:#f6f7f9;padding:8px;border-radius:8px}
@@ -23,6 +23,7 @@ CONNECT_PAGE = r"""<!doctype html>
  .apil{border:1px solid #dde1e6;border-radius:10px;padding:10px 12px;margin:8px 0} .apil b{font-size:15px} .apil .u{font:13px ui-monospace,monospace;word-break:break-all}
  .apil .bdg{display:inline-block;font-size:12px;background:#eef1f6;border-radius:999px;padding:1px 8px;margin:4px 4px 0 0}
  .apil .acts{display:flex;gap:8px} .apil .acts button{width:auto;padding:8px 14px;font-size:14px;margin-top:8px}
+ #apiadd>summary{cursor:pointer;font-weight:600;margin:10px 0 4px} details.adv>summary{cursor:pointer;margin:10px 0 4px}
  label.f{display:block;font-weight:600;font-size:14px;margin:10px 0 4px} label.ck{display:flex;gap:8px;align-items:flex-start;margin:10px 0;font-size:15px} label.ck input{width:auto;margin-top:4px}
  #apimsg.ok,#apimsg.err{margin-top:8px}
  code{font-size:13px;background:#f0f2f5;padding:1px 4px;border-radius:4px} ol{padding-left:20px;margin:6px 0}
@@ -46,17 +47,19 @@ CONNECT_PAGE = r"""<!doctype html>
   <button id="logout" class="lite" data-i18n="connect.logout"></button></section>
  <section id="apis" hidden><h2 data-i18n="apis.title"></h2><p class="muted" data-i18n="apis.help"></p>
   <div id="apilist"></div>
+  <details id="apiadd"><summary data-i18n="apis.addTitle"></summary>
   <form id="apiform" autocomplete="off">
    <label class="f" for="apiname" data-i18n="apis.name"></label><input id="apiname" required maxlength="40" data-i18n-placeholder="apis.namePh">
    <label class="f" for="apibase" data-i18n="apis.base"></label><input id="apibase" type="url" required data-i18n-placeholder="apis.basePh">
-   <label class="f" for="apihdr" data-i18n="apis.header"></label><input id="apihdr" value="Authorization">
    <label class="f" for="apival" data-i18n="apis.value"></label><input id="apival" type="password" autocomplete="new-password" data-i18n-placeholder="apis.valuePh">
+   <details class="adv"><summary data-i18n="ui.advanced"></summary>
+   <label class="f" for="apihdr" data-i18n="apis.header"></label><input id="apihdr" value="Authorization">
    <label class="f" for="apispec" data-i18n="apis.spec"></label><input id="apispec" type="url" data-i18n-placeholder="apis.specPh">
-   <label class="f" for="apidesc" data-i18n="apis.desc"></label><input id="apidesc" maxlength="300">
+   <label class="f" for="apidesc" data-i18n="apis.desc"></label><input id="apidesc" maxlength="300"></details>
    <label class="ck"><input type="checkbox" id="apiauto"><span data-i18n="apis.autoGet"></span></label>
    <label class="ck"><input type="checkbox" id="apispend"><span data-i18n="apis.spends"></span></label>
    <button id="apisave" type="submit" data-i18n="apis.add"></button><button id="apicancel" type="button" class="lite" hidden data-i18n="apis.cancel"></button>
-   <p id="apimsg" aria-live="polite"></p></form>
+   <p id="apimsg" aria-live="polite"></p></form></details>
   <p class="muted" data-i18n="apis.how"></p></section>
  <section><h2 data-i18n="connect.howTitle"></h2>
   <ol><li data-i18n="connect.how1"></li><li data-i18n="connect.how2"></li><li data-i18n="connect.how3"></li></ol>
@@ -127,9 +130,9 @@ function edit(a){ editing = a ? a.id : null;
   $("apival").value = ""; $("apival").placeholder = a && a.auth_set ? t("apis.valueKeep") : t("apis.valuePh");
   $("apispec").value = a ? (a.openapi_url || "") : ""; $("apidesc").value = a ? (a.description || "") : "";
   $("apiauto").checked = !!(a && a.auto_get); $("apispend").checked = !!(a && a.spends);
-  $("apisave").textContent = t(a ? "apis.save" : "apis.add"); $("apicancel").hidden = !a; if(a) $("apiname").focus(); }
+  $("apisave").textContent = t(a ? "apis.save" : "apis.add"); $("apicancel").hidden = !a; if(a){ $("apiadd").open = true; $("apiname").focus(); } }
 async function loadApis(){
-  try{ const st = await capi("GET", "/app/status"); CSRF = st.csrf || ""; const r = await capi("GET", "/app/apis"); APIS = r.apis || []; $("apis").hidden = false; drawApis();
+  try{ const st = await capi("GET", "/app/status"); CSRF = st.csrf || ""; const r = await capi("GET", "/app/apis"); APIS = r.apis || []; $("apis").hidden = false; drawApis(); if(!APIS.length) $("apiadd").open = true;
     if(st.editable === false){ $("apiform").hidden = true; apiMsg(t("apis.locked"), true); }
   }catch(e){ $("apis").hidden = true; }
 }

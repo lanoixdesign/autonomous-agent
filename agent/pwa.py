@@ -8,15 +8,15 @@ import math
 import struct
 import zlib
 
-THEME = "#05050B"
-ACCENT = (11, 11, 20)        # icon background (dark)
-NEON = (0, 212, 255)        # icon nodes and links (neon blue)
+THEME = "#1D1F23"
+ACCENT = (29, 31, 35)        # icon background (soft dark grey)
+NEON = (163, 184, 222)      # icon nodes and links (muted accent)
 
 # Paths the service worker may cache (network first, cache as offline fallback). Nothing else.
 SHELL = ["/", "/dashboard", "/connect", "/manifest.webmanifest", "/icon-192.png", "/icon-512.png",
          "/apple-touch-icon.png", "/icon.svg"]
 
-HEAD = """<meta name="theme-color" content="#05050B">
+HEAD = """<meta name="theme-color" content="#1D1F23">
 <link rel="manifest" href="/manifest.webmanifest">
 <link rel="icon" href="/icon.svg" type="image/svg+xml">
 <link rel="apple-touch-icon" href="/apple-touch-icon.png">
@@ -58,10 +58,10 @@ _NODES = [(0.5, 0.33), (0.32, 0.64), (0.68, 0.64)]
 _EDGES = [(0, 1), (0, 2), (1, 2)]
 
 ICON_SVG = ('<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100"><rect width="100" height="100" rx="22" '
-            'fill="rgb(11,11,20)"/><g stroke="#00D4FF" stroke-width="5" stroke-linecap="round">'
+            'fill="rgb(29,31,35)"/><g stroke="#A3B8DE" stroke-width="5" stroke-linecap="round">'
             + "".join(f'<line x1="{_NODES[a][0]*100:g}" y1="{_NODES[a][1]*100:g}" x2="{_NODES[b][0]*100:g}" '
                       f'y2="{_NODES[b][1]*100:g}"/>' for a, b in _EDGES)
-            + '</g>' + "".join(f'<circle cx="{x*100:g}" cy="{y*100:g}" r="9" fill="#00D4FF"/>' for x, y in _NODES)
+            + '</g>' + "".join(f'<circle cx="{x*100:g}" cy="{y*100:g}" r="9" fill="#A3B8DE"/>' for x, y in _NODES)
             + '</svg>').encode()
 
 

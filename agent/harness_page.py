@@ -6,9 +6,9 @@ from .theme import APPROVAL_JS, BASE_CSS, DASH_CSS, NAV_CSS, NAV_HTML, NAV_JS, T
 
 DASH_EXTRA = r"""
  .prog{height:6px;background:var(--sunk);border:1px solid var(--line);border-radius:4px;overflow:hidden;margin:4px 0 2px}
- .prog i{display:block;height:100%;background:linear-gradient(90deg,#00D4FF,#38BDF8);box-shadow:0 0 8px #00D4FF;transition:width .4s}
+ .prog i{display:block;height:100%;background:var(--accent);transition:width .4s}
  .ap .q{color:var(--strong);font-weight:700;font-size:15px;text-align:center;margin:2px 0 6px}
- .ap button.ok{background:#2563EB!important;border-color:#2563EB!important;color:#fff} .ap button.no{background:#374151!important;border-color:#374151!important;color:#fff}
+ .ap button.ok{background:var(--accent)!important;border-color:var(--accent)!important;color:#fff} .ap button.no{background:#374151!important;border-color:#374151!important;color:#fff}
 """
 
 PAGE = r"""<!doctype html>
@@ -24,14 +24,14 @@ PAGE = r"""<!doctype html>
  h2{font-size:13px;text-transform:uppercase;letter-spacing:.04em;color:#5a6270;margin:0 0 8px}
  textarea{width:100%;box-sizing:border-box;min-height:80px} button{cursor:pointer}
  .task{padding:6px;border-radius:6px;cursor:pointer;border:1px solid transparent}
- .task:hover{background:#f0f2f5} .task.sel{border-color:#4062bb;background:#eef2fb}
+ .task:hover{background:#f0f2f5} .task.sel{border-color:var(--accent);background:#eef2fb}
  .st{font-size:11px;padding:1px 6px;border-radius:9px;background:#e4e7eb;margin-left:4px}
  .st.running,.st.queued,.st.cancelling{background:#fff0c2} .st.done{background:#d3f2dc}
  .st.error,.st.cancelled,.st.stopped,.st.interrupted,.st.denied,.st.expired{background:#f7d4d4}
- .agent{margin:3px 0;padding:4px 6px;border-left:3px solid #4062bb;background:#f7f8fa}
+ .agent{margin:3px 0;padding:4px 6px;border-left:3px solid var(--accent);background:#f7f8fa}
  .agent small{color:#5a6270} pre{white-space:pre-wrap;word-break:break-word;margin:4px 0;font-size:12px}
  #events{max-height:55vh;overflow:auto;font:12px/1.35 ui-monospace,monospace}
- .ev{border-bottom:1px solid #eef0f2;padding:2px 0} .ev b{color:#4062bb}
+ .ev{border-bottom:1px solid #eef0f2;padding:2px 0} .ev b{color:var(--accent)}
  .ap{border:1px solid #f0c36d;background:#fffaf0;border-radius:6px;padding:6px;margin-bottom:8px}
  .ap .who{font-weight:600} .muted{color:#8a919c}
  table{border-collapse:collapse;width:100%;font-size:12px} td,th{padding:3px 6px;border-bottom:1px solid #eef0f2;text-align:right}
@@ -55,7 +55,7 @@ PAGE = r"""<!doctype html>
 <header class="apphead"><a class="back" href="/" data-i18n="nav.back"></a><h1 data-i18n="dash.heading"></h1>/*NAV*/<span class="sp"></span>
  /*LANG_SWITCH*/
  <button id="stopall" data-i18n="btn.stopall" data-i18n-title="title.stopall"></button>
- <label><span data-i18n="token.label"></span> <input id="token" type="password" data-i18n-placeholder="token.placeholder"></label></header>
+ <label id="tokwrap" hidden><span data-i18n="token.label"></span> <input id="token" type="password" data-i18n-placeholder="token.placeholder"></label></header>
 <main>
  <section><h2 data-i18n="dash.newTask"></h2>
   <textarea id="task" data-i18n-placeholder="dash.taskPlaceholder"></textarea>
@@ -65,7 +65,7 @@ PAGE = r"""<!doctype html>
    <button id="cancel" style="float:right;display:none" data-i18n="dash.cancel"></button></h2>
   <div id="tree" class="muted" data-i18n="dash.selectTask"></div>
   <h2 style="margin-top:12px" data-i18n="dash.result"></h2><pre id="result" class="muted">—</pre>
-  <h2 data-i18n="dash.events"></h2><div id="events"></div></section>
+  <details id="evbox"><summary><h2 style="display:inline" data-i18n="dash.events"></h2></summary><div id="events"></div></details></section>
  <section><h2 data-i18n="dash.approvals"></h2><div id="approvals" class="muted"></div>
   <h2 style="margin-top:14px" data-i18n="dash.rate"></h2><div id="rates"></div>
   <h2 style="margin-top:14px" data-i18n="dash.keys"></h2><div id="keys" class="muted" data-i18n="dash.singleKey"></div></section>
@@ -86,7 +86,8 @@ PAGE = r"""<!doctype html>
 const $ = id => document.getElementById(id);
 const tok = $("token"); tok.value = sessionStorage.getItem("harnessToken") || "";
 tok.onchange = () => sessionStorage.setItem("harnessToken", tok.value);
-fetch("/auth/status").then(r=>r.json()).then(s=>{ if(s.required && !s.authenticated && !tok.value) location.replace("/connect"); }).catch(()=>{});
+if(tok.value) $("tokwrap").hidden = false;
+fetch("/auth/status").then(r=>r.json()).then(s=>{ if(s.required) $("tokwrap").hidden = false; if(s.required && !s.authenticated && !tok.value) location.replace("/connect"); }).catch(()=>{});
 let cur = null, since = 0, evcache = [];
 function el(tag, cls, text){const e=document.createElement(tag); if(cls) e.className=cls; if(text!=null) e.textContent=text; return e;}
 function fail(e){ $("msg").textContent = t("err.prefix",{msg:e.message}); }

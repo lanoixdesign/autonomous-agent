@@ -12,8 +12,8 @@ KEYS_CSS = r"""
  .blist li,.bres li{display:flex;gap:8px;align-items:center;flex-wrap:wrap;padding:7px 10px;border:1px solid var(--line);border-radius:10px;background:var(--sunk);font-size:13px}
  .blist li b{color:var(--strong)} .blist code,.bres code,.jcard code{font:12px var(--mono);color:var(--soft);background:var(--panel);border:1px solid var(--line);border-radius:7px;padding:1px 7px}
  .blist .linkish{margin-left:auto;font-size:12.5px}
- .bres li.ok{border-color:rgba(34,197,94,.45)} .bres li.ok span{color:var(--ok);font-weight:600}
- .bres li.bad{border-color:rgba(248,113,113,.45)} .bres li.bad span{color:var(--bad);font-weight:600}
+ .bres li.ok{border-color:rgba(var(--ok-rgb),0.27)} .bres li.ok span{color:var(--ok);font-weight:600}
+ .bres li.bad{border-color:rgba(var(--bad-rgb),0.27)} .bres li.bad span{color:var(--bad);font-weight:600}
  .brows{display:flex;flex-direction:column;gap:6px;margin:6px 0}
  .brow{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,2fr) auto;gap:6px;align-items:center}
  .brow input{width:100%;padding:9px 11px;min-height:38px}
@@ -25,12 +25,12 @@ KEYS_CSS = r"""
  .jcard .ptop{display:flex;gap:8px;align-items:center;flex-wrap:wrap} .jcard .pname{color:var(--strong);font-weight:700}
  .jwhy{font-size:13px;color:var(--soft);margin:4px 0 6px}
  .jchip{display:inline-flex;align-items:center;gap:6px;padding:6px 12px;border:1px solid var(--line2);border-radius:999px;cursor:pointer;font-size:13px;background:var(--panel)}
- .jchip:has(input:checked){border-color:var(--blue);background:rgba(0,212,255,.12);color:var(--strong)}
+ .jchip:has(input:checked){border-color:var(--blue);background:rgba(var(--accent-rgb),0.072);color:var(--strong)}
  .jchip input{accent-color:var(--blue);margin:0;width:16px;height:16px}
  .jmodel summary{font-size:12.5px;margin:6px 0 2px} .jmodel input{max-width:340px}
  .poolbox{border:1px dashed var(--line2);border-radius:14px;padding:10px 14px;margin:10px 0;background:var(--sunk)}
  .poolbox select{width:auto;min-width:220px;margin-left:6px}
- .subp{border:1px solid rgba(0,212,255,.4);border-radius:16px;padding:12px 14px;margin-top:12px;background:var(--sunk)}
+ .subp{border:1px solid rgba(var(--accent-rgb),0.24);border-radius:16px;padding:12px 14px;margin-top:12px;background:var(--sunk)}
  .subp[hidden]{display:none}
  @media (max-width:560px){ .brow{grid-template-columns:1fr auto} .brow input[type=text]{grid-column:1 / span 2} .poolbox select{min-width:0;width:100%;margin:6px 0 0} }
 """
