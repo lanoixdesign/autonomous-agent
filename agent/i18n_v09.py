@@ -2,6 +2,16 @@
 
 EN_V09 = {
     # Critic / self-evaluation
+    "who.critic": "Critic",
+    "human.handoff": "{who} wants to hand the task over to « {role} »",
+    "human.apiList": "{who} wants to see your APIs",
+    "simple.apiList": "{who} looked at your APIs",
+    "human.apiGet": "{who} wants to read {api}: GET {path}",
+    "simple.apiGet": "🔌 {who} read {api}: GET {path}",
+    "human.apiSend": "{who} wants to CHANGE data in {api}: {method} {path}",
+    "simple.apiSend": "🔌 {who} changed data in {api}: {method} {path}",
+    "human.apiPay": "💳 {who} wants to make a PAYMENT / order with {api}: {method} {path}",
+    "simple.apiPay": "💳 {who} called {api} (payment): {method} {path}",
     "critic.task": "Critic: check the answer (round {n})",
     "critic.toggle": "Check the answer before sending it",
     "critic.toggle.title": "A Critic re-reads the draft answer (what you asked, correctness, language). If it is not good enough, the agent fixes it. Uses a few more tokens.",
@@ -11,6 +21,7 @@ EN_V09 = {
     "trace.draft": "Draft answer (before the check)",
     "status.revise": "to fix",
     "set.sec.critic": "Answer check (self-evaluation)",
+    "set.nav.critic": "Answer check",
     "set.critic.help": "When it is on, a Critic re-reads each final answer before you get it: does it do everything you asked, is it consistent with what the agent really did, is it in your language? If not, the agent fixes it (at most the number of rounds below). Off by default: each check costs one more model call.",
     "set.critic.enabled": "Check the answer before sending it",
     "set.critic.rounds": "Rounds at most",
@@ -22,7 +33,7 @@ EN_V09 = {
     "swarm.score": "score {s}/10",
     # memory
     "mem.semantic": "Memory: by meaning + keywords ({model})",
-    "mem.keyword": "Memory: keywords (add a key tagged « Embeddings » for search by meaning)",
+    "mem.keyword": "Memory: keywords (add a key with « embeddings » ticked in Settings → API keys to search by meaning)",
     # business APIs (Connect tab)
     "apis.title": "🔌 My APIs",
     "apis.help": "Connect a business API (CRM, invoicing, your own service…). The agent can then read it and, with your OK, change data in it. The secret (auth header value) is stored like your keys: never shown again, never given to the model.",
@@ -60,6 +71,16 @@ EN_V09 = {
 }
 
 FR_V09 = {
+    "who.critic": "Critique",
+    "human.handoff": "{who} veut passer la main à « {role} »",
+    "human.apiList": "{who} veut voir tes API",
+    "simple.apiList": "{who} a regardé tes API",
+    "human.apiGet": "{who} veut lire {api} : GET {path}",
+    "simple.apiGet": "🔌 {who} a lu {api} : GET {path}",
+    "human.apiSend": "{who} veut MODIFIER des données dans {api} : {method} {path}",
+    "simple.apiSend": "🔌 {who} a modifié des données dans {api} : {method} {path}",
+    "human.apiPay": "💳 {who} veut faire un PAIEMENT / une commande avec {api} : {method} {path}",
+    "simple.apiPay": "💳 {who} a appelé {api} (paiement) : {method} {path}",
     "critic.task": "Critique : vérifier la réponse (tour {n})",
     "critic.toggle": "Vérifier la réponse avant de l'envoyer",
     "critic.toggle.title": "Un Critique relit le brouillon de réponse (ce que tu as demandé, l'exactitude, la langue). Si ce n'est pas assez bon, l'agent corrige. Consomme un peu plus de jetons.",
@@ -69,6 +90,7 @@ FR_V09 = {
     "trace.draft": "Brouillon de réponse (avant vérification)",
     "status.revise": "à revoir",
     "set.sec.critic": "Vérification des réponses (auto-évaluation)",
+    "set.nav.critic": "Vérification",
     "set.critic.help": "Quand c'est activé, un Critique relit chaque réponse finale avant que tu la reçoives : fait-elle tout ce que tu as demandé, est-elle cohérente avec ce que l'agent a vraiment fait, est-elle dans ta langue ? Sinon, l'agent la corrige (au plus le nombre de tours ci-dessous). Désactivé par défaut : chaque vérification coûte un appel au modèle en plus.",
     "set.critic.enabled": "Vérifier la réponse avant de l'envoyer",
     "set.critic.rounds": "Tours au maximum",
@@ -78,7 +100,7 @@ FR_V09 = {
     "swarm.handoff": "relais",
     "swarm.score": "note {s}/10",
     "mem.semantic": "Mémoire : par le sens + mots-clés ({model})",
-    "mem.keyword": "Mémoire : mots-clés (ajoute une clé avec la tâche « Embeddings » pour chercher par le sens)",
+    "mem.keyword": "Mémoire : mots-clés (ajoute une clé avec « embeddings » coché dans Réglages → Clés d'API pour chercher par le sens)",
     "apis.title": "🔌 Mes API",
     "apis.help": "Connecte une API métier (CRM, facturation, ton propre service…). L'agent peut alors la lire et, avec ton accord, y modifier des données. Le secret (valeur de l'en-tête d'authentification) est rangé comme tes clés : jamais réaffiché, jamais donné au modèle.",
     "apis.none": "Aucune API pour l'instant.",

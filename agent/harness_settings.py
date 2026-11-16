@@ -144,7 +144,7 @@ SETTINGS_PAGE = r"""<!doctype html>
 <div id="restartbar" class="banner restart" hidden><span id="restartwhat"></span><button id="restart1" class="primary" data-i18n="set.restart"></button></div>
 <div class="wrap">
  <nav class="side" data-i18n-aria="set.heading">
-  <a href="#keys" data-i18n="set.sec.keys"></a><a href="#general" data-i18n="set.sec.general"></a><a href="#sandbox" data-i18n="set.sec.sandbox"></a><a href="#safety" class="xp" data-i18n="set.sec.safety"></a>
+  <a href="#keys" data-i18n="set.sec.keys"></a><a href="#general" data-i18n="set.sec.general"></a><a href="#sandbox" data-i18n="set.sec.sandbox"></a><a href="#critic" data-i18n="set.nav.critic"></a><a href="#safety" class="xp" data-i18n="set.sec.safety"></a>
   <a href="#idc" class="xp" data-i18n="set.sec.idc"></a><a href="#phone" data-i18n="set.sec.phone"></a><a href="#app" data-i18n="set.sec.app"></a></nav>
  <fieldset id="all" class="cols">
  <section id="keys" class="card"><h2 data-i18n="set.sec.keys"></h2>

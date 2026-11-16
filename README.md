@@ -840,6 +840,13 @@ an `<iframe sandbox="allow-scripts allow-forms allow-modals">` (opaque origin: t
 app or the internet). **Download the project (.zip)** = `GET /dev/zip?project=<name>` (caches and hidden
 files left out). API: `GET /dev/projects`, `POST /dev/projects {name, kind}`, `POST /dev/test {project}`.
 
+### Self-check, handoffs, memory by meaning and business APIs (0.9)
+
+- **Check the answer before sending it** (chat side panel, or Settings → Answer check; off by default because each check is one more model call). After the draft final answer, a *Critic* (same model, no tools, short prompt) checks the criteria you asked for, the consistency with the actions really done, and the language. Verdict `ok` → the answer is sent; `revise` → the issues are given back to the agent, which fixes its answer, at most 1–3 rounds (`POST /settings {"critic": true, "critic_rounds": 2}`). An unreadable or failed review never blocks the answer. Each review is a line in the trace and a 🔎 card (with its score) in the agents graph.
+- **Handoffs**: the `handoff` tool (`to`, `brief`) passes the whole task to a specialist with the request and the work done so far; the specialist answers the user directly and its answer becomes the agent's answer (also checked by the Critic when it is on). Chains like Agent → Codeur → Testeur → Critique work; max 4 hand-overs per run, an agent cannot hand over to its own role, and if the specialist does not finish, the work comes back. The graph marks these cards "handoff". Uses the `delegate` permission like sub-agents.
+- **Semantic memory**: `memory_recall` mixes meaning and keywords (0.65 × cosine + 0.35 × keywords) when a key has **embeddings** ticked (Settings → API keys) (any OpenAI-compatible `POST /embeddings`). Vectors live in `memory/vectors.sqlite3` (standard library `sqlite3`, no server), are computed once per note and redone if the model changes. Without an embeddings key, or if the service fails, recall uses keywords as before. Groq has no embeddings endpoint: add e.g. an OpenAI, Mistral or local (Ollama / LM Studio) key with « embeddings » ticked. `GET /health` shows `memory.semantic`.
+- **Business APIs** (Connect → 🔌 My APIs, or `GET/POST /app/apis`, `POST /app/apis/<id>`, `POST /app/apis/<id>/delete`): name, base URL, auth header name and value (stored in the secret store like keys, only shown masked, never sent to the model, removed from responses), optional OpenAPI JSON URL (endpoints listed to the agent). Tools: `api_list` (read), `api_get` (network; asks each time unless "The agent may read (GET) without asking me" is ticked for that API), `api_send` (send: POST/PUT/PATCH/DELETE, approval card), `api_pay` (spend, for APIs marked "can spend money"; never automatic, blocked while `spend` is `deny`, the default). Paths only: the agent cannot leave the base URL (no other host, no `../`).
+
 ### Tests
 
 ```bash
@@ -853,6 +860,7 @@ builds, each smoke-tested, attached to a GitHub Release.
 
 ### Honest limitations
 
+- **0.9**: the Critic is the same model as the agent: it catches missing items and language slips, not every factual error, and each round costs one model call (with a free Groq key, expect rate-limit pauses). Semantic memory needs a key with « embeddings » ticked (Groq has none). Business APIs: JSON / text only, one auth header, no OAuth flow, no file upload; OpenAPI is read once (JSON only, not YAML). Models sometimes do the specialist's work themselves instead of handing over.
 - **Language and retries (0.8.2)**: the language of a request is guessed from common words and accents
   (French / English only); a very short or mixed message uses the previous turn's language, then the app's.
   Models may still slip into English inside tool output or code comments. A malformed action is retried 3
@@ -1799,6 +1807,13 @@ une `<iframe sandbox="allow-scripts allow-forms allow-modals">` (origine opaque 
 l'app ni internet). **Télécharger le projet (.zip)** = `GET /dev/zip?project=<nom>` (caches et fichiers
 cachés exclus). API : `GET /dev/projects`, `POST /dev/projects {name, kind}`, `POST /dev/test {project}`.
 
+### Auto-vérification, relais, mémoire par le sens et API métier (0.9)
+
+- **Vérifier la réponse avant de l'envoyer** (panneau du chat, ou Réglages → Vérification ; désactivé par défaut car chaque vérification coûte un appel au modèle). Après le brouillon de réponse finale, un *Critique* (même modèle, sans outils, consigne courte) vérifie les critères que tu as demandés, la cohérence avec les actions vraiment faites et la langue. Verdict `ok` → la réponse part ; `revise` → les problèmes sont rendus à l'agent, qui corrige sa réponse, 1 à 3 tours au plus (`POST /settings {"critic": true, "critic_rounds": 2}`). Une vérification illisible ou en échec ne bloque jamais la réponse. Chaque vérification est une ligne dans le déroulé et une carte 🔎 (avec sa note) dans le graphe des agents.
+- **Relais** : l'outil `handoff` (`to`, `brief`) passe toute la tâche à un spécialiste avec la demande et le travail déjà fait ; le spécialiste répond directement et sa réponse devient celle de l'agent (vérifiée aussi par le Critique s'il est activé). Les chaînes comme Agent → Codeur → Testeur → Critique marchent ; 4 relais au plus par tâche, un agent ne peut pas passer la main à son propre rôle, et si le spécialiste ne finit pas, le travail revient. Le graphe marque ces cartes « relais ». Utilise la permission `delegate` comme les sous-agents.
+- **Mémoire par le sens** : `memory_recall` mélange le sens et les mots-clés (0,65 × cosinus + 0,35 × mots-clés) quand une clé a **embeddings** coché (Réglages → Clés d'API) (n'importe quel `POST /embeddings` compatible OpenAI). Les vecteurs sont dans `memory/vectors.sqlite3` (`sqlite3` de la bibliothèque standard, sans serveur), calculés une fois par note et refaits si le modèle change. Sans clé d'embeddings, ou si le service échoue, la recherche se fait par mots-clés comme avant. Groq n'a pas d'embeddings : ajoute par exemple une clé OpenAI, Mistral ou locale (Ollama / LM Studio) avec « embeddings » coché. `GET /health` affiche `memory.semantic`.
+- **API métier** (Connexion → 🔌 Mes API, ou `GET/POST /app/apis`, `POST /app/apis/<id>`, `POST /app/apis/<id>/delete`) : nom, URL de base, nom et valeur de l'en-tête d'authentification (rangée dans le coffre comme les clés, affichée seulement masquée, jamais envoyée au modèle, retirée des réponses), URL OpenAPI JSON facultative (les points d'accès sont listés à l'agent). Outils : `api_list` (lecture), `api_get` (réseau ; demande à chaque fois sauf si « L'agent peut lire (GET) sans me demander » est coché pour cette API), `api_send` (envoi : POST/PUT/PATCH/DELETE, carte d'accord), `api_pay` (dépense, pour les API marquées « peut dépenser de l'argent » ; jamais automatique, bloqué tant que `spend` vaut `deny`, la valeur par défaut). Chemins seulement : l'agent ne peut pas sortir de l'URL de base (pas d'autre hôte, pas de `../`).
+
 ### Tests
 
 ```bash
@@ -1812,6 +1827,7 @@ de bout en bout hors ligne avec le backend mock, et une compilation de l'applica
 
 ### Limites (honnêtement)
 
+- **0.9** : le Critique est le même modèle que l'agent : il repère les oublis et les erreurs de langue, pas toutes les erreurs de fond, et chaque tour coûte un appel au modèle (avec une clé Groq gratuite, attends-toi à des pauses de limite). La mémoire par le sens demande une clé avec « embeddings » coché (Groq n'en a pas). API métier : JSON / texte seulement, un seul en-tête d'authentification, pas de flux OAuth, pas d'envoi de fichiers ; OpenAPI lu une fois (JSON seulement, pas YAML). Les modèles font parfois eux-mêmes le travail du spécialiste au lieu de passer la main.
 - **Langue et nouvelles tentatives (0.8.2)** : la langue d'une demande est devinée d'après des mots courants
   et les accents (français / anglais seulement) ; un message très court ou mélangé garde la langue du tour
   précédent, sinon celle de l'application. Le modèle peut encore glisser de l'anglais dans les sorties

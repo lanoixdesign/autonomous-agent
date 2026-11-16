@@ -378,7 +378,9 @@ class Task:
         with self._lock:
             if ev == "spawn":
                 self.agents[entry["child"]] = {"id": entry["child"], "parent": entry.get("agent"),
-                                               "depth": entry.get("child_depth"), "task": entry.get("task"),
+                                               "depth": entry.get("child_depth"),
+                                               "task": (str(entry.get("task") or "").split("\n\n")[0]
+                                                        if entry.get("handoff") else entry.get("task")),
                                                "status": "running", "answer": None, "steps": 0,
                                                "max_steps": (entry.get("budget") or {}).get("max_steps"),
                                                "isolated": bool(entry.get("isolated")),
@@ -431,7 +433,8 @@ class Task:
             done = a.get("status") not in (None, "queued", "running", "cancelling")
             prog = 1.0 if done else (min(1.0, st / mx) if mx else 0.0)
             out.append({"id": a["id"], "parent": a.get("parent"), "depth": a.get("depth") or 0,
-                        "task": (a.get("task") or "")[:300], "status": a.get("status"), "steps": st,
+                        "task": ((a.get("task") or "").split("\n\n")[0] if a.get("handoff") else (a.get("task") or ""))[:300],
+                        "status": a.get("status"), "steps": st,
                         "max_steps": mx or None, "progress": round(prog, 3),
                         "isolated": bool(a.get("isolated")), "answer": (a.get("answer") or "")[:500] or None,
                         "role": a.get("role") or role_task(a.get("task") if a["id"] != "root" else ""),
@@ -770,7 +773,8 @@ class Harness:
         def on_event(kind: str, data: dict) -> None:
             if kind == "assistant":
                 task.add_event("message", agent=data.get("agent", "root"), content=data.get("content"),
-                               final=data.get("final"))
+                               final=data.get("final"), **{k: True for k in ("draft", "reviewed", "handoff")
+                                                           if data.get(k)})
             elif kind == "stop":
                 task.add_event("stop", agent=data.get("agent", "root"), reason=data.get("reason"))
             elif kind == "idc":

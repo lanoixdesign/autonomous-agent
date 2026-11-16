@@ -188,13 +188,26 @@ def test_handoffs_are_limited(make_agent, tmp_path):
             if any(m["role"] == "tool" for m in messages):
                 obs = [m["content"] for m in messages if m["role"] == "tool"][-1]
                 return say("fin:" + obs[:60])
-            return call_tool("handoff", {"to": "Encore", "brief": "continue"}, "h")
+            n = str(messages[1]["content"]).count("Handed over by")
+            return call_tool("handoff", {"to": f"Role{n}", "brief": "continue"}, "h")
     agent = make_agent(Loop(), perms=ALLOW, budget=BIG, swarm=SwarmConfig(max_depth=1, max_children=20, child_max_steps=30))
     res = agent.run("go")
     assert res.stop_reason == "final" and MAX_HANDOFFS == 4
     log = [json.loads(x) for x in (tmp_path / "state" / "audit.jsonl").read_text().splitlines()]
     assert sum(1 for e in log if e.get("event") == "spawn" and e.get("handoff")) == MAX_HANDOFFS
     assert "no more hand-overs" in json.dumps(log)
+
+
+def test_no_handoff_to_the_same_role(make_agent):
+    class Same:
+        def chat(self, messages, tools=None):
+            obs = [m["content"] for m in messages if m["role"] == "tool"]
+            if obs:
+                return say("fin: " + obs[-1][-120:])
+            return call_tool("handoff", {"to": "Codeur", "brief": "écris app.py"}, "h")
+    agent = make_agent(Same(), perms=ALLOW, budget=BIG, swarm=SwarmConfig(max_depth=1))
+    res = agent.run("Passe la main au Codeur")
+    assert res.stop_reason == "final" and "you ARE the Codeur" in res.answer
 
 
 def test_handoff_answer_is_checked_by_the_critic(make_agent):

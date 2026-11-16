@@ -197,7 +197,7 @@ def spawn(parent: "Agent", task: str, max_steps: int | None = None,
 def run_child(parent: "Agent", task: str, max_steps: int | None = None,
               allowed_tools: list[str] | None = None, share: int = 1,
               workspace: Path | None = None, handoff: bool = False,
-              result: dict | None = None) -> tuple[str, str]:
+              result: dict | None = None, role: str | None = None) -> tuple[str, str]:
     """Run one sub-agent to completion; returns (child id, observation for the parent).
 
     `share` > 1 (parallel batch): the child may reserve at most 1/share of what is left.
@@ -257,6 +257,7 @@ def run_child(parent: "Agent", task: str, max_steps: int | None = None,
     child.key_task = role_task(task)      # key pool: research / writing / code / analysis / vision / general
     # same language as the user's request, same confinement and rules as the parent (developer mode)
     child.lang, child.ui_lang = getattr(parent, "lang", None), getattr(parent, "ui_lang", None)
+    child.handoff_role = role             # a specialist who received a hand-over (never hands over to itself)
     child.child_rules = getattr(parent, "child_rules", "")
     child.extra_rules = child.child_rules
     child.refresh_system()
@@ -375,12 +376,19 @@ def handoff(agent: "Agent", to: str, brief: str) -> str:
     brief = str(brief or "").strip()
     if not brief:
         raise ToolError("brief is empty: say what the specialist must do")
+    mine = str(getattr(agent, "handoff_role", None) or "").strip().lower()
+    if mine and role.lower() == mine:
+        raise ToolError(f"you ARE the {role}: do this part yourself now (write files, run tools), then answer "
+                        "or hand over to a different role")
     if agent.swarm_state is None or not agent.swarm_state.take_handoff():
         raise ToolError(f"no more hand-overs in this run (max {MAX_HANDOFFS}); finish the task yourself")
-    task = f"{role}: {brief}\n\n--- Handed over by {agent.agent_id} (you now own the task; answer the user directly) ---\n" \
-           f"{handoff_context(agent)}"
+    task = (f"{role}: {brief}\n\nYou are the {role}. Do this part yourself now with your tools. Hand over again "
+            f"(handoff) only to a DIFFERENT role, and only if the request asks for it after your part.\n"
+            f"--- Handed over by {agent.agent_id} (you now own the task; answer the user directly) ---\n"
+            f"{handoff_context(agent)}")
     box: dict = {}
-    _, obs = run_child(agent, task, None, None, 1, handoff=True, result=box)
+    # the parent stops after a hand-over: the specialist gets everything that is left (not a sub-task budget)
+    _, obs = run_child(agent, task, 10 ** 6, None, 1, handoff=True, result=box, role=role)
     if box.get("stop_reason") == "final":
         agent.handoff_result = box.get("answer") or ""
         return f"[handed over to {box.get('child')} ({role})] it answered the user."

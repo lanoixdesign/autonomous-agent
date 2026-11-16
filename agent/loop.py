@@ -138,6 +138,7 @@ class Agent:
         self.lang_hint: str | None = None  # set by the harness from the raw message (before file notes)
         self.critic_rounds = 0            # v0.9: reviews of the draft answer per turn (0 = off; root only)
         self.handoff_result: str | None = None   # v0.9: answer of the specialist this agent handed over to
+        self.handoff_role: str | None = None     # v0.9: the role this agent took over (handoff target)
         if idc is not None:
             idc.on_change = lambda data: self.on_event("idc", data)
         if swarm and allow_spawn and depth < swarm.max_depth + swarm_mod_max_handoffs():

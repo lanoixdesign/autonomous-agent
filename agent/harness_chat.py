@@ -691,7 +691,7 @@ $("tournext").onclick=()=>tour(tstep+1); $("tourback").onclick=()=>tour(tstep-1)
 document.addEventListener("keydown",e=>{ if(e.key!=="Escape") return; if(tstep>=0) tour(-1); else if(!$("filesp").hidden) closeFiles(); });
 function svgEl(tag,attrs){ const e=document.createElementNS(SVGNS,tag); for(const k in attrs) e.setAttribute(k,attrs[k]); return e; }
 function agCard(a){ const c=el("div","ag"+(a.critic?" critic":"")+(a.handoff?" handoff":"")); c.dataset.id=a.id;
-  const top=el("div","agtop"); top.append(el("span","agname",TRACE_TECH?a.id:agentShort(a.id)), el("span","agst")); c.append(top, el("div","agrole",a.task||""));
+  const top=el("div","agtop"); top.append(el("span","agname",TRACE_TECH?a.id:agentShort(a.id)), el("span","agst")); c.append(top, el("div","agrole",a.critic ? t("critic.task",{n:(/critic(\d+)$/.exec(a.id)||[])[1]||1}) : (a.task||"")));
   const p=el("div","prog"), i=el("i"); p.append(i); c.append(p, el("div","agmeta"), el("div","agkey")); c.title=a.task||""; return c; }
 // which pool key serves this agent (masked) and for which job; "shared" when no key is tagged for its job
 function keyLine(a){ const task=tr("task",a.key_task||a.role||"general");

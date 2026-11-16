@@ -86,9 +86,9 @@ function hostOf(u){ try{ return new URL(u).host; }catch(e){ return cutS(u,40); }
 function roleOf(task){ const s=String(task||""), m=/^\s*([^:\n]{1,32}):/.exec(s); return m ? m[1].trim() : ""; }
 function rolesOf(g){ const ts=Array.isArray(g.tasks) ? g.tasks : (g.task!=null ? [g.task] : []);
   return ts.map(x=>roleOf(typeof x==="string" ? x : (x && (x.role||x.name||x.task)) || "")).filter(Boolean); }
-function agentWho(id){ if(!id || id==="root") return t("who.agent");
+function agentWho(id){ if(!id || id==="root") return t("who.agent"); if(/\.critic\d+$/.test(id)) return t("who.critic");
   return ROLES[id] ? t("who.helperRole",{role:ROLES[id]}) : t("who.helperN",{n:id.split(".").slice(1).join(".")}); }
-function agentShort(id){ if(!id || id==="root") return t("who.short.root");
+function agentShort(id){ if(!id || id==="root") return t("who.short.root"); if(/\.critic\d+$/.test(id)) return t("who.critic");
   return ROLES[id] || t("who.short.helper",{n:id.split(".").slice(1).join(".")}); }
 // What an agent wants to do / did, as one sentence. kind: "human" (approval card) or "simple" (trace line).
 function plain(kind, tool, g, agent, category){
@@ -100,8 +100,10 @@ function plain(kind, tool, g, agent, category){
   }
   const k={read_file:"read",list_files:"list",search_files:"searchFiles",write_file:"write",edit_file:"edit",web_fetch:"fetch",
     web_search:"search",shell:"shell",memory_write:"memory",memory_forget:"forget",memory_recall:"recall",load_skill:"skill",list_skills:"skill",
-    github_write:"github",github_get:kind==="human"?"githubRead":"github"}[tool];
-  const v={who,path:p,q:cutS(g.query||g.pattern||"",50),host:hostOf(g.url),tool};
+    github_write:"github",github_get:kind==="human"?"githubRead":"github",
+    handoff:"handoff",api_list:"apiList",api_get:"apiGet",api_send:"apiSend",api_pay:"apiPay"}[tool];
+  const v={who,path:p,q:cutS(g.query||g.pattern||"",50),host:hostOf(g.url),tool,
+    role:cutS(g.to||"",40),api:cutS(g.api||"",40),method:String(g.method||"GET").toUpperCase()};
   if(kind==="human" && tool==="github_write") v.path=cutS(g.path||g.repo||"",60);
   if(k && !(kind==="human" && k==="recall")) return tr(kind,k,v);
   if(kind==="human" && (category==="send" || category==="spend")) return tr("human",category,v);
