@@ -127,6 +127,7 @@ CHAT_PAGE = r"""<!doctype html>
   box-shadow:0 0 12px rgba(157,0,255,.35),inset 0 0 10px rgba(157,0,255,.12);animation:glow 3.4s ease-in-out infinite;transition:transform .7s cubic-bezier(.5,0,.3,1),opacity .7s}
  @keyframes glow{0%,100%{box-shadow:0 0 10px rgba(157,0,255,.3),inset 0 0 8px rgba(157,0,255,.1)}50%{box-shadow:0 0 20px rgba(185,43,255,.55),inset 0 0 12px rgba(157,0,255,.2)}}
  .ag .agtop{display:flex;justify-content:space-between;gap:8px;align-items:center}
+ .ag.earlier{opacity:.6;border-style:dashed}
  .ag .agname{font:700 12px var(--mono);color:var(--strong)} .ag .agst{font-size:11px;color:var(--blue)} .ag.done .agst{color:var(--ok)} .ag.bad .agst{color:var(--bad)}
  .ag .agrole{font-size:12px;color:var(--soft);margin:3px 0 6px;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden}
  .ag .prog{height:6px;border-radius:4px;background:var(--panel2);overflow:hidden}
@@ -398,7 +399,8 @@ function traceKind(e){
   if(e.kind==="user") return "turn";
   if(e.kind==="message") return (e.final && depth(e.agent)===0) ? "out" : "trace";
   if(e.kind==="audit" || e.kind==="approval" || e.kind==="idc") return "trace";
-  if(e.kind==="keys" && ["wait","resume"].includes(e.action)) return "trace";   // live in the status bar; history in the trace
+  if(e.kind==="keys" && ["wait","resume"].includes(e.action)) return "trace";
+  if(e.kind==="retry") return "trace";   // live in the status bar; history in the trace
   return "out";
 }
 function traceSummary(st){
@@ -449,7 +451,9 @@ function node(e){
     return null; }
   if(e.kind==="keys"){ const x=keysText(e); if(!x) return null;
     return el("div","sys keys"+(["refused","exhausted"].includes(e.action)?" bad":(e.action==="resume"?" okk":"")),(depth(e.agent)>0?agentShort(e.agent)+" · ":"")+x); }
+  if(e.kind==="retry") return el("div","sys keys",(depth(e.agent)>0?agentShort(e.agent)+" · ":"")+t("trace.retryN",{n:e.attempt||1,max:e.max||3}));
   if(e.kind==="idc_toggle") return el("div","sys",t("idc.step.toggled",{state:t(e.enabled?"idc.on":"idc.off")}));
+  if(e.kind==="audit" && e.event==="llm_retry") return null;   // the plain "retry" line says it already
   if(e.kind==="audit" && !TRACE_TECH){ const x=simpleAudit(e); if(x!==undefined) return x; }
   if(e.kind==="approval" && !TRACE_TECH){ const k={pending:"waiting",approved:"allowed",denied:"refusedByYou",expired:"expired","auto-approved":"auto"}[e.status];
     return k ? el("div","step"+(["denied","expired"].includes(e.status)?" deny":(e.status==="pending"?"":" merge")),tr("simple",k,{who:agentWho(e.agent)})) : null; }
@@ -565,8 +569,8 @@ async function send(){
   $("send").disabled=true;
   try{
     const files=[]; for(const f of pending) files.push({name:f.name, content_b64:await b64(f)});
-    if(!cur){ const r=await api("POST","/tasks",{task:text,files,idc:idcOn()}); nextIdc=null; tasks.push(r); pick(r.id); }
-    else await api("POST","/tasks/"+cur+"/messages",{text,files});
+    if(!cur){ const r=await api("POST","/tasks",{task:text,files,idc:idcOn(),lang:LANG}); nextIdc=null; tasks.push(r); pick(r.id); }
+    else await api("POST","/tasks/"+cur+"/messages",{text,files,lang:LANG});
     $("input").value=""; pending=[]; chips(); poll();
   }catch(e){ fail(e); }
   $("send").disabled=false;
@@ -694,7 +698,8 @@ function agUpdate(c,a){ const busy=BUSY.includes(a.status);
   c.querySelector(".prog i").style.width=Math.round(100*(a.progress||0))+"%";
   c.querySelector(".prog").setAttribute("aria-label",Math.round(100*(a.progress||0))+"%");
   c.querySelector(".agmeta").textContent=(a.max_steps?t("swarm.steps",{s:a.steps||0,max:a.max_steps}):t("swarm.stepsNoMax",{s:a.steps||0}))
-    +(a.parent && a.parent!=="root"?" · ↳ "+a.parent:"")+(a.isolated?" · "+t("swarm.isolated"):"");
+    +(a.parent && a.parent!=="root"?" · ↳ "+a.parent:"")+(a.isolated?" · "+t("swarm.isolated"):"")+(a.earlier?" · "+t("swarm.earlier",{n:a.turn}):"");
+  c.classList.toggle("earlier",!!a.earlier);
   const k=c.querySelector(".agkey"); k.textContent=keyLine(a); k.classList.toggle("shared",!!a.key && !a.key_match && (a.key_task||"general")!=="general");
   k.title=a.key_mask?a.key+" · "+a.key_mask:""; }
 function drawSwarm(){
@@ -738,7 +743,8 @@ function foot(g,kids){ const f=$("swarm").querySelector(".swfoot"); f.replaceChi
   if(Object.keys(byKey).length){ const kr=el("div","swkeys"); kr.append(el("span",null,t("swarm.keysUsed")));
     Object.entries(byKey).forEach(([name,k])=>{ const c=el("span","kc"); c.append(el("b",null,"🔑 "+name)); if(k.mask) c.append(el("code",null,k.mask)); c.append(el("span",null,k.agents.join(", "))); kr.append(c); });
     f.append(kr); }
-  f.append(el("div",null,t("swarm.merged",{n:kids.length})));
+  const okN=kids.filter(a=>a.status==="done").length, badN=kids.filter(a=>!BUSY.includes(a.status) && a.status!=="done").length;
+  f.append(el("div",badN?"step conflict":null, !badN ? t("swarm.merged",{n:okN}) : (okN ? t("swarm.mergedFail",{ok:okN,bad:badN}) : t("swarm.mergedNone",{bad:badN}))));
   const conflicts=(g.merges||[]).reduce((n,m)=>n+(m.conflicts||[]).length,0);
   if(conflicts) f.append(el("div","step conflict",t("swarm.conflicts",{n:conflicts})));
   if((g.files||[]).length){ const fl=el("div","files"); fl.append(el("span",null,t("swarm.files")));

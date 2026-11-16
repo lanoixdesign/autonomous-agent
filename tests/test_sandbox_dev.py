@@ -29,7 +29,7 @@ def run(ws, cmd, **kw):
 
 
 # ------------------------------------------------------------------------- command parsing / allowlist
-@pytest.mark.parametrize("cmd", ["ls; rm -rf /", "cat a | sh", "echo x > f", "echo $HOME", "echo `id`", "ls && pwd",
+@pytest.mark.parametrize("cmd", ["ls; rm -rf /", "cat a | sh", "echo x > f", "echo $HOME", "echo `id`", "ls && pwd; id", "ls && cat a | sh",
                                  "cat <f", "ls\nrm f", "python -c 'print(1)'", "(ls)", "ls & pwd"])
 def test_shell_operators_are_refused(ws, cmd):
     with pytest.raises(sandbox.SandboxError):

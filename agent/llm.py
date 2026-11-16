@@ -17,7 +17,7 @@ from . import USER_AGENT
 from .redact import redact
 
 PROVIDERS: dict[str, dict[str, Any]] = {
-    "groq": {"base_url": "https://api.groq.com/openai/v1", "key_env": "GROQ_API_KEY", "model": "openai/gpt-oss-120b"},
+    "groq": {"base_url": "https://api.groq.com/openai/v1", "key_env": "GROQ_API_KEY", "model": "openai/gpt-oss-20b"},
     "openai": {"base_url": "https://api.openai.com/v1", "key_env": "OPENAI_API_KEY", "model": "gpt-4o-mini"},
     "openrouter": {"base_url": "https://openrouter.ai/api/v1", "key_env": "OPENROUTER_API_KEY", "model": "openai/gpt-4o-mini"},
     "ollama": {"base_url": "http://localhost:11434/v1", "key_env": None, "model": "llama3.1"},
@@ -36,6 +36,10 @@ TRANSIENT = (408, 409, 425, 429, 500, 502, 503, 504, 520, 522, 524, 529)   # wor
 MAX_WAIT = 60.0          # one pause when every key is paused is at most this long ...
 MAX_WAITS = 6            # ... and a call waits at most this many times before giving up
 MAX_WAIT_TOTAL = 300.0   # a key that comes back later than this is not worth waiting for
+# a 400 meaning "the model wrote a broken tool call" (Groq: code tool_use_failed): worth another try, not a key problem
+TOOL_FAIL = re.compile(r"tool_use_failed|failed to call a function|tool call validation failed|"
+                       r"tool choice is none, but model called a tool|invalid tool call|"
+                       r"failed to parse tool call|attempted to call tool", re.I)
 _AGAIN = re.compile(r"try again in\s+((?:\d+(?:\.\d+)?(?:ms|h|m|s))+)", re.I)
 
 
@@ -97,7 +101,9 @@ class OpenAICompatible:
         return f"OpenAICompatible(base_url={self.base_url!r}, model={self.model!r})"
 
     def chat(self, messages: list[dict], tools: list[dict] | None = None) -> LLMReply:
-        payload: dict[str, Any] = {"model": self.model, "messages": messages, "temperature": self.temperature}
+        temp = (CALLER.get() or {}).get("temperature")     # lower on a retry after a malformed tool call
+        payload: dict[str, Any] = {"model": self.model, "messages": messages,
+                                   "temperature": self.temperature if temp is None else temp}
         if self.max_tokens:
             payload["max_tokens"] = self.max_tokens
         if tools:
@@ -131,7 +137,8 @@ class OpenAICompatible:
                         from .keys import parse_duration
                         retry_after = parse_duration(m.group(1))
                 last = LLMError(f"HTTP {e.code} from {self.base_url}: {redact(detail, [self._api_key or ''])}",
-                                status=e.code, retry_after=retry_after, ratelimit=_rl_headers(e.headers or {}))
+                                status=e.code, retry_after=retry_after, ratelimit=_rl_headers(e.headers or {}),
+                                code="tool_use_failed" if e.code == 400 and TOOL_FAIL.search(detail) else None)
                 if e.code not in TRANSIENT or attempt == self.retries:
                     raise last
                 if retry_after:
@@ -381,3 +388,11 @@ class SwitchLLM:
     def release_holder(self, holder: str) -> None:
         """A swarm agent finished: free its key in the pool."""
         self.control.router.release_holder(holder)
+
+
+def is_tool_format_error(e: BaseException) -> bool:
+    """The provider rejected the model's own output (broken tool call JSON, a tool it may not call...):
+    asking again usually works, so the agent retries instead of ending the task."""
+    if not isinstance(e, LLMError):
+        return False
+    return e.code == "tool_use_failed" or (e.status == 400 and bool(TOOL_FAIL.search(str(e))))

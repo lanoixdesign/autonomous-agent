@@ -161,7 +161,7 @@ $("create").onclick=async()=>{ const name=$("pname").value.trim(), kind=(documen
 $("go").onclick=async()=>{ const proj=$("aproj").value, text=$("atext").value.trim();
   if(!proj){ toast(t("dev.needProject"),true); return; } if(!text){ toast(t("dev.needText"),true); $("atext").focus(); return; }
   $("go").disabled=true;
-  try{ const r=await api("POST","/tasks",{task:text,dev:proj}); toast(t("dev.sent")); location.href="/#"+r.id; }
+  try{ const r=await api("POST","/tasks",{task:text,dev:proj,lang:LANG}); toast(t("dev.sent")); location.href="/#"+r.id; }
   catch(e){ fail(e); $("go").disabled=false; } };
 onLang=draw; load(); setInterval(()=>{ if(!document.hidden) load(); }, 15000);
 </script></body></html>

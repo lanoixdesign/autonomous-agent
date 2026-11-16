@@ -188,6 +188,26 @@ in the sandbox and answers in plain words, **⬇ Download the project (.zip)** g
 |---|---|
 | ![Coder and Tester](docs/v8-chat-coder-tester-light-en.png) | ![Preview](docs/v8-dev-preview-dark-en.png) |
 
+#### Answers in your language (new in 0.8.2)
+
+🗣️ The assistant, every swarm helper (Researcher, Analyst, Writer…) and the developer-mode **Coder** and
+**Tester** answer in the language of your request: write in French and everything comes back in French, write
+in English and it comes back in English (when a message is too short to tell, the app's language is used).
+In French the app now says "tu" everywhere. Other fixes:
+
+- 🔁 When the model sends a malformed action (Groq `tool_use_failed`), the step is asked again (up to 3 times,
+  with a short correction and a lower temperature) instead of ending the task; the trace says "The model sent
+  a malformed action, retrying…". Helpers always get their tools, even when the model passes an empty list.
+- 📁 Developer mode keeps the Coder and Tester inside `projects/<name>/`: writes anywhere else are refused, so
+  no stray files appear at the top of the work folder.
+- 🛡️ Sandbox: `a && b` runs simple commands one after the other (stops at the first failure); `ls -R` lists
+  subfolders; the helpers are told to run one command at a time.
+- 📱 On a phone, every tab (Connect included) is visible without scrolling.
+- Python template greets in one language, Groq's default model is `openai/gpt-oss-20b`, the dashboard names
+  keys from Settings correctly, the swarm graph shows failed helpers and keeps earlier helpers after
+  "Continue", masked keys stay readable in the history after a restart, and the coordinator always keeps
+  one step for its final answer (helpers get the rest).
+
 #### Never stopped by a rate limit (new in 0.8.1)
 
 🔁 **Automatic backup key** — when a key hits a rate limit or quota (429), times out or the service has an
@@ -309,7 +329,7 @@ Environment variables (or `.env`):
 | Variable | Meaning |
 |---|---|
 | `AGENT_PROVIDER` | `groq`, `openai`, `openrouter`, `ollama`, `custom`, `mock` (default `mock`) |
-| `AGENT_MODEL` | model name (defaults: groq `openai/gpt-oss-120b`, openai `gpt-4o-mini`, openrouter `openai/gpt-4o-mini`, ollama `llama3.1`) |
+| `AGENT_MODEL` | model name (defaults: groq `openai/gpt-oss-20b`, openai `gpt-4o-mini`, openrouter `openai/gpt-4o-mini`, ollama `llama3.1`) |
 | `GROQ_API_KEY` / `OPENAI_API_KEY` / `OPENROUTER_API_KEY` | key for the chosen provider |
 | `AGENT_BASE_URL`, `AGENT_API_KEY` | any other OpenAI-compatible endpoint (`custom`) |
 | `GITHUB_TOKEN` | optional, for GitHub tools (otherwise the `gh` CLI login is used) |
@@ -489,7 +509,7 @@ keys:
     provider: groq
     key_env: GROQ_API_KEY
     categories: [text, code]
-    model: openai/gpt-oss-120b
+    model: openai/gpt-oss-20b
     priority: 1
     pricing: {input_per_1m: 0.15, output_per_1m: 0.60}
     limits: {requests_per_day: 1000, tokens_per_day: 500000, cost_per_month: 5}
@@ -833,6 +853,13 @@ builds, each smoke-tested, attached to a GitHub Release.
 
 ### Honest limitations
 
+- **Language and retries (0.8.2)**: the language of a request is guessed from common words and accents
+  (French / English only); a very short or mixed message uses the previous turn's language, then the app's.
+  Models may still slip into English inside tool output or code comments. A malformed action is retried 3
+  times; after that the helper (or the task) stops with the provider's error. Developer-mode confinement
+  covers the file tools and the sandbox commands that create, move or delete files; with the sandbox off,
+  the shell is not confined, and a Python program run in the sandbox may still write anywhere in the work
+  folder.
 - **Rate limits (0.8.1)**: with a single key, the task waits instead of stopping (max 60 s per pause, 6
   pauses per request, nothing waited for beyond 5 min); a long pause still makes a slow task. The tokens per
   minute counter shows the provider's figures after the first answer; before that, and for providers that
@@ -886,19 +913,19 @@ MIT — see [LICENSE](LICENSE).
 ## Français
 
 Un petit agent autonome open source en Python (bibliothèque standard uniquement), lisible, avec
-**outils, mémoire durable et compétences (skills)**, et des **garde-fous que vous réglez
-vous-même** : chaque outil a une catégorie de risque, et un fichier `permissions.yaml` décide, par
+**outils, mémoire durable et compétences (skills)**, et des **garde-fous que tu règles
+toi-même** : chaque outil a une catégorie de risque, et un fichier `permissions.yaml` décide, par
 catégorie et par outil, si l'appel est autorisé (`allow`), soumis à confirmation dans le terminal
 (`ask`) ou refusé (`deny`). Chaque appel d'outil est écrit dans un journal d'audit en ajout seul,
 secrets masqués.
 
-> Ce n'est pas « un agent sans garde-fous ». Les garde-fous existent ; c'est **vous** qui les réglez.
+> Ce n'est pas « un agent sans garde-fous ». Les garde-fous existent ; c'est **toi** qui les règles.
 
 ### Télécharger (sans ligne de commande)
 
 **Aucun terminal nécessaire, à aucune étape.** Des versions de bureau prêtes à l'emploi existent pour
-Windows et macOS : ni Python, ni installation, ni commande, ni fichier à modifier. Téléchargez le fichier
-correspondant à votre ordinateur sur la
+Windows et macOS : ni Python, ni installation, ni commande, ni fichier à modifier. Télécharge le fichier
+correspondant à ton ordinateur sur la
 **[page des versions (Releases)](https://github.com/lanoixdesign/autonomous-agent/releases/latest)** :
 
 | Fichier | Pour |
@@ -914,20 +941,20 @@ correspondant à votre ordinateur sur la
 > signée, et cela ne se fait qu'une fois. **La signature du code est prévue dans une version ultérieure.**
 
 **Windows (SmartScreen)**
-1. Double-cliquez sur `AutonomousAgent-windows-x64.exe`.
-2. Une fenêtre bleue **« Windows a protégé votre ordinateur »** apparaît : cliquez sur
+1. Double-clique sur `AutonomousAgent-windows-x64.exe`.
+2. Une fenêtre bleue **« Windows a protégé ton ordinateur »** apparaît : clique sur
    **Informations complémentaires**, puis sur **Exécuter quand même**.
-3. L'application s'ouvre dans votre navigateur. Pas de fenêtre de console (le journal va dans
+3. L'application s'ouvre dans ton navigateur. Pas de fenêtre de console (le journal va dans
    `AutonomousAgent\data\app.log`).
 
 **macOS (Gatekeeper)**
-1. Décompressez le fichier et déplacez `AutonomousAgent.app` dans **Applications**.
+1. Décompresse le fichier et déplace `AutonomousAgent.app` dans **Applications**.
 2. La première fois, faites un **clic droit** (ou Contrôle-clic) sur l'app → **Ouvrir**, puis encore
    **Ouvrir** dans la fenêtre qui s'affiche.
-3. Si macOS ne propose que « Placer dans la corbeille » / « OK » : ouvrez **Réglages Système →
-   Confidentialité et sécurité**, descendez jusqu'à la partie Sécurité et cliquez sur **Ouvrir quand même**
-   à côté de « AutonomousAgent », puis confirmez (mot de passe ou Touch ID).
-4. L'application s'ouvre dans votre navigateur et tourne en arrière-plan (aucune fenêtre à garder ouverte).
+3. Si macOS ne propose que « Placer dans la corbeille » / « OK » : ouvre **Réglages Système →
+   Confidentialité et sécurité**, descends jusqu'à la partie Sécurité et clique sur **Ouvrir quand même**
+   à côté de « AutonomousAgent », puis confirme (mot de passe ou Touch ID).
+4. L'application s'ouvre dans ton navigateur et tourne en arrière-plan (aucune fenêtre à garder ouverte).
 
 <details>
 <summary><b>Avancé (facultatif) : retirer l'attribut de quarantaine sur macOS</b></summary>
@@ -942,43 +969,43 @@ xattr -dr com.apple.quarantine /Applications/AutonomousAgent.app
 <details>
 <summary><b>Avancé (facultatif) : vérifier le téléchargement avec SHA256SUMS.txt</b></summary>
 
-Chaque version contient `SHA256SUMS.txt`. Téléchargez-le à côté de votre fichier, calculez l'empreinte
-SHA-256 du fichier et vérifiez qu'elle correspond à la ligne de ce fichier.
+Chaque version contient `SHA256SUMS.txt`. Télécharge-le à côté de ton fichier, calcule l'empreinte
+SHA-256 du fichier et vérifie qu'elle correspond à la ligne de ce fichier.
 
-Windows (Invite de commandes ou PowerShell, dans votre dossier Téléchargements) :
+Windows (Invite de commandes ou PowerShell, dans ton dossier Téléchargements) :
 
 ```bat
 certutil -hashfile AutonomousAgent-windows-x64.exe SHA256
 ```
 
-macOS (Terminal, dans votre dossier Téléchargements) :
+macOS (Terminal, dans ton dossier Téléchargements) :
 
 ```bash
 shasum -a 256 AutonomousAgent-macos-arm64.zip    # ou AutonomousAgent-macos-intel.zip
 shasum -a 256 -c SHA256SUMS.txt --ignore-missing  # vérifie d'un coup tous les fichiers téléchargés
 ```
 
-L'empreinte affichée doit être identique à celle de `SHA256SUMS.txt` (comparez les caractères, pas les
-majuscules/minuscules). Si elle diffère, n'ouvrez pas le fichier : téléchargez-le à nouveau depuis la page
+L'empreinte affichée doit être identique à celle de `SHA256SUMS.txt` (compare les caractères, pas les
+majuscules/minuscules). Si elle diffère, n'ouvre pas le fichier : télécharge-le à nouveau depuis la page
 des versions.
 </details>
 
-**Premier lancement : un assistant en 3 étapes dans le navigateur.** ① choisissez la langue (English /
-Français) → ② cliquez sur **🎈 Essayer sans clé** (réponses de démonstration, rien à régler) *ou* connectez
-une vraie IA : choisissez un service (**Groq** est recommandé et gratuit), suivez le **guide pas à pas**
-(« Ouvrir Groq dans un nouvel onglet », connexion, création d'une clé, copie), collez la clé (le service est
-**reconnu d'après la clé**), **Tester la clé**, puis **Enregistrer et continuer** → ③ c'est prêt, ouvrez le chat.
+**Premier lancement : un assistant en 3 étapes dans le navigateur.** ① choisis la langue (English /
+Français) → ② clique sur **🎈 Essayer sans clé** (réponses de démonstration, rien à régler) *ou* connecte
+une vraie IA : choisis un service (**Groq** est recommandé et gratuit), suis le **guide pas à pas**
+(« Ouvrir Groq dans un nouvel onglet », connexion, création d'une clé, copie), colle la clé (le service est
+**reconnu d'après la clé**), **Tester la clé**, puis **Enregistrer et continuer** → ③ c'est prêt, ouvre le chat.
 
 | Assistant (thème jour) | Assistant (thème nuit) |
 |---|---|
 | ![Assistant, jour](docs/v6-wizard-light-fr.png) | ![Assistant, nuit](docs/v6-wizard-dark-fr.png) |
 
 **Pensé pour les débutants (0.6).**
-- **« Que puis-je faire pour vous ? »** : le chat s'ouvre sur six exemples (résumer un document, écrire un
+- **« Que puis-je faire pour toi ? »** : le chat s'ouvre sur six exemples (résumer un document, écrire un
   e-mail, ranger des notes, se renseigner sur un sujet, faire un plan, traduire) et une **visite guidée** en
   4 étapes (affichée une fois ; Aide → « Revoir la visite guidée »).
 - **Des questions avec des mots simples** : avant d'agir, l'agent demande *« L'agent veut écrire le fichier
-  report.md. Vous l'autorisez ? »* avec de grands boutons **✓ Autoriser** / **✕ Refuser** et une phrase
+  report.md. Tu l'autorises ? »* avec de grands boutons **✓ Autoriser** / **✕ Refuser** et une phrase
   d'aide ; le nom de l'outil et ses arguments sont repliés sous « Détails techniques ». **Envoi** et
   **dépense** sont demandés à chaque fois.
 - **« Ce qu'a fait l'agent »** : la trace se lit comme des phrases (« L'assistant « Chercheur » a lu
@@ -991,7 +1018,7 @@ une vraie IA : choisissez un service (**Groq** est recommandé et gratuit), suiv
   boutons ❓ expliquent chaque réglage ; les messages d'erreur sont traduits (EN/FR).
 - **Thème ☀ Jour / ☾ Nuit** : un bouton soleil/lune en haut de chaque page (et dans le menu ☰ du
   téléphone) passe d'un thème clair, net et très contrasté (WCAG AA) au thème néon de nuit. Réglages →
-  Général → Affichage → **Thème : Jour / Nuit / Automatique** (par défaut : Automatique = suit votre
+  Général → Affichage → **Thème : Jour / Nuit / Automatique** (par défaut : Automatique = suit ton
   ordinateur ou téléphone). Le choix est mémorisé dans ce navigateur.
 
 | Chat, thème jour | Chat, thème nuit |
@@ -1018,20 +1045,20 @@ sont en haut de chaque page, et dans le menu ☰ sur téléphone) :
 - **Application** : version, **Redémarrer** (proposé quand un changement l'exige) et **Quitter** (arrête
   proprement le serveur ; aussi dans la barre latérale du chat).
 
-**Où vont vos clés.** Dans votre dossier utilisateur, `AutonomousAgent/data/secrets.json`, un fichier
-privé lisible par votre seul compte (mode 0600), ou dans le trousseau du système si le paquet Python
+**Où vont tes clés.** Dans ton dossier utilisateur, `AutonomousAgent/data/secrets.json`, un fichier
+privé lisible par ton seul compte (mode 0600), ou dans le trousseau du système si le paquet Python
 `keyring` est installé. Après l'enregistrement, les clés ne sont jamais renvoyées au navigateur (seulement
 masquées), jamais écrites dans les journaux ni dans l'audit. Les réglages et les clés ne se modifient
 **que depuis l'ordinateur qui fait tourner l'agent** ; un téléphone connecté à distance voit un avis 🔒
 (voir [Utiliser depuis le mobile](#utiliser-depuis-le-mobile) pour `AGENT_REMOTE_SETTINGS=1`).
 
-**Où vont les fichiers.** Tout est dans un seul dossier de votre répertoire personnel, `AutonomousAgent`
-(`C:\Users\<vous>\AutonomousAgent` ou `/Users/<vous>/AutonomousAgent`) : `workspace/` (le seul dossier
+**Où vont les fichiers.** Tout est dans un seul dossier de ton répertoire personnel, `AutonomousAgent`
+(`C:\Users\<toi>\AutonomousAgent` ou `/Users/<toi>/AutonomousAgent`) : `workspace/` (le seul dossier
 que les outils de fichiers de l'agent peuvent toucher ; « Mes fichiers » et les pièces jointes y vont),
 `data/` (réglages, clés, mémoire, journal d'audit, conversations), et les fichiers facultatifs `.env` /
 `permissions.yaml` / `providers.yaml` pour les utilisateurs avancés.
 
-**Arrêter :** cliquez sur **Quitter** (barre latérale du chat, ou Réglages → Application). Un nouveau
+**Arrêter :** clique sur **Quitter** (barre latérale du chat, ou Réglages → Application). Un nouveau
 double-clic pendant que l'app tourne rouvre simplement l'onglet du navigateur. **Langue :** choix du
 premier lancement, Réglages → Général, ou le sélecteur EN | FR.
 
@@ -1042,8 +1069,8 @@ premier lancement, Réglages → Général, ou le sélecteur EN | FR.
 #### Plusieurs clés = plusieurs assistants en même temps (nouveau en 0.7)
 
 **Plus tu ajoutes de clés, plus tes assistants travaillent en même temps.** Dans l'assistant (« J'ai
-plusieurs clés ») ou dans ⚙ Réglages → Clés d'API → **Coller plusieurs clés**, collez toutes vos clés d'un
-coup, une par ligne (éventuellement `nom: clé`), ou ajoutez-les une par une avec **+ Ajouter une autre
+plusieurs clés ») ou dans ⚙ Réglages → Clés d'API → **Coller plusieurs clés**, colle toutes tes clés d'un
+coup, une par ligne (éventuellement `nom: clé`), ou ajoute-les une par une avec **+ Ajouter une autre
 clé**. Le service de chaque clé est reconnu d'après ses premières lettres, toutes les clés sont **testées
 en même temps**, avec une ligne claire par clé (✓ « Ça marche : enregistrée sous Groq 2 » / ✗ « Groq refuse
 cette clé : elle est fausse ou a été supprimée »). Seules celles qui marchent sont enregistrées ; les clés
@@ -1051,11 +1078,11 @@ ne sont jamais affichées en clair (`gsk_••••a1b2`) et sont rangées com
 
 Ensuite, **Qui fait quoi ?** propose un travail pour chaque clé, en mots simples : clés rapides / gratuites
 pour *Recherche & résumés* et *Analyse*, modèles plus puissants pour *Rédaction* et *Code* (et
-*Images/vision* si le modèle sait lire les images). Validez en un clic ou ajustez avec les interrupteurs
-(et, si vous voulez, le modèle). Quand l'essaim travaille, chaque assistant reçoit **sa propre clé** :
+*Images/vision* si le modèle sait lire les images). Valide en un clic ou ajuste avec les interrupteurs
+(et, si tu veux, le modèle). Quand l'essaim travaille, chaque assistant reçoit **sa propre clé** :
 d'abord une clé faite pour son travail (un « Chercheur » prend une clé de recherche), sinon une clé
 *Général*, sinon n'importe quelle clé libre. Les assistants travaillent en parallèle, **un par clé qui
-marche** par défaut (Réglages → *Assistants en même temps* : Automatique, ou de 1 à 8 si vous préférez
+marche** par défaut (Réglages → *Assistants en même temps* : Automatique, ou de 1 à 8 si tu préfères
 qu'ils partagent les clés). Le graphe en direct montre quelle clé (masquée) chaque assistant utilise, et
 pour quel travail.
 
@@ -1065,22 +1092,45 @@ pour quel travail.
 
 #### Bac à sable et mode développeur (nouveau en 0.8)
 
-🛡️ **Bac à sable** — les commandes lancées par vos assistants s'exécutent dans un espace protégé : uniquement
+🛡️ **Bac à sable** — les commandes lancées par tes assistants s'exécutent dans un espace protégé : uniquement
 des commandes simples et sûres (`ls`, `cat`, `grep`, `find`, `mkdir`, `cp`, `mv`, `rm`, `python fichier.py`,
-`pytest`…), **seulement dans votre dossier de travail**, jamais sur internet, jamais avec vos clés, avec des
+`pytest`…), **seulement dans ton dossier de travail**, jamais sur internet, jamais avec tes clés, avec des
 limites de temps, de processeur, de mémoire et de sortie. Il est **toujours activé en mode Simple** ; en mode
 Expert, ⚙ Réglages → *Bac à sable* permet de le désactiver après un avertissement clair.
 
-🧑‍💻 **Mode développeur** — le nouvel onglet **Dév** : choisissez un nom, **🌐 Site web** ou **🐍 Programme
-Python**, puis décrivez ce que vous voulez (« Une page pour ma boulangerie avec les horaires et un bouton
-contact »). Un **Codeur** écrit les fichiers, un **Testeur** les vérifie et lance les tests, et vous voyez le
+🧑‍💻 **Mode développeur** — le nouvel onglet **Dév** : choisis un nom, **🌐 Site web** ou **🐍 Programme
+Python**, puis décris ce que tu veux (« Une page pour ma boulangerie avec les horaires et un bouton
+contact »). Un **Codeur** écrit les fichiers, un **Testeur** les vérifie et lance les tests, et tu vois le
 résultat tout de suite : **👁 Aperçu** affiche le site dans un cadre protégé (taille ordinateur ou téléphone),
 **▶ Lancer les tests** les exécute dans le bac à sable et répond en mots simples, **⬇ Télécharger le projet
-(.zip)** vous donne tout.
+(.zip)** te donne tout.
 
 | Codeur + Testeur au travail | Aperçu en direct |
 |---|---|
 | ![Codeur et Testeur](docs/v8-chat-coder-tester-light-fr.png) | ![Aperçu](docs/v8-dev-preview-dark-fr.png) |
+
+#### Des réponses dans ta langue (nouveau en 0.8.2)
+
+🗣️ L'assistant, chaque assistant de l'essaim (Chercheur, Analyste, Rédacteur…) et le **Codeur** et le
+**Testeur** du mode développeur répondent dans la langue de ta demande : écris en français et tout revient en
+français, écris en anglais et tout revient en anglais (quand un message est trop court pour le savoir, la
+langue de l'application est utilisée). En français, l'application te tutoie désormais partout. Autres
+corrections :
+
+- 🔁 Quand le modèle envoie une action mal formée (Groq `tool_use_failed`), l'étape est redemandée (jusqu'à
+  3 fois, avec une courte correction et une température plus basse) au lieu d'arrêter la tâche ; le
+  déroulé affiche « Le modèle a mal formé une action, je réessaie… ». Les assistants ont toujours leurs
+  outils, même quand le modèle passe une liste vide.
+- 📁 Le mode développeur garde le Codeur et le Testeur dans `projects/<nom>/` : toute écriture ailleurs est
+  refusée, donc plus de fichiers égarés à la racine du dossier de travail.
+- 🛡️ Bac à sable : `a && b` lance des commandes simples l'une après l'autre (arrêt au premier échec) ;
+  `ls -R` liste les sous-dossiers ; les assistants savent qu'il faut une commande à la fois.
+- 📱 Sur téléphone, tous les onglets (Connexion compris) sont visibles sans faire défiler.
+- Le modèle Python salue dans une seule langue, le modèle Groq par défaut est `openai/gpt-oss-20b`, le
+  tableau de bord nomme correctement les clés des Réglages, le graphe de l'essaim montre les assistants en
+  échec et garde ceux des tours précédents après « Continuer », et les clés masquées restent lisibles dans
+  l'historique après un redémarrage, et le coordinateur garde toujours une étape pour sa réponse finale
+  (les assistants se partagent le reste).
 
 #### Plus jamais coupé par une limite (nouveau en 0.8.1)
 
@@ -1089,7 +1139,7 @@ ou que le service a une erreur (5xx), la même demande part **aussitôt** sur un
 prévue pour le même travail, puis n'importe quelle autre, et en dernier recours une clé enregistrée pour un
 autre usage). Les assistants d'un essaim font pareil, en pleine tâche, sans perdre leur travail. Avec une
 seule clé (par exemple une clé Groq gratuite), l'assistant **attend que la clé revienne** (il suit le
-« réessayez dans » du fournisseur, 60 s maximum par pause) et continue au lieu de s'arrêter. Seules les clés
+« réessaie dans » du fournisseur, 60 s maximum par pause) et continue au lieu de s'arrêter. Seules les clés
 qui ne peuvent pas revenir arrêtent une tâche (toutes les clés refusées ou révoquées, limite du jour
 atteinte), avec un message clair. Le chat explique en mots simples : *« Limite atteinte sur la clé
 gsk_••••43gO, je passe sur la clé de secours… »*, *« Toutes les clés sont en pause, je reprends dans 4 s… »*.
@@ -1098,13 +1148,13 @@ gsk_••••43gO, je passe sur la clé de secours… »*, *« Toutes les cl�
 bord affichent, par clé (masquée), *« Tokens restants : 5 200 / 8 000 par minute · reprise dans 12 s »* avec
 une petite jauge, d'après les chiffres du fournisseur (en-têtes `x-ratelimit-*`) ou, avant la première
 réponse, une **estimation** (indiquée « estimé ») à partir des tokens utilisés pendant les 60 dernières
-secondes. Astuce : ajoutez une deuxième clé (de secours) pour éviter les pauses.
+secondes. Astuce : ajoute une deuxième clé (de secours) pour éviter les pauses.
 
 | Passage sur la clé de secours | Téléphone : pause et compteur |
 |---|---|
 | ![Clé de secours](docs/v81-chat-switch-light-fr.png) | ![Pause](docs/v81-mobile-wait-dark-fr.png) |
 
-Remarques : le serveur n'écoute que sur `127.0.0.1` (votre ordinateur) ; port 8765 s'il est libre, sinon
+Remarques : le serveur n'écoute que sur `127.0.0.1` (ton ordinateur) ; port 8765 s'il est libre, sinon
 un autre. Les versions macOS sont distinctes pour puce Apple et Intel. Avancé : compiler soi-même avec
 `pip install pyinstaller && pyinstaller packaging/autonomous-agent.spec` (résultat dans `dist/`), ou
 lancer `python -m agent.desktop` depuis un clone (`AGENT_TERMINAL=1` sur macOS rouvre l'app dans
@@ -1152,7 +1202,7 @@ L'application de bureau ci-dessus n'en a pas besoin. Depuis un clone :
 ```bash
 git clone https://github.com/lanoixdesign/autonomous-agent.git && cd autonomous-agent
 python -m agent run "Liste les fichiers" --provider mock --offline   # sans clé ni réseau
-cp .env.example .env    # ajoutez GROQ_API_KEY / OPENAI_API_KEY / OPENROUTER_API_KEY, ou Ollama
+cp .env.example .env    # ajoute GROQ_API_KEY / OPENAI_API_KEY / OPENROUTER_API_KEY, ou Ollama
 python -m agent chat --workspace ~/projet
 python -m agent serve --workspace ~/projet   # puis http://127.0.0.1:8765/ : assistant + ⚙ Réglages
 ```
@@ -1165,15 +1215,15 @@ quotas restants, clés masquées.
 - Testé uniquement avec le backend mock et de faux fournisseurs, pas avec de vrais fournisseurs en CI.
   **Aucun audit de sécurité n'a été fait.**
 - La copie isolée protège les fichiers, mais ce **n'est pas un bac à sable** : `shell` peut atteindre
-  tout ce que votre utilisateur peut atteindre. Lancez les tâches non fiables dans un conteneur ou une VM.
+  tout ce que ton utilisateur peut atteindre. Lance les tâches non fiables dans un conteneur ou une VM.
 - Les copies isolées sont fusionnées **fichier par fichier** : pas de fusion ligne à ligne, et les
-  fichiers en conflit sont laissés à votre arbitrage.
+  fichiers en conflit sont laissés à ton arbitrage.
 - Les validations en attente vivent en mémoire : **elles sont perdues au redémarrage**, et le tour
   passe à `interrupted`.
 - Les services d'image, de voix et d'embeddings sont des **bouchons** (routés et limités, mais pas
   implémentés).
-- Le harness est un outil local à un seul utilisateur : pas de comptes, pas de TLS. Gardez-le sur
-  127.0.0.1, ou définissez `AGENT_HARNESS_TOKEN`.
+- Le harness est un outil local à un seul utilisateur : pas de comptes, pas de TLS. Garde-le sur
+  127.0.0.1, ou définis `AGENT_HARNESS_TOKEN`.
 
 ### Documentation complète (français)
 
@@ -1199,7 +1249,7 @@ git clone https://github.com/lanoixdesign/autonomous-agent.git
 cd autonomous-agent
 python -m venv .venv && . .venv/bin/activate   # Python 3.10+
 pip install pyyaml pytest   # facultatifs : sans PyYAML, un mini-analyseur YAML intégré est utilisé
-cp .env.example .env        # mettez votre clé dans .env (ne le commitez jamais)
+cp .env.example .env        # mets ta clé dans .env (ne le commite jamais)
 ```
 
 ### Configurer le modèle
@@ -1209,7 +1259,7 @@ Variables d'environnement (ou `.env`) :
 | Variable | Rôle |
 |---|---|
 | `AGENT_PROVIDER` | `groq`, `openai`, `openrouter`, `ollama`, `custom`, `mock` (défaut `mock`) |
-| `AGENT_MODEL` | nom du modèle (défauts : groq `openai/gpt-oss-120b`, openai `gpt-4o-mini`, openrouter `openai/gpt-4o-mini`, ollama `llama3.1`) |
+| `AGENT_MODEL` | nom du modèle (défauts : groq `openai/gpt-oss-20b`, openai `gpt-4o-mini`, openrouter `openai/gpt-4o-mini`, ollama `llama3.1`) |
 | `GROQ_API_KEY` / `OPENAI_API_KEY` / `OPENROUTER_API_KEY` | clé du fournisseur choisi |
 | `AGENT_BASE_URL`, `AGENT_API_KEY` | tout autre point d'accès compatible OpenAI (`custom`) |
 | `GITHUB_TOKEN` | facultatif, pour les outils GitHub (sinon la connexion du CLI `gh`) |
@@ -1256,7 +1306,7 @@ Exemple (essai réel, Groq `openai/gpt-oss-120b`, sans terminal donc `ask` = ref
 2. un motif **deny** correspondant (`paths.deny`, `commands.deny`, `domains.deny`) → **refus** (gagne toujours, même avec `--yolo`) ;
 3. `paths.allow` non vide et chemin non couvert → refus ;
 4. `commands.allow` / `domains.allow` correspondant et mode `ask` → autorisé ;
-5. `--yolo` transforme `ask` en `allow` **sauf pour `send` et `spend`** : pour ces deux-là, seul ce que vous avez écrit dans le fichier compte.
+5. `--yolo` transforme `ask` en `allow` **sauf pour `send` et `spend`** : pour ces deux-là, seul ce que tu as écrit dans le fichier compte.
 
 Défauts sûrs : `read: allow`, `write: ask`, `execute: ask`, `network: ask`, `send: ask`, `spend: deny`, `delegate: ask`.
 `ask` demande `[y]es / [n]o / [a]lways` (oui / non / toujours pour cette session) ; sans terminal,
@@ -1299,7 +1349,7 @@ Recherche dans `<workspace>/skills`, `<state-dir>/skills`, puis `skills/` du dé
 ### Règle d'arrêt
 
 La boucle s'arrête de façon irréversible au premier de : réponse finale, `max_steps`,
-`max_tool_calls`, `max_tokens`, appel identique répété, erreur du LLM. Pour brancher votre propre critère :
+`max_tool_calls`, `max_tokens`, appel identique répété, erreur du LLM. Pour brancher ton propre critère :
 `Agent(..., stop_rule=lambda state: "ma_raison" if ... else None)`.
 
 ### Mode IDC (facultatif, désactivé par défaut)
@@ -1379,12 +1429,12 @@ pas » et le coût).
 ### Plusieurs clés d'API, par catégorie, avec limites
 
 Facultatif. Sans fichier de clés rien ne change : la clé unique du `.env` est utilisée comme avant.
-Copiez `providers.example.yaml` en `providers.yaml` (ignoré par git ; ou `--keys FICHIER`, ou la
+Copie `providers.example.yaml` en `providers.yaml` (ignoré par git ; ou `--keys FICHIER`, ou la
 variable `AGENT_KEYS_FILE`). Chaque entrée indique la **variable d'environnement** qui contient la clé
 (`key_env`), jamais la clé elle-même, plus `provider`/`base_url`, `model` ou `models` par catégorie,
-`categories` (`text`, `code`, `image`, `audio_tts`, `audio_stt`, `embeddings`, ou les vôtres),
+`categories` (`text`, `code`, `image`, `audio_tts`, `audio_stt`, `embeddings`, ou les tiennes),
 `priority` (la plus basse d'abord), `pricing` facultatif et des `limits` : `requests_per_minute`,
-`requests_per_day`, `tokens_per_day`, `tokens_per_month`, `cost_per_day`, `cost_per_month` (dans votre
+`requests_per_day`, `tokens_per_day`, `tokens_per_month`, `cost_per_day`, `cost_per_month` (dans ta
 `currency`, nécessite `pricing`), `images_per_day`, `audio_minutes_per_day`.
 
 ```yaml
@@ -1394,7 +1444,7 @@ keys:
     provider: groq
     key_env: GROQ_API_KEY
     categories: [text, code]
-    model: openai/gpt-oss-120b
+    model: openai/gpt-oss-20b
     priority: 1
     pricing: {input_per_1m: 0.15, output_per_1m: 0.60}
     limits: {requests_per_day: 1000, tokens_per_day: 500000, cost_per_month: 5}
@@ -1429,7 +1479,7 @@ keys:
   du fournisseur est journalisée (`event: key_limit` / `key_error`).
 - `--category code` choisit la catégorie du modèle de chat ; `agent/media.py` fournit des interfaces
   minimales (`ImageGenerator`, `TextToSpeech`, `SpeechToText`, `Embeddings`) qui réservent une clé de
-  leur catégorie pour l'appel au fournisseur que vous branchez (pas de génération d'image/son intégrée).
+  leur catégorie pour l'appel au fournisseur que tu branches (pas de génération d'image/son intégrée).
 - `python -m agent keys` et le harness (`GET /keys`, barre latérale du chat, `/dashboard`) affichent le
   quota restant par clé et par catégorie, avec les clés masquées (`gsk_…abcd`).
 
@@ -1525,7 +1575,7 @@ python -m agent serve --workspace ~/projet --port 8765          # puis ouvrir ht
 AGENT_HARNESS_TOKEN=a-changer python -m agent serve --approval-timeout 120 --max-parallel 3 --max-tasks 4
 ```
 
-**Chat** (`/` ou `/chat`) : tapez un message pour lancer une conversation, ou pour continuer celle qui
+**Chat** (`/` ou `/chat`) : tape un message pour lancer une conversation, ou pour continuer celle qui
 est sélectionnée (même agent, historique conservé). Les messages des agents, les étapes d'outils, les
 lancements de sous-agents, les fusions et les conflits s'affichent en bulles marquées de l'identifiant
 de l'agent (`root`, `root.1`, `root.1.2`…). Les validations en attente apparaissent en cartes (en haut à
@@ -1540,7 +1590,7 @@ Comme le harness accepte plusieurs validations à la fois, **les sous-agents qui
 parallèle** avec lui, chacun dans sa copie isolée (voir plus haut).
 
 **Pièces jointes** : bouton 📎 ou glisser-déposer (plusieurs fichiers à la fois). Les fichiers
-apparaissent en pastilles avant l'envoi, puis en pièces jointes dans votre bulle. Ils sont enregistrés
+apparaissent en pastilles avant l'envoi, puis en pièces jointes dans ta bulle. Ils sont enregistrés
 dans `<workspace>/uploads/<id conversation>/`, et le message reçu par l'agent contient la liste de leurs
 chemins relatifs à l'espace de travail (les petits fichiers texte sont aussi recopiés), pour qu'il les
 ouvre avec `read_file`.
@@ -1577,7 +1627,7 @@ curl -s -X POST localhost:8765/approvals/<id> -H 'Content-Type: application/json
 - **Pas de réponse = refus** : une validation attend `--approval-timeout` secondes (300 par défaut), puis est refusée.
 - Écoute sur **127.0.0.1** par défaut. Si `AGENT_HARNESS_TOKEN` est défini, chaque appel d'API exige
   `Authorization: Bearer <jeton>` (à coller dans le champ « token » de la page). Écouter sur une autre
-  adresse exige un jeton et affiche un avertissement « HTTP en clair » ; pour le téléphone, utilisez
+  adresse exige un jeton et affiche un avertissement « HTTP en clair » ; pour le téléphone, utilise
   `--remote` (voir *Utiliser depuis le mobile*).
   Les POST doivent être en JSON et de même origine, et l'en-tête
   `Host` est vérifié en local.
@@ -1646,14 +1696,14 @@ question de validation (`[o]ui / [n]on / [t]oujours`) et la sortie de `keys`.
 
 Le chat et le tableau de bord s'utilisent sur téléphone (barre latérale en tiroir, gros boutons de
 validation, cartes de validation en bas d'écran) et s'installent comme une appli (PWA). Pour y accéder
-de partout, laissez le harness sur `127.0.0.1` et placez devant un **tunnel HTTPS privé**. `--remote`
+de partout, laisse le harness sur `127.0.0.1` et place devant un **tunnel HTTPS privé**. `--remote`
 rend la connexion obligatoire.
 
-**1. Tailscale (recommandé : privé à vos appareils, HTTPS)**
+**1. Tailscale (recommandé : privé à tes appareils, HTTPS)**
 
-1. Installez Tailscale sur l'ordinateur et sur le téléphone, connectez-vous au même compte
-   (https://tailscale.com/download). Activez les certificats HTTPS dans la console (DNS → HTTPS).
-2. Lancez le harness avec le tunnel :
+1. Installe Tailscale sur l'ordinateur et sur le téléphone, connecte-toi au même compte
+   (https://tailscale.com/download). Active les certificats HTTPS dans la console (DNS → HTTPS).
+2. Lance le harness avec le tunnel :
    ```bash
    python -m agent serve --remote --tunnel tailscale
    ```
@@ -1661,23 +1711,23 @@ rend la connexion obligatoire.
    qu'un **QR code** dans la console. (Équivalent manuel : `tailscale serve --bg 8765`, puis
    `python -m agent serve --remote --public-url https://<machine>.<tailnet>.ts.net`.)
    Pour arrêter le partage : `tailscale serve --https=443 off`.
-3. Scannez le QR code avec l'appareil photo du téléphone : il ouvre `/connect?pair=…` et connecte le téléphone.
+3. Scanne le QR code avec l'appareil photo du téléphone : il ouvre `/connect?pair=…` et connecte le téléphone.
 
 **2. Cloudflare Tunnel (sans compte pour un tunnel rapide, URL publique)**
 
-1. Installez `cloudflared` (https://developers.cloudflare.com/cloudflare-one/connections/connect-networks/downloads/).
+1. Installe `cloudflared` (https://developers.cloudflare.com/cloudflare-one/connections/connect-networks/downloads/).
 2. `python -m agent serve --remote --tunnel cloudflared` lance
    `cloudflared tunnel --url http://127.0.0.1:8765`, lit l'URL aléatoire `https://….trycloudflare.com`
    et affiche le QR code. Le tunnel s'arrête avec le harness. L'URL est **publique** (quiconque l'a voit
-   la page de connexion) : c'est le jeton et les limites de tentatives qui vous protègent. Pour un nom
-   permanent, utilisez un tunnel nommé dans votre compte Cloudflare, idéalement derrière Cloudflare Access.
+   la page de connexion) : c'est le jeton et les limites de tentatives qui te protègent. Pour un nom
+   permanent, utilise un tunnel nommé dans ton compte Cloudflare, idéalement derrière Cloudflare Access.
 
 **Connexion, QR codes, installation**
 
 - Le QR code contient l'URL et un **code d'appairage à usage unique** (valable 10 minutes, une seule
   fois). Ensuite le téléphone garde un cookie de session (HttpOnly, SameSite=Strict, Secure en HTTPS,
-  30 jours). Pas de QR sous la main ? Ouvrez `/connect` sur le téléphone et collez le jeton.
-- Nouveau code pour un autre appareil : ouvrez `http://127.0.0.1:8765/connect` sur l'ordinateur →
+  30 jours). Pas de QR sous la main ? Ouvre `/connect` sur le téléphone et colle le jeton.
+- Nouveau code pour un autre appareil : ouvre `http://127.0.0.1:8765/connect` sur l'ordinateur →
   **Afficher un nouveau QR code**. La même page permet de **déconnecter tous les appareils**.
 - Le jeton : `AGENT_HARNESS_TOKEN` (24 caractères minimum), sinon un jeton est généré dans
   `<state-dir>/remote-token` (fichier en mode 0600) et son emplacement est affiché (jamais le jeton).
@@ -1702,12 +1752,12 @@ rend la connexion obligatoire.
   demande toujours par défaut : le téléphone affiche simplement les mêmes cartes de validation.
 - Le harness refuse de démarrer sans jeton en mode distant ou s'il écoute sur une autre adresse que
   localhost. `--host 0.0.0.0` (réseau local) fonctionne mais affiche un avertissement **HTTP en clair** :
-  le jeton et la conversation circulent sans chiffrement sur ce réseau. Préférez un tunnel.
+  le jeton et la conversation circulent sans chiffrement sur ce réseau. Préfère un tunnel.
 
 **Réglages depuis un téléphone.** L'accès téléphone s'active dans ⚙ Réglages → Accès téléphone (choix du
 tunnel, QR code, nouveau jeton ; un redémarrage l'applique). Modifier les réglages ou les clés d'API reste
 **réservé à l'ordinateur qui fait tourner l'agent** : un appareil distant voit un avis 🔒. Pour autoriser
-les appareils connectés à les modifier, lancez l'agent avec `AGENT_REMOTE_SETTINGS=1` ; chaque changement
+les appareils connectés à les modifier, lance l'agent avec `AGENT_REMOTE_SETTINGS=1` ; chaque changement
 exige alors le jeton ou la session **et** un jeton anti-CSRF (`X-CSRF-Token`), et la page affiche un
 bandeau d'avertissement.
 
@@ -1723,7 +1773,7 @@ bandeau d'avertissement.
   les chemins système absolus et les liens qui pointent dehors sont refusés ; le dossier de données privées
   de l'app est refusé même s'il est dans l'espace de travail ;
 - Python tourne dans un processus enfant avec `shell=False`, `-I` (isolé), un **environnement minimal**
-  (aucune variable de votre session : ni clés ni jetons ; `HOME`/`TMPDIR` dans l'espace de travail ; proxys
+  (aucune variable de ta session : ni clés ni jetons ; `HOME`/`TMPDIR` dans l'espace de travail ; proxys
   vers un port mort) et un **hook d'audit Python** qui refuse le réseau, le lancement d'autres programmes,
   `ctypes`, et la lecture ou l'écriture hors de l'espace de travail (lecture de l'installation Python permise) ;
 - limites : 60 s par commande (le groupe de processus est tué), processeur 60 s, mémoire 1,5 Go et fichiers
@@ -1762,20 +1812,28 @@ de bout en bout hors ligne avec le backend mock, et une compilation de l'applica
 
 ### Limites (honnêtement)
 
+- **Langue et nouvelles tentatives (0.8.2)** : la langue d'une demande est devinée d'après des mots courants
+  et les accents (français / anglais seulement) ; un message très court ou mélangé garde la langue du tour
+  précédent, sinon celle de l'application. Le modèle peut encore glisser de l'anglais dans les sorties
+  d'outils ou les commentaires de code. Une action mal formée est redemandée 3 fois ; ensuite l'assistant (ou
+  la tâche) s'arrête avec l'erreur du fournisseur. Le confinement du mode développeur couvre les outils
+  fichiers et les commandes du bac à sable qui créent, déplacent ou suppriment des fichiers ; bac à sable
+  désactivé, le shell n'est pas confiné, et un programme Python lancé dans le bac à sable peut encore écrire
+  ailleurs dans le dossier de travail.
 - **Limites de débit (0.8.1)** : avec une seule clé, la tâche attend au lieu de s'arrêter (60 s max par
   pause, 6 pauses par demande, rien au-delà de 5 min d'attente) ; une longue pause rend quand même la tâche
   plus lente. Le compteur de tokens par minute affiche les chiffres du fournisseur après la première réponse ;
   avant, et pour les fournisseurs sans en-têtes `x-ratelimit-*`, c'est une estimation (Groq : 8 000
   tokens/minute supposés). Le mode clé unique `.env` (sans clé dans Réglages) attend aussi mais sans compteur.
 - **Aucun audit de sécurité n'a été fait.** C'est un petit projet pédagogique.
-- **Le shell est dangereux si vous le mettez en `allow`.** Les motifs de commandes interdites sont une
+- **Le shell est dangereux si tu le mets en `allow`.** Les motifs de commandes interdites sont une
   ceinture de sécurité facile à contourner (`bash -c`, scripts, alias…). Pour des tâches non fiables,
-  lancez l'agent dans un conteneur ou une VM.
+  lance l'agent dans un conteneur ou une VM.
 - Bac à sable **désactivé** : le confinement vaut pour les outils fichiers seulement, et le shell accède à
-  tout ce que votre utilisateur peut atteindre. **Activé** : le hook d'audit Python est un garde-fou pour un
+  tout ce que ton utilisateur peut atteindre. **Activé** : le hook d'audit Python est un garde-fou pour un
   assistant qui se trompe, pas une prison contre du code hostile : un hook d'audit peut en théorie être
   contourné depuis Python, les limites processeur/mémoire n'existent que sous POSIX (pas Windows), et
-  l'installation de Python reste lisible. Pour du code non fiable, utilisez un conteneur ou une VM.
+  l'installation de Python reste lisible. Pour du code non fiable, utilise un conteneur ou une VM.
 - Mode développeur : modèles volontairement minimes (pas de npm, pas de compilation, bibliothèque standard
   seulement) ; le contrôle du site est statique (il n'exécute pas le JavaScript de la page) ; les versions
   de bureau ont besoin d'un Python 3 installé sur l'ordinateur pour lancer les projets Python (pytest
@@ -1783,15 +1841,15 @@ de bout en bout hors ligne avec le backend mock, et une compilation de l'applica
 - Le masquage des secrets repose sur des motifs : un format inconnu peut passer.
 - Le contenu web peut contenir de l'injection de prompt ; le prompt système prévient le modèle, il ne l'empêche pas.
 - Le rappel mémoire est une simple recherche par mots-clés, sans embeddings.
-- `web_search` lit une page HTML publique et peut être bloqué ; préférez `web_fetch` sur des URL connues.
+- `web_search` lit une page HTML publique et peut être bloqué ; préfère `web_fetch` sur des URL connues.
 - La qualité dépend beaucoup du modèle ; les petits modèles locaux appellent souvent mal les outils.
 - Les versions de bureau ne sont **pas signées** (avertissements SmartScreen / Gatekeeper), assez lourdes
   (Python est inclus, ~10–30 Mo) et distinctes pour Mac puce Apple et Intel. Certains antivirus signalent
   à tort les exécutables PyInstaller non signés (faux positifs).
 - Accès distant : les sessions sont en mémoire (un redémarrage déconnecte les téléphones) ; pas de TLS
-  intégré (utilisez un tunnel) ; pas testé avec toutes les configurations de tunnel/proxy ; hors ligne,
+  intégré (utilise un tunnel) ; pas testé avec toutes les configurations de tunnel/proxy ; hors ligne,
   la PWA n'affiche que l'enveloppe des pages.
-- Page Réglages : sous Windows, le fichier privé des clés repose sur les droits de votre dossier
+- Page Réglages : sous Windows, le fichier privé des clés repose sur les droits de ton dossier
   utilisateur (0600 est un mode POSIX) ; le trousseau du système n'est utilisé que si le paquet Python
   `keyring` est installé (il n'est pas inclus dans les versions de bureau). **Tester la clé** ne vérifie
   que le point `/models` du fournisseur, pas l'accès à un modèle précis. Redémarrer depuis Réglages
@@ -1805,7 +1863,7 @@ de bout en bout hors ligne avec le backend mock, et une compilation de l'applica
   modifiables dans Réglages. La réserve vit dans l'application en cours (un seul processus) ; un
   assistant garde sa clé pendant son travail. Les clés collées sont masquées (interception du collage et
   `-webkit-text-security`) ; dans un navigateur sans ce CSS (ancien Firefox), les caractères **tapés**
-  directement dans la zone de collage restent visibles jusqu'à Entrée : tapez plutôt dans les lignes
+  directement dans la zone de collage restent visibles jusqu'à Entrée : tape plutôt dans les lignes
   « + Ajouter une autre clé » (champs mot de passe).
 
 ### Licence

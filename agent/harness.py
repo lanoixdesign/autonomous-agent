@@ -62,6 +62,7 @@ an authenticated multi-user server: do not expose it to a network you do not tru
 """
 from __future__ import annotations
 
+import dataclasses
 import json
 import re
 import sys
@@ -84,7 +85,7 @@ from .harness_dev import DEV_PAGE
 FILE_DOWNLOAD_MAX = 200 * 1024 * 1024   # "My files" downloads
 FILES_LIST_MAX = 500
 from . import pwa, qr, remote
-from .redact import redact
+from .redact import MASK as MASK_TEXT, redact
 from . import __version__, devmode, export, i18n, schedule, uploads
 from .idc import IDC, IDCConfig
 from .keys import role_task
@@ -93,6 +94,11 @@ from .theme import THEME_HEAD
 
 LOCAL_HOSTS = ("127.0.0.1", "localhost", "::1")
 _I18N_DATA = json.dumps(i18n.ui_strings(), ensure_ascii=False).replace("</", "<\\/")
+
+
+def _lang_arg(data: dict) -> str | None:
+    v = data.get("lang")
+    return v if isinstance(v, str) and v[:2].lower() in i18n.LANGS else None
 
 
 def render_page(page: str, lang: str | None = None, default_lang: str | None = None, theme: str | None = None) -> bytes:
@@ -112,6 +118,18 @@ def render_page(page: str, lang: str | None = None, default_lang: str | None = N
 MAX_BODY = 1_000_000
 MAX_TASK_CHARS = 20_000
 TERMINAL = ("done", "stopped", "cancelled", "error", "interrupted")
+# masked key name / value of each swarm agent, renamed when saved so redact() keeps them (see on_progress)
+POOL_OUT = {"key": "pool", "key_mask": "pool_mask", "key_task": "pool_task", "key_match": "pool_match", "keys": "pools"}
+POOL_IN = {v: k for k, v in POOL_OUT.items()}
+
+
+def _pool_fields(a: dict, names: dict) -> dict:
+    # history saved before 0.8.2 has "***REDACTED***" there: drop it (the graph then shows no key)
+    return {names.get(k, k): v for k, v in a.items()
+            if not (names is POOL_IN and (k in POOL_OUT or k in POOL_IN) and v == MASK_TEXT)}
+
+
+MAX_EARLIER = 24                        # helpers of earlier turns kept in the swarm graph
 NEVER_REMEMBER = ("send", "spend")      # these are asked every single time, whatever the rules say
 RULE_SCOPES = ("conversation", "session")
 
@@ -264,6 +282,8 @@ class Task:
         self.idc_ctrl: Any = None       # idc.IDC controller, kept while the conversation lives
         self.idc_saved: list[dict] = []  # commitments restored from the store (after a restart)
         self.dev: str | None = None     # developer mode: project name (projects/<name>/), None otherwise
+        self.ui_lang: str | None = None  # language of the page the user wrote from (when the text is unclear)
+        self.last_text: str | None = None  # this turn's message as the user wrote it
         self.store = store
         self._lock = threading.Condition(threading.RLock())   # also wakes SSE streams on new events
 
@@ -274,7 +294,8 @@ class Task:
             return redact({"id": self.id, "task": self.text, "source": self.source, "status": self.status,
                            "created": self.created, "finished": self.finished, "result": self.result,
                            "stop_reason": self.stop_reason, "usage": self.usage, "total": self.total,
-                           "agent_usage": self.agent_usage, "agents": list(self.agents.values()),
+                           "agent_usage": self.agent_usage,
+                           "agents": [_pool_fields(a, POOL_OUT) for a in self.agents.values()],
                            "turns": self.turns, "history": history, "idc": self.idc, "dev": self.dev,
                            "idc_commitments": self.commitments()})
 
@@ -297,7 +318,7 @@ class Task:
         t.idc = bool(rec.get("idc"))
         t.dev = rec.get("dev") if isinstance(rec.get("dev"), str) else None
         t.idc_saved = [c for c in rec.get("idc_commitments") or [] if isinstance(c, dict)]
-        t.agents = {a["id"]: a for a in rec.get("agents") or []} or t.agents
+        t.agents = {a["id"]: _pool_fields(a, POOL_IN) for a in rec.get("agents") or [] if isinstance(a, dict)} or t.agents
         t.events = events
         if t.status not in TERMINAL:     # the server stopped in the middle of this turn
             t.status, t.stop_reason = "interrupted", "interrupted"
@@ -312,16 +333,36 @@ class Task:
 
     def new_turn(self, text: str, attachments: list[dict] | None = None) -> None:
         with self._lock:
+            earlier = self._earlier_agents()
             self.turns += 1
             self.status = "queued"
             self.finished = None
             self.result = self.stop_reason = None
             self.agents = {"root": {"id": "root", "parent": None, "depth": 0, "task": text,
-                                    "status": "queued", "answer": None}}
+                                    "status": "queued", "answer": None}, **earlier}
         self.cancel.clear()
         self.add_event("user", text=text, turn=self.turns, attachments=attachments or [])
         self.add_event("status", status="queued")
         self.save()
+
+    def _earlier_agents(self) -> dict[str, dict]:
+        """Helpers of the previous turns, kept in the graph after "Continue" (ids prefixed with their turn:
+        t1:root.2) so the new turn's helpers (root.1, ...) do not replace them. Newest MAX_EARLIER only."""
+        n = self.turns
+        out: dict[str, dict] = {}
+        for aid, a in self.agents.items():
+            if aid == "root":
+                continue
+            if a.get("earlier"):
+                out[aid] = a
+                continue
+            b = dict(a, id=f"t{n}:{aid}", earlier=True, turn=n)
+            par = a.get("parent")
+            b["parent"] = par if par in (None, "root") else f"t{n}:{par}"
+            if b.get("status") in (None, "queued", "running", "cancelling"):
+                b["status"] = "interrupted"
+            out[b["id"]] = b
+        return dict(list(out.items())[-MAX_EARLIER:])
 
     def add_event(self, kind: str, **data: Any) -> None:
         with self._lock:
@@ -363,8 +404,10 @@ class Task:
                     if key["key"] not in keys:
                         keys.append(key["key"])          # more than one: the agent failed over
                     a.update(key)
+        # stored as pool / pool_mask: field names with "key" are blanked by redact() when saved, and the
+        # history must still show the MASKED key after a restart (the secret itself is never here)
         self.add_event("progress", agent=agent, steps=steps, max_steps=max_steps,
-                       **({"key": key["key"], "key_mask": key.get("key_mask")} if key.get("key") else {}))
+                       **({"pool": key["key"], "pool_mask": key.get("key_mask")} if key.get("key") else {}))
 
     def graph(self) -> dict:
         """The current turn's agent tree with live progress, plus what was merged / written (swarm graph)."""
@@ -384,7 +427,8 @@ class Task:
                         "isolated": bool(a.get("isolated")), "answer": (a.get("answer") or "")[:500] or None,
                         "role": a.get("role") or role_task(a.get("task") if a["id"] != "root" else ""),
                         "key": a.get("key"), "key_mask": a.get("key_mask"), "key_task": a.get("key_task"),
-                        "key_match": bool(a.get("key_match")), "keys": list(a.get("keys") or [])})
+                        "key_match": bool(a.get("key_match")), "keys": list(a.get("keys") or []),
+                        "earlier": bool(a.get("earlier")), "turn": a.get("turn")})
         merges = [{"agent": e.get("agent"), "children": e.get("children") or [],
                    "applied": e.get("applied") or [], "conflicts": e.get("conflicts") or [],
                    "skipped": e.get("skipped")} for e in evs if e.get("event") == "merge"]
@@ -399,9 +443,13 @@ class Task:
                 if a.get("path") and a["path"] not in files:
                     files.append(a["path"])
         kids = [a for a in out if a["id"] != "root"]
+        now = [a for a in kids if not a["earlier"]]          # this turn's helpers decide "finished and merged"
+        busy = ("running", "queued", "cancelling")
+        done = (all(a["status"] not in busy for a in now) if now else status in TERMINAL)
         return {"task": self.id, "turn": turn, "status": status, "agents": out, "merges": merges, "files": files,
-                "children": len(kids),
-                "children_done": bool(kids) and all(a["status"] not in ("running", "queued") for a in kids)}
+                "children": len(kids), "children_now": len(now),
+                "failed": sum(1 for a in kids if a["status"] not in busy + ("done",)),
+                "children_done": bool(kids) and done}
 
     def finish_turn(self, res: Any) -> None:
         with self._lock:
@@ -591,14 +639,24 @@ class Harness:
         agent = task.agent
         if agent is None or not hasattr(agent, "refresh_system"):
             return
+        ui = task.ui_lang or (self.control.cfg.get("lang") if self.control is not None else None) or self.lang
+        agent.ui_lang = ui
+        agent.lang_hint = i18n.detect_lang(task.last_text) if task.last_text else None
+        lang = agent.lang_hint or getattr(agent, "lang", None) or ui
         extra = ""
         if task.dev:
             try:
                 kind = devmode.Projects.kind_of(self.projects().path(task.dev))
             except devmode.DevError:
                 kind = None
-            extra = devmode.rules(task.dev, kind)
+            extra = devmode.rules(task.dev, kind, lang)
         agent.extra_rules = extra
+        agent.child_rules = devmode.child_rules(task.dev, lang) if task.dev else ""
+        ctx = getattr(agent, "ctx", None)
+        if ctx is not None and hasattr(ctx, "write_prefix"):
+            prefix = f"projects/{task.dev}/" if task.dev else None
+            if ctx.write_prefix != prefix:
+                agent.ctx = dataclasses.replace(ctx, write_prefix=prefix)
         agent.refresh_system()
 
     def _audit(self, task: Task | None, **entry: Any) -> dict:
@@ -626,7 +684,7 @@ class Harness:
         return self.control.sandbox_on() if self.control is not None else False
 
     def submit(self, text: str, files: Any = None, source: str = "chat", idc: bool | None = None,
-               dev: str | None = None) -> Task:
+               dev: str | None = None, lang: str | None = None) -> Task:
         if self.stopping.is_set():
             raise Busy("harness is shutting down")
         decoded = self._decode(files)          # validate everything before creating anything
@@ -634,6 +692,7 @@ class Harness:
             self.projects().path(dev)          # DevError if the project does not exist
         task = Task(text, self.store, source)
         task.dev = dev
+        task.ui_lang = i18n.normalize(lang) if lang else None
         with self._lock:
             task.idc = bool(self.settings["idc"] if idc is None else idc)
         saved = self._save(task, decoded)
@@ -642,7 +701,7 @@ class Harness:
         self._start(task, text, saved)
         return task
 
-    def send(self, task_id: str, text: str, files: Any = None) -> Task:
+    def send(self, task_id: str, text: str, files: Any = None, lang: str | None = None) -> Task:
         """Continue a conversation with a new user message (same agent, history kept)."""
         if self.stopping.is_set():
             raise Busy("harness is shutting down")
@@ -654,6 +713,8 @@ class Harness:
             if task.status not in TERMINAL:
                 raise Busy(f"task is {task.status}")
             previous, task.status = task.status, "queued"   # reserve: a concurrent send now gets Busy
+        if lang:
+            task.ui_lang = i18n.normalize(lang)
         try:
             saved = self._save(task, decoded)
         except BaseException:
@@ -665,6 +726,7 @@ class Harness:
 
     def _start(self, task: Task, text: str, saved: list[dict] | None = None) -> None:
         task.new_turn(text, uploads.public(saved or []))
+        task.last_text = text          # the user's own words (language of the answer), without file notes
         if saved:   # one audit line per uploaded file (after the user message, so the chat reads in order)
             audit = TaskAudit(self.audit_path, task)
             for s in saved:
@@ -692,6 +754,9 @@ class Harness:
                 if data.get("key_mask"):
                     ev["from_mask"] = data["key_mask"]
                 task.add_event("keys", **{"agent": "root", **ev})
+            elif kind == "retry":   # malformed tool call refused by the provider: asked again (plain line)
+                task.add_event("retry", agent=data.get("agent", "root"), attempt=data.get("attempt"),
+                               max=data.get("max"), reason=data.get("reason"))
             elif kind == "step":
                 task.on_progress(data.get("agent", "root"), data.get("steps"), data.get("max_steps"),
                                  {k: data[k] for k in ("key", "key_mask", "key_task", "key_match") if k in data})
@@ -1636,7 +1701,8 @@ def make_handler(h: Harness, token: str | None, local_only: bool, auth: "remote.
                 if dev is not None and not isinstance(dev, str):
                     return self._send(400, {"error": "'dev' must be a project name"})
                 try:
-                    return self._send(201, h.submit(text, data.get("files"), idc=data.get("idc"), dev=dev).snapshot())
+                    return self._send(201, h.submit(text, data.get("files"), idc=data.get("idc"), dev=dev,
+                                                    lang=_lang_arg(data)).snapshot())
                 except devmode.DevError as e:
                     return self._send(404, {"error": str(e), "code": e.code})
                 except uploads.UploadError as e:
@@ -1649,7 +1715,8 @@ def make_handler(h: Harness, token: str | None, local_only: bool, auth: "remote.
                 if text is None:
                     return
                 try:
-                    return self._send(202, h.send(m.group(1), text, data.get("files")).snapshot(full=False))
+                    return self._send(202, h.send(m.group(1), text, data.get("files"),
+                                                  lang=_lang_arg(data)).snapshot(full=False))
                 except uploads.UploadError as e:
                     return self._send(e.status, {"error": str(e)})
                 except KeyError:

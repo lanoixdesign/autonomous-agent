@@ -13,7 +13,7 @@ def _shell(ctx: ToolContext, a: dict) -> str:
     if ctx.sandbox_on():
         try:
             return sandbox.run(ctx.workspace, cmd, int(a.get("timeout") or ctx.shell_timeout),
-                               ctx.max_output, ctx.deny_paths)
+                               ctx.max_output, ctx.deny_paths, ctx.write_root())
         except sandbox.SandboxError as e:
             raise ToolError(str(e))
     timeout = min(int(a.get("timeout") or ctx.shell_timeout), 600)
@@ -32,6 +32,6 @@ TOOLS = [
     Tool("shell", "Run a shell command in the workspace (bash/sh). Secret env vars are removed. "
          "When the sandbox is on: one simple allowed command (ls, cat, grep, find, python file.py, pytest...), "
          "paths inside the workspace only, no pipes/redirections, no network.", "execute",
-         params(["command"], command=s("command line"), timeout={"type": "integer", "description": "seconds"}),
+         params(["command"], command=s("command line"), timeout={"type": ["integer", "null"], "description": "optional, seconds"}),
          _shell, "command", "command"),
 ]
