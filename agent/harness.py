@@ -381,7 +381,16 @@ class Task:
                                                "depth": entry.get("child_depth"), "task": entry.get("task"),
                                                "status": "running", "answer": None, "steps": 0,
                                                "max_steps": (entry.get("budget") or {}).get("max_steps"),
-                                               "isolated": bool(entry.get("isolated"))}
+                                               "isolated": bool(entry.get("isolated")),
+                                               "handoff": bool(entry.get("handoff"))}
+            elif ev == "critic" and entry.get("critic"):    # self-evaluation: one node per review
+                lang = entry.get("lang") or getattr(self, "ui_lang", None) or "en"
+                self.agents[entry["critic"]] = {
+                    "id": entry["critic"], "parent": entry.get("agent") or "root", "depth": 1,
+                    "task": i18n.t(lang, "critic.task", n=entry.get("round") or 1),
+                    "status": "done" if entry.get("ok") else "revise", "steps": 1, "max_steps": 1,
+                    "answer": "; ".join(entry.get("issues") or []) or None, "critic": True,
+                    "score": entry.get("score")}
             elif ev == "child_done" and entry.get("agent") in self.agents:
                 a = self.agents[entry["agent"]]
                 a["status"] = "done" if entry.get("stop_reason") == "final" else entry.get("stop_reason")
@@ -428,7 +437,9 @@ class Task:
                         "role": a.get("role") or role_task(a.get("task") if a["id"] != "root" else ""),
                         "key": a.get("key"), "key_mask": a.get("key_mask"), "key_task": a.get("key_task"),
                         "key_match": bool(a.get("key_match")), "keys": list(a.get("keys") or []),
-                        "earlier": bool(a.get("earlier")), "turn": a.get("turn")})
+                        "earlier": bool(a.get("earlier")), "turn": a.get("turn"),
+                        "handoff": bool(a.get("handoff")), "critic": bool(a.get("critic")),
+                        "score": a.get("score")})
         merges = [{"agent": e.get("agent"), "children": e.get("children") or [],
                    "applied": e.get("applied") or [], "conflicts": e.get("conflicts") or [],
                    "skipped": e.get("skipped")} for e in evs if e.get("event") == "merge"]
@@ -448,7 +459,7 @@ class Task:
         done = (all(a["status"] not in busy for a in now) if now else status in TERMINAL)
         return {"task": self.id, "turn": turn, "status": status, "agents": out, "merges": merges, "files": files,
                 "children": len(kids), "children_now": len(now),
-                "failed": sum(1 for a in kids if a["status"] not in busy + ("done",)),
+                "failed": sum(1 for a in kids if a["status"] not in busy + ("done", "revise")),
                 "children_done": bool(kids) and done}
 
     def finish_turn(self, res: Any) -> None:
@@ -561,11 +572,12 @@ class Harness:
         self.stopping = threading.Event()
         self.rules: dict[str, dict] = {}
         self.schedules: dict[str, dict] = {}
-        self.settings: dict[str, Any] = {"idc": bool(self.idc_config.enabled)}
+        self.settings: dict[str, Any] = {"idc": bool(self.idc_config.enabled), "critic": False, "critic_rounds": 2}
         self.public_url: str | None = None   # remote mode: the URL a phone should open (tunnel, LAN...)
         self.control: Any = None             # userconfig.AppControl: Settings page, keys from the UI, restart / quit
         self.deny_paths: list[Path] = []     # private app data (state dir), never reachable from the sandbox
         self._projects: Any = None
+        self.memory: Any = None              # shared durable memory (status of semantic recall on /health)
         self._restore()
         self._sched_thread = None
         if scheduler_tick:
@@ -590,6 +602,10 @@ class Harness:
         for s in self.store.all("settings"):
             if s.get("id") == "global" and isinstance(s.get("idc"), bool):
                 self.settings["idc"] = s["idc"]
+            if s.get("id") == "global" and isinstance(s.get("critic"), bool):
+                self.settings["critic"] = s["critic"]
+            if s.get("id") == "global" and isinstance(s.get("critic_rounds"), int):
+                self.settings["critic_rounds"] = max(1, min(3, s["critic_rounds"]))
 
     # -- settings (global) and IDC per conversation
     def get_settings(self) -> dict:
@@ -597,6 +613,16 @@ class Harness:
             return {**self.settings, "idc_config": self.idc_config.as_dict()}
 
     def update_settings(self, data: dict) -> dict:
+        if "critic" in data or "critic_rounds" in data:
+            c, r = data.get("critic", self.settings["critic"]), data.get("critic_rounds", self.settings["critic_rounds"])
+            if not isinstance(c, bool):
+                raise ValueError("'critic' must be true or false")
+            if isinstance(r, bool) or not isinstance(r, int) or not 1 <= r <= 3:
+                raise ValueError("'critic_rounds' must be 1, 2 or 3")
+            with self._lock:
+                self.settings["critic"], self.settings["critic_rounds"] = c, r
+                if self.store is not None:
+                    self.store.put("settings", "global", {"id": "global", **self.settings})
         if "idc" in data:
             if not isinstance(data["idc"], bool):
                 raise ValueError("'idc' must be true or false")
@@ -657,6 +683,8 @@ class Harness:
             prefix = f"projects/{task.dev}/" if task.dev else None
             if ctx.write_prefix != prefix:
                 agent.ctx = dataclasses.replace(ctx, write_prefix=prefix)
+        with self._lock:
+            agent.critic_rounds = int(self.settings["critic_rounds"]) if self.settings.get("critic") else 0
         agent.refresh_system()
 
     def _audit(self, task: Task | None, **entry: Any) -> dict:
@@ -754,6 +782,9 @@ class Harness:
                 if data.get("key_mask"):
                     ev["from_mask"] = data["key_mask"]
                 task.add_event("keys", **{"agent": "root", **ev})
+            elif kind == "critic":   # self-evaluation verdict (plain line in the trace)
+                task.add_event("critic", agent="root", **{k: data.get(k) for k in ("critic", "round", "max", "ok",
+                                                                                   "score", "issues")})
             elif kind == "retry":   # malformed tool call refused by the provider: asked again (plain line)
                 task.add_event("retry", agent=data.get("agent", "root"), attempt=data.get("attempt"),
                                max=data.get("max"), reason=data.get("reason"))
@@ -1151,7 +1182,15 @@ class Harness:
                 "schedules_enabled": n_sched,
                 "persistence": str(self.store.path) if self.store is not None else None,
                 "uploads": self.workspace is not None, "keys": keys, "backend": backend,
-                "idc": {"default": self.settings["idc"]}}
+                "idc": {"default": self.settings["idc"]},
+                "critic": {"enabled": bool(self.settings.get("critic")), "rounds": self.settings.get("critic_rounds")},
+                "memory": self._memory_status()}
+
+    def _memory_status(self) -> dict:
+        try:
+            return self.memory.status() if self.memory is not None else {"semantic": False}
+        except Exception:  # noqa: BLE001
+            return {"semantic": False}
 
     def shutdown(self, wait: float = 10.0) -> None:
         """Cancel everything and give running turns a moment to stop (temp workspace copies are removed)."""
@@ -1192,6 +1231,7 @@ TASK_RE = re.compile(r"^/tasks/([0-9a-f]+)(/events|/cancel|/messages|/stream|/ex
 APPROVAL_RE = re.compile(r"^/approvals/([0-9a-f]+)$")
 RULE_RE = re.compile(r"^/rules/([0-9a-f]+)/revoke$")
 SCHEDULE_RE = re.compile(r"^/schedules/([0-9a-f]+)(/run|/delete)?$")
+APIS_RE = re.compile(r"^/app/apis(?:/([0-9a-f]+))?(/delete|/spec)?$")
 PROVIDER_RE = re.compile(r"^/app/providers/([0-9a-f]+)(/delete|/test)?$")
 CSRF_HEADER = "X-CSRF-Token"
 
@@ -1316,7 +1356,16 @@ def make_handler(h: Harness, token: str | None, local_only: bool, auth: "remote.
                                         "currency": c.router.currency})
             if path == "/app/pool":
                 return self._send(200, c.pool_view())
+            if path == "/app/apis":
+                reg = getattr(c, "apis", None)
+                if reg is None:
+                    return self._send(404, {"error": "business APIs are not available in this mode"})
+                return self._send(200, {"apis": reg.view(), "storage": c.secrets.backend})
             return self._send(404, {"error": "not found"})
+
+        def _audit_api(self, action: str, out: dict) -> None:
+            h._audit(None, event="settings_api", agent="user", action=action.strip("/"), api=out.get("name") or out.get("id"),
+                     base_url=out.get("base_url"), auto_get=out.get("auto_get"), spends=out.get("spends"))
 
         def _app_post(self, path: str, data: dict) -> None:
             import hmac as _hmac
@@ -1352,6 +1401,21 @@ def make_handler(h: Harness, token: str | None, local_only: bool, auth: "remote.
                     if not c.request_stop(path == "/app/restart"):
                         return self._send(409, {"error": "restart / quit is not available in this mode", "code": "no_restart"})
                     return self._send(202, {"ok": True, "restart": path == "/app/restart"})
+                ma = APIS_RE.match(path)
+                if ma:
+                    reg = getattr(c, "apis", None)
+                    if reg is None:
+                        return self._send(404, {"error": "business APIs are not available in this mode"})
+                    aid, action = ma.group(1), ma.group(2)
+                    if action == "/delete":
+                        out = reg.delete(aid)
+                    elif action == "/spec":
+                        n = reg.load_spec(reg.find(aid))
+                        out = {"endpoints": n, **next(v for v in reg.view() if v["id"] == reg.find(aid)["id"])}
+                    else:
+                        out = reg.save(data, aid)
+                    self._audit_api(action or ("/add" if not aid else "/edit"), out)
+                    return self._send(201 if not aid else 200, out)
                 m = PROVIDER_RE.match(path)
                 if m:
                     pid, action = m.group(1), m.group(2)

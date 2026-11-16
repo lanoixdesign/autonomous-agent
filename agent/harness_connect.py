@@ -20,6 +20,11 @@ CONNECT_PAGE = r"""<!doctype html>
  #qr svg{width:100%;max-width:300px;height:auto;display:block;margin:10px auto;border-radius:8px}
  #qrurl{word-break:break-all;font:13px ui-monospace,monospace;background:#f6f7f9;padding:8px;border-radius:8px}
  .ok{color:#1f7a45;font-weight:600} .err{color:#b3261e;font-weight:600} .warn{background:#fff6e0;border-radius:8px;padding:8px;font-size:14px}
+ .apil{border:1px solid #dde1e6;border-radius:10px;padding:10px 12px;margin:8px 0} .apil b{font-size:15px} .apil .u{font:13px ui-monospace,monospace;word-break:break-all}
+ .apil .bdg{display:inline-block;font-size:12px;background:#eef1f6;border-radius:999px;padding:1px 8px;margin:4px 4px 0 0}
+ .apil .acts{display:flex;gap:8px} .apil .acts button{width:auto;padding:8px 14px;font-size:14px;margin-top:8px}
+ label.f{display:block;font-weight:600;font-size:14px;margin:10px 0 4px} label.ck{display:flex;gap:8px;align-items:flex-start;margin:10px 0;font-size:15px} label.ck input{width:auto;margin-top:4px}
+ #apimsg.ok,#apimsg.err{margin-top:8px}
  code{font-size:13px;background:#f0f2f5;padding:1px 4px;border-radius:4px} ol{padding-left:20px;margin:6px 0}
 /*LANG_CSS*/
 /*THEME*/
@@ -39,6 +44,20 @@ CONNECT_PAGE = r"""<!doctype html>
   <div id="qr"></div><p id="qrurl" hidden></p><p id="qrexp" class="muted"></p><p id="qrwarn" class="warn" hidden></p>
   <button id="revoke" class="danger" data-i18n="connect.revokeAll"></button>
   <button id="logout" class="lite" data-i18n="connect.logout"></button></section>
+ <section id="apis" hidden><h2 data-i18n="apis.title"></h2><p class="muted" data-i18n="apis.help"></p>
+  <div id="apilist"></div>
+  <form id="apiform" autocomplete="off">
+   <label class="f" for="apiname" data-i18n="apis.name"></label><input id="apiname" required maxlength="40" data-i18n-placeholder="apis.namePh">
+   <label class="f" for="apibase" data-i18n="apis.base"></label><input id="apibase" type="url" required data-i18n-placeholder="apis.basePh">
+   <label class="f" for="apihdr" data-i18n="apis.header"></label><input id="apihdr" value="Authorization">
+   <label class="f" for="apival" data-i18n="apis.value"></label><input id="apival" type="password" autocomplete="new-password" data-i18n-placeholder="apis.valuePh">
+   <label class="f" for="apispec" data-i18n="apis.spec"></label><input id="apispec" type="url" data-i18n-placeholder="apis.specPh">
+   <label class="f" for="apidesc" data-i18n="apis.desc"></label><input id="apidesc" maxlength="300">
+   <label class="ck"><input type="checkbox" id="apiauto"><span data-i18n="apis.autoGet"></span></label>
+   <label class="ck"><input type="checkbox" id="apispend"><span data-i18n="apis.spends"></span></label>
+   <button id="apisave" type="submit" data-i18n="apis.add"></button><button id="apicancel" type="button" class="lite" hidden data-i18n="apis.cancel"></button>
+   <p id="apimsg" aria-live="polite"></p></form>
+  <p class="muted" data-i18n="apis.how"></p></section>
  <section><h2 data-i18n="connect.howTitle"></h2>
   <ol><li data-i18n="connect.how1"></li><li data-i18n="connect.how2"></li><li data-i18n="connect.how3"></li></ol>
   <p class="muted" data-i18n="connect.howMore"></p></section>
@@ -81,10 +100,52 @@ $("newqr").onclick = async () => {
 };
 $("revoke").onclick = async () => { if(!confirm(t("connect.revokeConfirm"))) return; try{ const r = await api("POST", "/auth/revoke-all", {}); alert(t("connect.revoked", {n: r.sessions})); }catch(e){} refresh(); };
 $("logout").onclick = async () => { try{ await api("POST", "/auth/logout", {}); }catch(e){} refresh(); };
-onLang = () => refresh();
+// ---- business APIs (v0.9): the secret is sent once and only shown masked afterwards
+let CSRF = "", APIS = [], editing = null;
+async function capi(method, path, body){
+  const h = {"Content-Type": "application/json"}; if(CSRF) h["X-CSRF-Token"] = CSRF;
+  const r = await fetch(path, {method, headers: h, body: body ? JSON.stringify(body) : undefined});
+  const j = await r.json().catch(() => ({})); if(!r.ok){ const e = new Error(j.error || ("HTTP " + r.status)); e.status = r.status; e.code = j.code; throw e; } return j;
+}
+function mk(tag, cls, txt){ const e = document.createElement(tag); if(cls) e.className = cls; if(txt != null) e.textContent = txt; return e; }
+function apiMsg(txt, bad){ $("apimsg").className = bad ? "err" : "ok"; $("apimsg").textContent = txt; }
+function drawApis(){ const box = $("apilist"); box.replaceChildren();
+  if(!APIS.length) box.append(mk("p", "muted", t("apis.none")));
+  APIS.forEach(a => { const d = mk("div", "apil"); d.append(mk("b", null, a.name), mk("div", "u", a.base_url));
+    if(a.description) d.append(mk("div", "muted", a.description));
+    const b = mk("div"); [t(a.auto_get ? "apis.reads.auto" : "apis.reads.ask"), a.spends ? t("apis.spendsBadge") : null,
+      a.auth_set ? t("apis.secret", {mask: a.auth_mask}) : t("apis.noSecret"), a.endpoints ? t("apis.endpoints", {n: a.endpoints}) : null]
+      .filter(Boolean).forEach(x => b.append(mk("span", "bdg", x))); d.append(b);
+    const acts = mk("div", "acts"), ed = mk("button", "lite", t("apis.edit")), del = mk("button", "danger", t("apis.delete"));
+    ed.type = del.type = "button"; ed.onclick = () => edit(a);
+    del.onclick = async () => { if(!confirm(t("apis.deleteConfirm", {name: a.name}))) return;
+      try{ await capi("POST", "/app/apis/" + a.id + "/delete", {}); apiMsg(t("apis.deleted")); await loadApis(); }catch(e){ apiMsg(e.message, true); } };
+    acts.append(ed, del); d.append(acts); box.append(d); });
+}
+function edit(a){ editing = a ? a.id : null;
+  $("apiname").value = a ? a.name : ""; $("apibase").value = a ? a.base_url : ""; $("apihdr").value = a ? (a.auth_header || "Authorization") : "Authorization";
+  $("apival").value = ""; $("apival").placeholder = a && a.auth_set ? t("apis.valueKeep") : t("apis.valuePh");
+  $("apispec").value = a ? (a.openapi_url || "") : ""; $("apidesc").value = a ? (a.description || "") : "";
+  $("apiauto").checked = !!(a && a.auto_get); $("apispend").checked = !!(a && a.spends);
+  $("apisave").textContent = t(a ? "apis.save" : "apis.add"); $("apicancel").hidden = !a; if(a) $("apiname").focus(); }
+async function loadApis(){
+  try{ const st = await capi("GET", "/app/status"); CSRF = st.csrf || ""; const r = await capi("GET", "/app/apis"); APIS = r.apis || []; $("apis").hidden = false; drawApis();
+    if(st.editable === false){ $("apiform").hidden = true; apiMsg(t("apis.locked"), true); }
+  }catch(e){ $("apis").hidden = true; }
+}
+$("apiform").onsubmit = async ev => { ev.preventDefault();
+  const body = {name: $("apiname").value.trim(), base_url: $("apibase").value.trim(), auth_header: $("apihdr").value.trim(),
+    openapi_url: $("apispec").value.trim(), description: $("apidesc").value.trim(), auto_get: $("apiauto").checked, spends: $("apispend").checked};
+  if($("apival").value) body.auth_value = $("apival").value;
+  try{ await capi("POST", "/app/apis" + (editing ? "/" + editing : ""), body); $("apival").value = "";
+    apiMsg(t(editing ? "apis.saved" : "apis.added")); edit(null); await loadApis(); }
+  catch(e){ apiMsg(e.status === 403 && e.code === "locked" ? t("apis.locked") : e.message, true); } };
+$("apicancel").onclick = () => edit(null);
+onLang = () => { refresh(); drawApis(); edit(APIS.find(a => a.id === editing) || null); };
 (async () => {
   const pair = new URLSearchParams(location.search).get("pair");
   if(pair){ history.replaceState(null, "", location.pathname); await login({pair}); } else await refresh();
+  if(status.authenticated || !status.required) loadApis(); edit(null);
 })();
 </script></body></html>
 """

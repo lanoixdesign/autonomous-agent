@@ -35,7 +35,7 @@ from . import idc as idc_mod
 from . import sandbox as sandbox_mod
 from .audit import AuditLog
 from .llm import CALLER, LLMError, is_tool_format_error
-from . import i18n
+from . import critic as critic_mod, i18n
 from .permissions import Permissions
 from .redact import redact
 from .swarm import SwarmConfig, SwarmState
@@ -58,6 +58,11 @@ def _provider_reason(e: Exception) -> str:
     """The provider's own words about what was wrong (e.g. "`/max_steps`: expected integer, but got null")."""
     m = re.search(r'"message"\s*:\s*"((?:[^"\\]|\\.){1,300})', str(e))
     return f" The provider said: {m.group(1)}" if m else ""
+
+
+def swarm_mod_max_handoffs() -> int:
+    from .swarm import MAX_HANDOFFS
+    return MAX_HANDOFFS
 
 
 FORMAT_RETRIES = 3     # a malformed tool call (provider 400 tool_use_failed) is retried this many times
@@ -131,12 +136,14 @@ class Agent:
         self.ui_lang: str | None = None   # the app's language: used when a request's language is unclear
         self.lang: str | None = None      # language of the user's request ("fr" / "en"): answers follow it
         self.lang_hint: str | None = None  # set by the harness from the raw message (before file notes)
+        self.critic_rounds = 0            # v0.9: reviews of the draft answer per turn (0 = off; root only)
+        self.handoff_result: str | None = None   # v0.9: answer of the specialist this agent handed over to
         if idc is not None:
             idc.on_change = lambda data: self.on_event("idc", data)
-        if swarm and allow_spawn and depth < swarm.max_depth:
+        if swarm and allow_spawn and depth < swarm.max_depth + swarm_mod_max_handoffs():
             from . import swarm as swarm_mod
             self.registry = Registry(dict(registry.tools))
-            for t in swarm_mod.make_tools(self):
+            for t in swarm_mod.make_tools(self, spawn_tools=depth < swarm.max_depth):
                 self.registry.add(t)
         self.messages: list[dict] = [{"role": "system", "content": self.system_prompt()}]
 
@@ -147,6 +154,9 @@ class Agent:
         if "spawn_agent" in self.registry:
             swarm = ("- You can delegate self-contained sub-tasks with spawn_agent / spawn_agents. Sub-agents "
                      "share your budget and permissions; give them complete instructions.\n")
+        if "handoff" in self.registry:
+            swarm += ("- You can hand the whole task over to another specialist with handoff (e.g. Codeur -> Testeur "
+                      "-> Critique): they receive your context and answer the user; you stop.\n")
         return SYSTEM_PROMPT.format(
             swarm=swarm,
             skills=f"\nAvailable skills (load_skill to read one):\n{idx}\n" if idx else "",
@@ -199,6 +209,8 @@ class Agent:
         self.state = st
         if self.depth == 0 and self.swarm_state is not None:
             self.swarm_state.reset()   # max_children counts per root run
+        self.handoff_result = None
+        reviews = 0
         ctrl = self.idc
         if ctrl is not None and self.depth == 0:
             ctrl.start_turn(task)      # sub-agents get their slice (and evidence) from the parent instead
@@ -239,9 +251,20 @@ class Agent:
                 ctrl.on_step(reply.total_tokens)
             msg = reply.message
             self.messages.append(msg)
-            if msg.get("content"):
-                self.on_event("assistant", {"content": msg["content"], "final": not msg.get("tool_calls")})
             calls = msg.get("tool_calls") or []
+            review = (not calls and self.depth == 0 and reviews < self.critic_rounds
+                      and st.steps < b.max_steps - 1 and bool((msg.get("content") or "").strip()))
+            if msg.get("content"):
+                self.on_event("assistant", {"content": msg["content"], "final": not calls and not review,
+                                            **({"draft": True} if review else {})})
+            if review:
+                reviews += 1
+                verdict = self._critique(task, msg.get("content") or "", st, reviews)
+                if verdict is not None and not verdict["ok"]:
+                    self.messages.append(critic_mod.revise_message(verdict["issues"], self.lang))
+                    continue
+                if msg.get("content"):
+                    self.on_event("assistant", {"content": msg["content"], "final": True, "reviewed": True})
             if not calls:
                 if ctrl is not None:
                     ctrl.record_final(msg.get("content") or "")
@@ -258,8 +281,56 @@ class Agent:
                         ctrl.on_tool(observation)
                 st.tool_calls += 1
                 self.messages.append({"role": "tool", "tool_call_id": call["id"], "content": observation})
+            if self.handoff_result is not None:   # handed over: the specialist's answer is this agent's answer
+                answer, self.handoff_result = self.handoff_result, None
+                self.messages.append({"role": "assistant", "content": answer})
+                if (self.depth == 0 and reviews < self.critic_rounds and st.steps < b.max_steps - 1
+                        and answer.strip()):        # the Critic checks the specialist's answer too
+                    reviews += 1
+                    self.on_event("assistant", {"content": answer, "final": False, "draft": True, "handoff": True})
+                    verdict = self._critique(task, answer, st, reviews)
+                    if verdict is not None and not verdict["ok"]:
+                        self.messages.append(critic_mod.revise_message(verdict["issues"], self.lang))
+                        continue
+                self.on_event("assistant", {"content": answer, "final": True, "handoff": True})
+                return RunResult(answer, "final", st.steps, st.tool_calls, st.tokens, self.messages, round(st.cost, 8))
             if len(st.last_calls) == b.max_repeats and len(set(st.last_calls)) == 1:
                 return self._stop(st, "no_progress", "Stopped: the same tool call was repeated without progress.")
+
+    def _actions(self) -> list[str]:
+        """This turn's tool calls and (short) results, for the Critic."""
+        start = max((i for i, m in enumerate(self.messages) if m.get("role") == "user"
+                     and not str(m.get("content") or "").startswith("[Critic]")), default=0)
+        out, names = [], {}
+        for m in self.messages[start:]:
+            for c in m.get("tool_calls") or []:
+                names[c.get("id")] = f"{c['function']['name']}({str(c['function'].get('arguments'))[:160]})"
+            if m.get("role") == "tool":
+                out.append(f"{names.get(m.get('tool_call_id'), 'tool')} -> {str(m.get('content'))[:240]}")
+        return out
+
+    def _critique(self, task: str, draft: str, st: RunState, n: int) -> dict | None:
+        """One review by the Critic (no tools, its own short prompt). None if the model call failed."""
+        cid = f"{self.agent_id}.critic{n}"
+        msgs = critic_mod.build_messages(task, draft, self._actions(), self.lang)
+        token = CALLER.set({"holder": self.holder, "task": "analysis", "label": cid, "cancel": self.cancel,
+                            "notify": lambda kind, data: self.on_event("keys", {"action": kind, **data, "agent": cid})})
+        try:
+            reply = self.llm.chat(msgs, [])
+        except LLMError as e:
+            self.audit.record(event="critic", agent=self.agent_id, critic=cid, round=n, max=self.critic_rounds,
+                              ok=True, error=str(e)[:200])
+            return None
+        finally:
+            CALLER.reset(token)
+        st.steps += 1
+        st.tokens += reply.total_tokens
+        st.cost += getattr(reply, "cost", 0.0) or 0.0
+        v = critic_mod.parse((reply.message or {}).get("content"))
+        self.audit.record(event="critic", agent=self.agent_id, critic=cid, round=n, max=self.critic_rounds,
+                          ok=v["ok"], score=v["score"], issues=v["issues"], lang=self.lang)
+        self.on_event("critic", {"critic": cid, "round": n, "max": self.critic_rounds, **v})
+        return v
 
     @property
     def holder(self) -> str:

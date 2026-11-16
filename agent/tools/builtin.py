@@ -19,7 +19,9 @@ def _mem_write(ctx: ToolContext, a: dict) -> str:
 
 def _mem_recall(ctx: ToolContext, a: dict) -> str:
     hits = ctx.memory.recall(a.get("query", ""), limit=int(a.get("limit") or 5))
-    return "\n".join(f"[{h.get('id')}] ({h.get('kind')}, score {h['score']}) {h['text']}" for h in hits) or "nothing found"
+    how = "meaning + keywords" if getattr(ctx.memory, "last_mode", "keyword") == "hybrid" else "keywords"
+    lines = [f"[{h.get('id')}] ({h.get('kind')}, score {h['score']}) {h['text']}" for h in hits]
+    return (f"({how})\n" + "\n".join(lines)) if lines else "nothing found"
 
 
 def _mem_forget(ctx: ToolContext, a: dict) -> str:
@@ -41,8 +43,10 @@ TOOLS = [
     Tool("memory_write", "Save a durable note (kind: note|profile|decision|todo).", "write",
          params(["text"], text=s("what to remember"), kind=s("note|profile|decision|todo"),
                 tags={"type": "array", "items": {"type": "string"}}), _mem_write),
-    Tool("memory_recall", "Keyword search in durable memory.", "read",
-         params([], query=s("keywords"), limit={"type": "integer"}), _mem_recall),
+    Tool("memory_recall", "Search durable memory: by meaning and keywords when an embeddings key is set, "
+         "else by keywords.", "read",
+         params([], query=s("what you are looking for (a question or keywords)"),
+                limit={"type": ["integer", "null"]}), _mem_recall),
     Tool("memory_forget", "Delete memory items whose id or text matches.", "write",
          params(["query"], query=s("entry id or text fragment")), _mem_forget),
     Tool("list_skills", "List available skills (name: description).", "read", params([]), _skills_list),

@@ -102,7 +102,8 @@ CHAT_PAGE = r"""<!doctype html>
  #idcpanel summary{cursor:pointer;font-weight:600} #idcpanel ol{margin:4px 0 0;padding-left:20px;max-height:22vh;overflow:auto}
  #idcpanel li{margin:2px 0} #idcpanel li .k{font-weight:600;color:var(--strong)} #idcpanel li .u{color:var(--bad)} #idcpanel li .s{color:var(--ok)}
  .step.idc{color:var(--t-violet)} .step.idcbad{color:var(--bad)}
- #idcdefrow{display:flex;align-items:center;gap:6px;margin-top:8px;cursor:pointer} #idcdefrow input{width:auto;margin:0;accent-color:var(--purple2)}
+ #idcdefrow,#critrow{display:flex;align-items:center;gap:6px;margin-top:8px;cursor:pointer} #idcdefrow input,#critrow input{width:auto;margin:0;accent-color:var(--purple2)}
+ .ag.critic{border-style:dashed} .ag.revise{border-color:#d9a23b} .ag.handoff .agrole::before{content:"⇢ "}
  #connectlink{display:block;margin-top:8px} #scrim{display:none}
  /* live swarm graph */
  #swarm{flex-shrink:0;margin:10px 16px 0;border:1px solid rgba(0,212,255,.22);border-radius:18px;background:var(--card2);box-shadow:0 0 30px rgba(0,212,255,.08) inset}
@@ -189,7 +190,7 @@ CHAT_PAGE = r"""<!doctype html>
   #composer{padding:8px;padding-bottom:max(8px,env(safe-area-inset-bottom))} #composer textarea{font-size:16px;height:48px}
   #send{padding:0 14px}
   #idcpanel{padding:6px 12px} #idcpanel ol{max-height:16vh}
-  aside button.new{padding:12px} .conv{padding:12px 14px} #idcdefrow input{width:20px;height:20px}
+  aside button.new{padding:12px} .conv{padding:12px 14px} #idcdefrow input,#critrow input{width:20px;height:20px}
   #swarm{margin:8px 10px 0}
   #top nav.tabs{display:none}
   aside nav.tabs{display:flex;flex-direction:column;border-radius:16px;margin:0 12px 12px;order:0;flex:0 0 auto;overflow:visible}
@@ -263,6 +264,7 @@ CHAT_PAGE = r"""<!doctype html>
  <div id="quota"></div>
  <footer><span class="toklbl" data-i18n="token.label"></span><input id="token" type="password">
   <a id="connectlink" href="/connect" data-i18n="chat.connect"></a>
+  <label id="critrow" data-i18n-title="critic.toggle.title"><input type="checkbox" id="critdef"><span data-i18n="critic.toggle"></span></label>
   <label id="idcdefrow" data-i18n-title="idc.default.title"><input type="checkbox" id="idcdef"><span data-i18n="idc.default"></span></label>
   <div style="margin-top:6px;display:flex;justify-content:space-between;align-items:center"><button id="quitlink" type="button" hidden data-i18n="nav.quit"></button>/*LANG_SWITCH*/</div></footer></aside>
 <main>
@@ -336,7 +338,7 @@ function add(c, evs){
   if(atEnd) log.scrollTop=log.scrollHeight;
   if(fresh.some(e=>e.kind==="idc"||e.kind==="idc_toggle")) idcUI();
   if(fresh.some(e=>e.kind==="approval")) popups().then(thinking).catch(()=>{});
-  if(fresh.some(e=>e.kind==="progress"||e.kind==="status"||(e.kind==="audit"&&["spawn","child_done","merge"].includes(e.event))||(e.kind==="audit"&&e.tool))) graphSoon();
+  if(fresh.some(e=>e.kind==="progress"||e.kind==="status"||e.kind==="critic"||(e.kind==="audit"&&["spawn","child_done","merge"].includes(e.event))||(e.kind==="audit"&&e.tool))) graphSoon();
 }
 function el(tag, cls, text){ const e=document.createElement(tag); if(cls) e.className=cls; if(text!=null) e.textContent=text; return e; }
 function fail(e){
@@ -400,6 +402,7 @@ function traceKind(e){
   if(e.kind==="message") return (e.final && depth(e.agent)===0) ? "out" : "trace";
   if(e.kind==="audit" || e.kind==="approval" || e.kind==="idc") return "trace";
   if(e.kind==="keys" && ["wait","resume"].includes(e.action)) return "trace";
+  if(e.kind==="critic") return "trace";
   if(e.kind==="retry") return "trace";   // live in the status bar; history in the trace
   return "out";
 }
@@ -442,7 +445,7 @@ function node(e){
     r.append(b); return r; }
   if(e.kind==="message"){ if(!e.content) return null;
     const r=el("div","row d"+Math.min(depth(e.agent),3)), b=el("div","bubble"+(e.final?" final":""));
-    b.append(el("div","who",TRACE_TECH?e.agent:agentShort(e.agent)), el("div",null,e.content)); r.append(b); return r; }
+    b.append(el("div","who",(TRACE_TECH?e.agent:agentShort(e.agent))+(e.draft?" · "+t("trace.draft"):"")), el("div",null,e.content)); r.append(b); return r; }
   if(e.kind==="idc"){
     if(e.commit && e.commit.kind!=="final"){ const c=e.commit;
       return el("div","step "+(c.supported?"idc":"idcbad"),t("idc.step.commit",{agent:c.agent||e.agent,id:c.id,kind:tr("idc.kind",c.kind),
@@ -454,6 +457,9 @@ function node(e){
   if(e.kind==="retry") return el("div","sys keys",(depth(e.agent)>0?agentShort(e.agent)+" · ":"")+t("trace.retryN",{n:e.attempt||1,max:e.max||3}));
   if(e.kind==="idc_toggle") return el("div","sys",t("idc.step.toggled",{state:t(e.enabled?"idc.on":"idc.off")}));
   if(e.kind==="audit" && e.event==="llm_retry") return null;   // the plain "retry" line says it already
+  if(e.kind==="audit" && e.event==="critic") return null;      // the plain "critic" line says it already
+  if(e.kind==="critic"){ const sc=e.score!=null?t("trace.criticScore",{s:Math.round(e.score*10)/10}):"";
+    return el("div","step "+(e.ok?"merge":"conflict"), t(e.ok?"trace.criticOk":"trace.criticRevise",{n:e.round||1,max:e.max||1,score:sc,issues:(e.issues||[]).join(" · ")})); }   // the plain "retry" line says it already
   if(e.kind==="audit" && !TRACE_TECH){ const x=simpleAudit(e); if(x!==undefined) return x; }
   if(e.kind==="approval" && !TRACE_TECH){ const k={pending:"waiting",approved:"allowed",denied:"refusedByYou",expired:"expired","auto-approved":"auto"}[e.status];
     return k ? el("div","step"+(["denied","expired"].includes(e.status)?" deny":(e.status==="pending"?"":" merge")),tr("simple",k,{who:agentWho(e.agent)})) : null; }
@@ -489,12 +495,13 @@ function node(e){
 // one line of the work trace in plain words (undefined = no plain version: show the technical line)
 function simpleAudit(e){
   if(["idc_commit","idc_collapse","idc_toggle","rule_applied"].includes(e.event)) return null;
+  if(e.event==="spawn" && e.handoff) return el("div","step spawn",t("simple.handoff",{who:agentWho(e.agent),role:ROLES[e.child]||short(e.task,80)}));
   if(e.event==="spawn") return el("div","step spawn",t("simple.spawn",{who:agentWho(e.agent),role:ROLES[e.child]||short(e.task,80)}));
   if(e.event==="child_done") return el("div","step spawn",t("simple.childDone",{who:agentWho(e.agent)}));
   if(e.event==="upload") return el("div","step merge",t("simple.upload",{path:e.path}));
   if(e.event==="merge"){ if(e.skipped) return null; const d=el("div"); d.append(el("div","step merge",t("simple.merged")));
     (e.conflicts||[]).forEach(c=>d.append(el("div","step conflict",t("simple.conflict",{path:c.path})))); return d; }
-  if(e.tool){ if(e.tool==="spawn_agents" || e.tool==="spawn_agent") return null;
+  if(e.tool){ if(e.tool==="spawn_agents" || e.tool==="spawn_agent" || e.tool==="handoff") return null;
     const g=(e.args && typeof e.args==="object") ? e.args : {};
     if(e.decision && e.decision!=="allow") return el("div","step deny",t("simple.refused",{what:plain("human",e.tool,g,e.agent,e.category)}));
     return el("div","step"+(e.ok===false?" err":""), plain("simple",e.tool,g,e.agent,e.category)+(e.ok===false?t("simple.failed"):"")); }
@@ -683,7 +690,7 @@ function tour(i){ document.querySelectorAll(".tour-hl").forEach(x=>x.classList.r
 $("tournext").onclick=()=>tour(tstep+1); $("tourback").onclick=()=>tour(tstep-1); $("tourskip").onclick=()=>tour(-1);
 document.addEventListener("keydown",e=>{ if(e.key!=="Escape") return; if(tstep>=0) tour(-1); else if(!$("filesp").hidden) closeFiles(); });
 function svgEl(tag,attrs){ const e=document.createElementNS(SVGNS,tag); for(const k in attrs) e.setAttribute(k,attrs[k]); return e; }
-function agCard(a){ const c=el("div","ag"); c.dataset.id=a.id;
+function agCard(a){ const c=el("div","ag"+(a.critic?" critic":"")+(a.handoff?" handoff":"")); c.dataset.id=a.id;
   const top=el("div","agtop"); top.append(el("span","agname",TRACE_TECH?a.id:agentShort(a.id)), el("span","agst")); c.append(top, el("div","agrole",a.task||""));
   const p=el("div","prog"), i=el("i"); p.append(i); c.append(p, el("div","agmeta"), el("div","agkey")); c.title=a.task||""; return c; }
 // which pool key serves this agent (masked) and for which job; "shared" when no key is tagged for its job
@@ -693,12 +700,14 @@ function keyLine(a){ const task=tr("task",a.key_task||a.role||"general");
   const s=(a.key_match || (a.key_task||"general")==="general") ? t("swarm.keyFor",{name,task}) : t("swarm.keyShared",{name,task});
   return s+((a.keys||[]).length>1?" · "+t("swarm.keyChanged",{n:a.keys.length-1}):""); }
 function agUpdate(c,a){ const busy=BUSY.includes(a.status);
-  c.classList.toggle("done",a.status==="done"); c.classList.toggle("bad",!busy && a.status!=="done");
+  c.classList.toggle("done",a.status==="done"); c.classList.toggle("bad",!busy && !["done","revise"].includes(a.status)); c.classList.toggle("revise",a.status==="revise");
   c.querySelector(".agst").textContent=tr("status",a.status||"running");
   c.querySelector(".prog i").style.width=Math.round(100*(a.progress||0))+"%";
   c.querySelector(".prog").setAttribute("aria-label",Math.round(100*(a.progress||0))+"%");
   c.querySelector(".agmeta").textContent=(a.max_steps?t("swarm.steps",{s:a.steps||0,max:a.max_steps}):t("swarm.stepsNoMax",{s:a.steps||0}))
-    +(a.parent && a.parent!=="root"?" · ↳ "+a.parent:"")+(a.isolated?" · "+t("swarm.isolated"):"")+(a.earlier?" · "+t("swarm.earlier",{n:a.turn}):"");
+    +(a.parent && a.parent!=="root"?" · ↳ "+a.parent:"")+(a.isolated?" · "+t("swarm.isolated"):"")+(a.earlier?" · "+t("swarm.earlier",{n:a.turn}):"")
+    +(a.handoff?" · ⇢ "+t("swarm.handoff"):"")+(a.critic?" · 🔎"+(a.score!=null?" "+t("swarm.score",{s:Math.round(a.score*10)/10}):""):"");
+  if(a.critic) c.querySelector(".agmeta").textContent=c.querySelector(".agmeta").textContent.replace(/^[^·]*· /,"");
   c.classList.toggle("earlier",!!a.earlier);
   const k=c.querySelector(".agkey"); k.textContent=keyLine(a); k.classList.toggle("shared",!!a.key && !a.key_match && (a.key_task||"general")!=="general");
   k.title=a.key_mask?a.key+" · "+a.key_mask:""; }
@@ -743,7 +752,7 @@ function foot(g,kids){ const f=$("swarm").querySelector(".swfoot"); f.replaceChi
   if(Object.keys(byKey).length){ const kr=el("div","swkeys"); kr.append(el("span",null,t("swarm.keysUsed")));
     Object.entries(byKey).forEach(([name,k])=>{ const c=el("span","kc"); c.append(el("b",null,"🔑 "+name)); if(k.mask) c.append(el("code",null,k.mask)); c.append(el("span",null,k.agents.join(", "))); kr.append(c); });
     f.append(kr); }
-  const okN=kids.filter(a=>a.status==="done").length, badN=kids.filter(a=>!BUSY.includes(a.status) && a.status!=="done").length;
+  const work=kids.filter(a=>!a.critic), okN=work.filter(a=>a.status==="done").length, badN=work.filter(a=>!BUSY.includes(a.status) && !["done","revise"].includes(a.status)).length;
   f.append(el("div",badN?"step conflict":null, !badN ? t("swarm.merged",{n:okN}) : (okN ? t("swarm.mergedFail",{ok:okN,bad:badN}) : t("swarm.mergedNone",{bad:badN}))));
   const conflicts=(g.merges||[]).reduce((n,m)=>n+(m.conflicts||[]).length,0);
   if(conflicts) f.append(el("div","step conflict",t("swarm.conflicts",{n:conflicts})));
@@ -781,7 +790,8 @@ function thinking(){ const c=curTask(), box=$("thinking"); const on=!!(c && BUSY
   box.classList.toggle("on",on); $("thinktext").textContent=on?t(waiting?"chat.waiting":"chat.thinking"):""; }
 // ---- IDC: per-conversation toggle, global default, vitality bar + append-only commitments
 let settings={idc:false}, nextIdc=null;
-async function loadSettings(){ try{ settings=await api("GET","/settings"); $("idcdef").checked=!!settings.idc; }catch(e){} idcUI(); }
+async function loadSettings(){ try{ settings=await api("GET","/settings"); $("idcdef").checked=!!settings.idc; $("critdef").checked=!!settings.critic; }catch(e){} idcUI(); }
+$("critdef").onchange=async e=>{ try{ settings=await api("POST","/settings",{critic:e.target.checked}); }catch(err){ fail(err); e.target.checked=!e.target.checked; } };
 $("idcdef").onchange=async e=>{ try{ settings=await api("POST","/settings",{idc:e.target.checked}); nextIdc=null; }catch(err){ fail(err); e.target.checked=!e.target.checked; } idcUI(); };
 function curTask(){ return tasks.find(x=>x.id===cur); }
 function idcOn(){ const c=curTask(); return c ? !!c.idc : (nextIdc!=null ? nextIdc : !!settings.idc); }

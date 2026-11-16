@@ -210,6 +210,10 @@ SETTINGS_PAGE = r"""<!doctype html>
   <p id="sbxsimple" class="muted" data-i18n="sbx.simple"></p>
   <div class="xp"><label class="switch"><input type="checkbox" id="sbxon"><span data-i18n="sbx.switch"></span></label></div>
   <details><summary data-i18n="sbx.allowedT"></summary><p class="muted" data-i18n="sbx.allowed"></p><p class="muted" id="sbxlim"></p></details></section>
+ <section id="critic" class="card"><h2><span data-i18n="set.sec.critic"></span><button class="tip" data-tip="tip.critic"></button></h2><p class="muted" data-i18n="set.critic.help"></p>
+  <label class="switch"><input type="checkbox" id="criton"><span data-i18n="set.critic.enabled"></span></label>
+  <div class="row" style="margin-top:8px;align-items:center;gap:8px"><label class="f" for="critr" data-i18n="set.critic.rounds" style="margin:0"></label><select id="critr" style="width:auto"></select></div>
+  <p id="memstate" class="muted"></p></section>
  <section id="safety" class="card xp"><h2><span data-i18n="set.sec.safety"></span><button class="tip" data-tip="tip.safety"></button></h2><p class="muted" data-i18n="set.safety.help"></p>
   <table class="perm"><tbody id="perms"></tbody></table><p id="permtools" class="muted"></p>
   <div class="row"><button id="psave" class="blue" data-i18n="set.save"></button></div></section>
@@ -250,9 +254,16 @@ async function load(){
   if(!ST.editable){ lock.hidden=false; lock.textContent=t("set.locked"); $("all").disabled=true; return; }
   lock.hidden=true; warn.hidden=!( !ST.local && ST.remote_settings ); warn.textContent=t("set.remoteEditing");
   try{ V=await api("GET","/app/settings"); P=(await api("GET","/app/providers")).providers; }catch(e){ return fail(e); }
+  try{ GS=await api("GET","/settings"); HL=await api("GET","/health"); }catch(e){}
   draw();
 }
-function draw(){ if(!V) return; document.body.classList.toggle("simple",V.ui_mode!=="expert"); drawKeys(); drawGeneral(); drawDisplay(); drawPerms(); drawSandbox(); drawIdc(); drawPhone(); drawApp(); drawRestart(); }
+let GS={}, HL={};
+function drawCritic(){ if(!$("critr").options.length) [1,2,3].forEach(n=>{ const o=document.createElement("option"); o.value=o.textContent=String(n); $("critr").append(o); });
+  $("criton").checked=!!GS.critic; $("critr").value=String(GS.critic_rounds||2); $("critr").disabled=!GS.critic;
+  const m=HL.memory||{}; $("memstate").textContent=m.semantic?t("mem.semantic",{model:m.model||"embeddings"}):t("mem.keyword"); }
+async function saveCritic(){ try{ GS=await api("POST","/settings",{critic:$("criton").checked,critic_rounds:Number($("critr").value)}); toast(t("set.critic.saved")); }catch(err){ fail(err); } drawCritic(); }
+$("criton").onchange=saveCritic; $("critr").onchange=saveCritic;
+function draw(){ if(!V) return; document.body.classList.toggle("simple",V.ui_mode!=="expert"); drawKeys(); drawGeneral(); drawDisplay(); drawPerms(); drawSandbox(); drawIdc(); drawCritic(); drawPhone(); drawApp(); drawRestart(); }
 function drawRestart(){ const r=V.restart_needed||[], b=$("restartbar"); b.hidden=!r.length;
   $("restartwhat").textContent=t("set.restartNeeded")+" "+r.map(k=>tr("rf",k)).join(", "); $("restart1").disabled=$("restart2").disabled=!V.can_restart; }
 // ---------------- keys
