@@ -1,59 +1,62 @@
-"""Shared "neon" look for the harness pages (chat, dashboard, connect): dark background with a soft purple
-glow, neon blue / purple accents, visible keyboard focus. Plain CSS, no external resources (system fonts;
+"""Shared calm look for the harness pages (v0.9.1): neutral backgrounds, one muted accent, no glow,
+visible keyboard focus. Plain CSS, no external resources (system fonts;
 Inter is used if it is installed). Animations are turned off for `prefers-reduced-motion: reduce`."""
 
 BASE_CSS = r"""
- :root{--bg:#05050B;--panel:#14141C;--panel2:#1E1E24;--line:#2A2A35;--text:#FFFFFF;--soft:#D1D5DB;--muted:#9CA3AF;
-  --blue:#00D4FF;--blue2:#2563EB;--purple:#9D00FF;--purple2:#B92BFF;--ok:#22C55E;--warn:#F59E0B;--bad:#F87171;
+ /* v0.9.1 calm theme: neutral surfaces, ONE muted accent, desaturated status colours, no glow. Every text colour
+    below meets WCAG AA (>= 4.5:1) on --bg, --panel and --panel2 (checked by tests/test_v091_theme.py). */
+ :root{--bg:#1D1F23;--panel:#25282D;--panel2:#2C2F35;--sunk:#1A1C20;--line:#373B42;--line2:#474C55;--chip:#33373E;
+  --text:#E7E9EC;--strong:#F3F4F6;--soft:#CED2D8;--muted:#A0A7B1;
+  --accent:#4A6696;--accent-text:#A3B8DE;--accent-rgb:120,150,200;--on-accent:#FFFFFF;
+  --blue:#A3B8DE;--blue2:#4A6696;--purple:#4A6696;--purple2:#A3B8DE;
+  --ok:#8CC2A0;--warn:#D8B57A;--bad:#E6A29A;--ok-rgb:140,194,160;--warn-rgb:216,181,122;--bad-rgb:230,162,154;
   --font:Inter,"Inter var",ui-sans-serif,system-ui,-apple-system,"Segoe UI",Roboto,"Helvetica Neue",Arial,sans-serif;
   --mono:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;color-scheme:dark;
-  --strong:#FFFFFF;--sunk:#0D0D14;--card:rgba(20,20,28,.92);--card2:rgba(20,20,28,.85);--chip:#2A2A35;--line2:#3A3A46;
-  --t-bad:#FCA5A5;--t-warn:#FCD34D;--t-violet:#E9D5FF;--t-ok:#BBF7D0;--t-cyan:#BAF3FF;--hover:#7FE9FF;--shadow:rgba(0,0,0,.35)}
- /* Day theme: light surfaces, dark text, accents darkened for WCAG AA contrast (>= 4.5:1 on white) */
- html[data-theme=light]{--bg:#F4F6FB;--panel:#FFFFFF;--panel2:#EEF1F7;--line:#D5DBE6;--line2:#BAC3D3;--text:#0F172A;--strong:#0B1020;
-  --soft:#334155;--muted:#526075;--blue:#0369A1;--blue2:#2563EB;--purple:#7C3AED;--purple2:#9333EA;--ok:#166534;--warn:#92400E;--bad:#B91C1C;
-  --sunk:#FFFFFF;--card:rgba(255,255,255,.97);--card2:rgba(255,255,255,.92);--chip:#E4E8F0;
-  --t-bad:#B91C1C;--t-warn:#92400E;--t-violet:#6D28D9;--t-ok:#166534;--t-cyan:#0369A1;--hover:#075985;--shadow:rgba(15,23,42,.10);color-scheme:light}
- html[data-theme=light] body{background:radial-gradient(ellipse 70% 55% at 50% 40%,rgba(124,58,237,.07),rgba(37,99,235,.04) 45%,transparent 75%),var(--bg)}
- html[data-theme=light] input::placeholder,html[data-theme=light] textarea::placeholder{color:#64748B}
- html[data-theme=light] section,html[data-theme=light] .card,html[data-theme=light] .step,html[data-theme=light] .ap{box-shadow:0 4px 18px var(--shadow)!important}
- html[data-theme=light] :focus-visible{outline-color:#2563EB;box-shadow:0 0 0 4px rgba(37,99,235,.25)}
+  --card:var(--panel);--card2:var(--panel);
+  --t-bad:#E6A29A;--t-warn:#D8B57A;--t-violet:#F3F4F6;--t-ok:#8CC2A0;--t-cyan:#A3B8DE;--hover:#C3D2EC;--shadow:rgba(0,0,0,.25)}
+ /* Day theme: genuinely light and calm */
+ html[data-theme=light]{--bg:#F6F6F4;--panel:#FFFFFF;--panel2:#F0F1F3;--sunk:#FFFFFF;--line:#E1E3E7;--line2:#C9CDD4;--chip:#ECEEF1;
+  --text:#1E2227;--strong:#14171B;--soft:#363B42;--muted:#5B626D;
+  --accent:#3D5A8F;--accent-text:#34507F;--accent-rgb:61,90,143;--on-accent:#FFFFFF;
+  --ok:#2E6B47;--warn:#85571A;--bad:#A33A33;--ok-rgb:46,107,71;--warn-rgb:133,87,26;--bad-rgb:163,58,51;
+  --blue:#34507F;--blue2:#3D5A8F;--purple:#3D5A8F;--purple2:#34507F;
+  --t-bad:#A33A33;--t-warn:#85571A;--t-violet:#14171B;--t-ok:#2E6B47;--t-cyan:#34507F;
+  --hover:#263E63;--shadow:rgba(20,23,27,.06);color-scheme:light}
+ html[data-theme=light] input::placeholder,html[data-theme=light] textarea::placeholder{color:#6B717B}
  h1[tabindex="-1"]:focus,h1[tabindex="-1"]:focus-visible,h2[tabindex="-1"]:focus-visible{outline:none;box-shadow:none}
- html[data-theme=light] .grey{background:#E4E8F0!important;border-color:#BAC3D3!important;color:#0F172A!important}
- .themebtn{display:inline-flex;align-items:center;justify-content:center;width:34px;height:34px;min-width:34px;padding:0;border-radius:50%;
-  border:1px solid var(--line2);background:var(--sunk);color:var(--text);font-size:17px;line-height:1;cursor:pointer;margin-right:6px}
- .themebtn:hover{border-color:var(--blue);box-shadow:0 0 10px rgba(0,212,255,.3)}
- .themebtn::before{content:"\263E"} html[data-theme=light] .themebtn::before{content:"\2600\FE0E";color:#B45309}
+ html[data-theme=light] .grey{background:var(--chip)!important;border-color:var(--line2)!important;color:var(--text)!important}
+ .themebtn{display:inline-flex;align-items:center;justify-content:center;width:32px;height:32px;min-width:32px;padding:0;border-radius:50%;
+  border:1px solid var(--line);background:transparent;color:var(--soft);font-size:15px;line-height:1;cursor:pointer;margin-right:6px}
+ .themebtn:hover{border-color:var(--line2)}
+ .themebtn::before{content:"\263E"} html[data-theme=light] .themebtn::before{content:"\2600\FE0E";color:var(--soft)}
  html{background:var(--bg)}
- body{font-family:var(--font);color:var(--soft);
-  background:radial-gradient(ellipse 70% 55% at 50% 45%,rgba(157,0,255,.18),rgba(157,0,255,.06) 45%,transparent 75%),var(--bg);
-  background-attachment:fixed}
+ body{font-family:var(--font);color:var(--soft);background:var(--bg)}
  a{color:var(--blue)} a:hover{color:var(--hover)}
  :focus{outline:none}
- :focus-visible{outline:2px solid var(--blue);outline-offset:2px;box-shadow:0 0 0 4px rgba(0,212,255,.25)}
+ :focus-visible{outline:2px solid var(--blue);outline-offset:2px;}
  input,textarea,select{background:var(--sunk);color:var(--text);border:1px solid var(--line);border-radius:10px}
- input::placeholder,textarea::placeholder{color:#6B7280}
- input:focus-visible,textarea:focus-visible,select:focus-visible{border-color:var(--blue);outline:none;box-shadow:0 0 0 3px rgba(0,212,255,.25)}
+ input::placeholder,textarea::placeholder{color:#8A919B}
+ input:focus-visible,textarea:focus-visible,select:focus-visible{border-color:var(--blue);outline:none;}
  ::-webkit-scrollbar{width:10px;height:10px} ::-webkit-scrollbar-thumb{background:var(--chip);border-radius:6px;border:2px solid transparent;background-clip:padding-box}
  ::-webkit-scrollbar-track{background:transparent}
- #lang{border-color:var(--line2)!important;background:var(--sunk)} #lang button{color:var(--soft)} #lang button.on{background:linear-gradient(90deg,var(--blue2),var(--purple))!important;color:#fff}
+ #lang{border-color:var(--line2)!important;background:var(--sunk)} #lang button{color:var(--soft)} #lang button.on{background:var(--accent)!important;color:#fff}
  @media (prefers-reduced-motion: reduce){*,*::before,*::after{animation:none!important;transition:none!important}}
 """
 
 # Dashboard: the existing layout, recoloured.
 DASH_CSS = r"""
  body{background-color:var(--bg)}
- header{background:var(--card2)!important;border-bottom:1px solid var(--line);backdrop-filter:blur(8px)}
+ header{background:var(--card2)!important;border-bottom:1px solid var(--line);}
  header h1{color:var(--text)} header a.c{color:var(--blue)!important}
  section{background:var(--card)!important;border:1px solid var(--line)!important;border-radius:16px!important;box-shadow:0 10px 30px rgba(0,0,0,.35)}
  h2{color:var(--t-violet)!important}
  button{background:var(--panel2);color:var(--text);border:1px solid var(--line2);border-radius:999px;padding:6px 14px;font-family:var(--font)}
  button:hover{border-color:var(--blue)} #stopall{background:#7F1D1D!important;border-color:#B91C1C!important;border-radius:999px!important}
- .task{color:var(--soft)} .task:hover{background:var(--panel2)!important} .task.sel{border-color:var(--blue)!important;background:rgba(37,99,235,.15)!important}
- .st{background:var(--chip)!important;color:var(--soft)} .st.running,.st.queued,.st.cancelling{background:rgba(0,212,255,.15)!important;color:var(--blue)}
- .st.done{background:rgba(34,197,94,.15)!important;color:var(--ok)}
- .st.error,.st.cancelled,.st.stopped,.st.interrupted,.st.denied,.st.expired{background:rgba(248,113,113,.15)!important;color:var(--bad)}
- .agent{background:var(--sunk)!important;border-left:3px solid var(--purple2)!important;border-radius:8px;box-shadow:0 0 12px rgba(157,0,255,.18)}
+ .task{color:var(--soft)} .task:hover{background:var(--panel2)!important} .task.sel{border-color:var(--blue)!important;background:rgba(var(--accent-rgb),0.09)!important}
+ .st{background:var(--chip)!important;color:var(--soft)} .st.running,.st.queued,.st.cancelling{background:rgba(var(--accent-rgb),0.09)!important;color:var(--blue)}
+ .st.done{background:rgba(var(--ok-rgb),0.09)!important;color:var(--ok)}
+ .st.error,.st.cancelled,.st.stopped,.st.interrupted,.st.denied,.st.expired{background:rgba(var(--bad-rgb),0.09)!important;color:var(--bad)}
+ .agent{background:var(--sunk)!important;border-left:3px solid var(--purple2)!important;border-radius:8px;}
  .agent small,.muted{color:var(--muted)!important} .ev{border-bottom:1px solid var(--line)!important} .ev b{color:var(--blue)!important}
  .ap{background:var(--panel2)!important;border:1px solid var(--line2)!important;border-radius:16px!important;box-shadow:0 12px 30px rgba(0,0,0,.45)}
  .ap button{border-radius:999px} .ap button.ok,.ap button:first-of-type{background:var(--blue2);border-color:var(--blue2)}
@@ -67,14 +70,14 @@ CONNECT_CSS = r"""
  header{background:var(--card2)!important;border-bottom:1px solid var(--line)} header h1{color:var(--text)}
  section{background:var(--card)!important;border:1px solid var(--line)!important;border-radius:20px!important;box-shadow:0 10px 30px rgba(0,0,0,.35)}
  h2{color:var(--text)} .muted{color:var(--muted)!important}
- button,.btn{background:var(--blue2)!important;color:#fff;border-radius:999px!important;font-family:var(--font)!important;box-shadow:0 0 18px rgba(37,99,235,.35)}
+ button,.btn{background:var(--blue2)!important;color:#fff;border-radius:999px!important;font-family:var(--font)!important;}
  button.lite{background:#374151!important;color:#fff!important;box-shadow:none} button.danger{background:#7F1D1D!important;color:#FECACA!important;box-shadow:none}
- #qr svg{background:#fff;padding:6px;box-shadow:0 0 28px rgba(0,212,255,.35)}
+ #qr svg{background:#fff;padding:6px;}
  #qrurl{background:var(--sunk)!important;color:var(--soft)} code{background:var(--panel2)!important;color:var(--soft)}
- .ok{color:var(--ok)!important} .err{color:var(--bad)!important} .warn{background:rgba(245,158,11,.12)!important;color:var(--t-warn)}
+ .ok{color:var(--ok)!important} .err{color:var(--bad)!important} .warn{background:rgba(var(--warn-rgb),0.072)!important;color:var(--t-warn)}
  header a{color:var(--blue)!important}
  #lang button{background:transparent!important;box-shadow:none!important;width:auto;margin:0;padding:4px 9px;border-radius:0!important;font:600 11px var(--font)!important}
- #lang button.on{background:linear-gradient(90deg,var(--blue2),var(--purple))!important}
+ #lang button.on{background:var(--accent)!important}
 """
 
 # Shared by the chat and the dashboard: approvals and work-trace lines in plain language (v0.6), plus the
@@ -122,10 +125,10 @@ function reasonText(r){
 # "?" tooltips: <button type="button" class="tip" data-tip="tip.xxx"></button> next to a term.
 TIP_CSS = r"""
  .tip{display:inline-flex!important;align-items:center;justify-content:center;width:20px!important;height:20px;min-height:20px!important;padding:0!important;margin:0 4px;
-  border-radius:50%!important;border:1px solid rgba(0,212,255,.55)!important;background:rgba(0,212,255,.10)!important;color:var(--blue)!important;
+  border-radius:50%!important;border:1px solid rgba(var(--accent-rgb),0.33)!important;background:rgba(var(--accent-rgb),0.06)!important;color:var(--blue)!important;
   font:700 12px var(--font)!important;cursor:pointer;vertical-align:middle;position:relative;box-shadow:none!important}
- .tip::before{content:"?"} .tip:hover{background:rgba(0,212,255,.22)!important}
- .tipbox{position:absolute;z-index:90;max-width:300px;background:var(--panel2);color:var(--text);border:1px solid rgba(0,212,255,.55);border-radius:12px;
+ .tip::before{content:"?"} .tip:hover{background:rgba(var(--accent-rgb),0.132)!important}
+ .tipbox{position:absolute;z-index:90;max-width:300px;background:var(--panel2);color:var(--text);border:1px solid rgba(var(--accent-rgb),0.33);border-radius:12px;
   padding:10px 12px;font:500 13px/1.45 var(--font);box-shadow:0 12px 30px rgba(0,0,0,.55);text-align:left}
  html.big body{zoom:1.18}
  html.big body.fullh{height:calc(100vh / 1.18)}
@@ -165,14 +168,14 @@ NAV_CSS = r"""
  nav.tabs{display:inline-flex;gap:3px;padding:3px;border:1px solid var(--line);border-radius:999px;background:var(--card2);flex-shrink:0}
  nav.tabs a{padding:6px 14px;border-radius:999px;color:var(--soft)!important;text-decoration:none;font:600 13px var(--font);white-space:nowrap;line-height:1.3}
  nav.tabs a:hover{color:var(--strong)!important;background:var(--panel2)}
- nav.tabs a.on{color:#fff!important;background:linear-gradient(90deg,var(--blue2),var(--purple));box-shadow:0 0 14px rgba(37,99,235,.35)}
+ nav.tabs a.on{color:#fff!important;background:var(--accent);}
  .apphead{display:flex;align-items:center;gap:12px;padding:10px 16px;padding-top:max(10px,env(safe-area-inset-top));flex-wrap:wrap;
-  background:var(--card2)!important;border-bottom:1px solid var(--line);backdrop-filter:blur(10px);position:sticky;top:0;z-index:20}
+  background:var(--card2)!important;border-bottom:1px solid var(--line);position:sticky;top:0;z-index:20}
  .apphead .brand{font:700 15px var(--font);color:var(--text);white-space:nowrap}
  .apphead .sp{flex:1}
- a.back{display:inline-flex;align-items:center;gap:6px;padding:6px 12px;border-radius:999px;border:1px solid rgba(0,212,255,.45);color:var(--blue)!important;
-  text-decoration:none;font:600 13px var(--font);white-space:nowrap;background:rgba(0,212,255,.08)}
- a.back:hover{background:rgba(0,212,255,.16)}
+ a.back{display:inline-flex;align-items:center;gap:6px;padding:6px 12px;border-radius:999px;border:1px solid rgba(var(--accent-rgb),0.27);color:var(--blue)!important;
+  text-decoration:none;font:600 13px var(--font);white-space:nowrap;background:rgba(var(--accent-rgb),0.048)}
+ a.back:hover{background:rgba(var(--accent-rgb),0.096)}
  @media (max-width:760px){   /* every tab visible without scrolling: one row of 6, or 2 rows of 3 on a phone */
   nav.tabs{display:grid;grid-template-columns:repeat(6,minmax(0,1fr));overflow:visible;max-width:100%;order:10;flex:1 1 100%;border-radius:16px}
   nav.tabs a{padding:8px 4px;min-height:38px;text-align:center;font-size:12.5px;white-space:normal;overflow-wrap:anywhere;
@@ -201,7 +204,7 @@ function label(){var e=R.getAttribute("data-theme"),k=e==="light"?"theme.toDark"
  try{if(typeof t==="function"){s=t(k);}}catch(x){}
  var b=document.querySelectorAll("[data-theme-btn]");for(var i=0;i<b.length;i++){b[i].setAttribute("aria-label",s);b[i].title=s;b[i].setAttribute("aria-pressed",String(e==="light"));}}
 function apply(){var p=pref(),e=eff(p);R.setAttribute("data-theme",e);R.setAttribute("data-theme-pref",p);
- var m=document.querySelector('meta[name="theme-color"]');if(m)m.setAttribute("content",e==="light"?"#F4F6FB":"#05050B");label();}
+ var m=document.querySelector('meta[name="theme-color"]');if(m)m.setAttribute("content",e==="light"?"#F6F6F4":"#1D1F23");label();}
 window.themePref=pref;window.themeNow=function(){return eff(pref());};
 window.setTheme=function(p){if(V.indexOf(p)<0)return;try{localStorage.setItem(K,p);}catch(e){}apply();
  try{document.dispatchEvent(new CustomEvent("themechange",{detail:p}));}catch(e){}};
@@ -211,3 +214,106 @@ window.addEventListener("storage",function(ev){if(ev.key===K)apply();});
 document.addEventListener("click",function(ev){var b=ev.target&&ev.target.closest&&ev.target.closest("[data-theme-btn]");if(b){window.toggleTheme();}
  else if(ev.target&&ev.target.closest&&ev.target.closest("#lang"))setTimeout(label,0);});
 apply();document.addEventListener("DOMContentLoaded",label);window.addEventListener("load",label);})();</script>"""
+
+
+# v0.9.1 "calm" layer, added last to every page (render_page): one muted accent, no glow / halo / text shadow /
+# blur / animated gradient, quieter buttons and badges, readable text (15 px, line-height 1.5, ~70ch lines).
+# Pages keep their own layout; this layer only takes visual noise away.
+CALM_CSS = r"""
+ body{font-size:15px;line-height:1.5}
+ *,*::before,*::after{text-shadow:none!important;backdrop-filter:none!important;-webkit-backdrop-filter:none!important}
+ *:not(.spin),*::before,*::after{animation:none!important}
+ *,*::before,*::after{box-shadow:none!important}
+ *,svg,svg *{filter:none!important}
+ :focus-visible{outline:2px solid var(--accent-text)!important;outline-offset:2px}
+ input:focus-visible,textarea:focus-visible,select:focus-visible{outline:2px solid var(--accent-text)!important;outline-offset:0;border-color:var(--accent-text)!important}
+ /* floating layers only: a very soft shadow */
+ #popups .card,.ap,#tourcard,.tipbox,#toast,#filesp,aside.drawer{box-shadow:0 2px 12px var(--shadow)!important}
+ /* headings: fewer sizes and weights */
+ h1,h2,h3{color:var(--strong)!important;font-weight:600!important;letter-spacing:0!important;text-transform:none!important}
+ h2{font-size:17px} h3{font-size:15px}
+ p,.muted,.help,li{max-width:70ch}
+ .muted{color:var(--muted)!important}
+ /* surfaces: flat, one thin border */
+ section.card,.card,.step,section{border-color:var(--line)!important}
+ /* buttons: one filled (primary) per area, the rest quiet */
+ button,.btn,.tbtn{font-weight:500}
+ .primary,.blue,#send,aside button.new,.btn.primary,#tourcard button.go,.card button.ok,#login,#apisave{background:var(--accent)!important;border-color:var(--accent)!important;color:var(--on-accent)!important}
+ .primary:hover,.blue:hover,#send:hover,aside button.new:hover,.card button.ok:hover{background:var(--accent)!important;border-color:var(--accent-text)!important}
+ .grey,.card button.no,button.lite,.lite{background:var(--chip)!important;border:1px solid var(--line2)!important;color:var(--text)!important}
+ .danger,button.danger,#stopall,#cancel{background:transparent!important;border:1px solid rgba(var(--bad-rgb),.55)!important;color:var(--bad)!important}
+ #quit{background:transparent!important}
+ /* navigation: flat tabs, the current one simply marked */
+ nav.tabs{background:transparent!important;border-color:var(--line)!important}
+ nav.tabs a{font-weight:500!important;color:var(--soft)!important}
+ nav.tabs a.on{background:var(--chip)!important;color:var(--strong)!important;font-weight:600!important}
+ #lang button.on,.langbtns button.on,.seg input:checked+span,.big2 button.on{background:var(--chip)!important;color:var(--strong)!important;border-color:var(--line2)!important}
+ .steps span.on{background:var(--accent)!important}
+ .switch input:checked{background:var(--accent)!important}
+ a.back{border-color:var(--line)!important;background:transparent!important;color:var(--soft)!important}
+ a.back:hover{border-color:var(--line2)!important}
+ .apphead,header,#top{background:var(--panel)!important}
+ /* badges and chips: discreet */
+ .pill,.badge,.st,.bdg,.tag{font-weight:500!important;border:0!important}
+ .pill.purple,.pill.blue{background:var(--chip)!important;color:var(--soft)!important}
+ .tip{border-color:var(--line2)!important;background:transparent!important;color:var(--muted)!important}
+ .tip:hover{background:var(--chip)!important}
+ .demotile{background:var(--panel)!important;border-color:var(--line2)!important}
+ .themebtn{background:transparent!important;border:1px solid var(--line)!important;color:var(--soft)!important}
+ .sample span.b.ok{background:var(--accent)!important;color:var(--on-accent)!important}
+ .sample span.b.no{background:var(--chip)!important;color:var(--text)!important}
+ .bwhy{font-weight:500!important;color:var(--soft)!important}
+ .pill{background:var(--chip)!important;color:var(--soft)!important}
+ .pill.ok{color:var(--ok)!important} .pill.bad{color:var(--bad)!important} .pill.warn{color:var(--warn)!important}
+ details.adv{margin-top:10px;border-top:1px solid var(--line);padding-top:4px}
+ details summary{color:var(--accent-text)!important;font-weight:500!important}
+
+ /* ---- chat */
+ body[data-page=chat] aside{background:var(--panel)!important}
+ body[data-page=chat] aside h1{font-size:15px}
+ .user .bubble{background:rgba(var(--accent-rgb),.10)!important;border:1px solid rgba(var(--accent-rgb),.28)!important;border-bottom-right-radius:16px!important}
+ .user .bubble::after{display:none!important}
+ .bubble{max-width:min(72%,70ch)!important;line-height:1.55}
+ .bubble.final{border-color:var(--line2)!important}
+ .who,.d1 .who,.d2 .who,.d3 .who{background:none!important;color:var(--muted)!important;padding:0!important;font:600 12px var(--font)!important}
+ .ticks{color:var(--muted)!important}
+ .step.spawn,.step.idc{color:var(--soft)!important}
+ .trace,.swfoot .fl,.dlb{border-color:var(--line)!important;background:var(--panel)!important}
+ .trhead .chev,.swhead .chev{color:var(--muted)!important}
+ #ratebar{background:transparent!important;font-size:12px!important;color:var(--muted)!important;padding:3px 16px!important;gap:4px 16px!important}
+ #ratebar .rate{flex-direction:row!important;align-items:center;gap:8px!important}
+ .rate .rtop b{font-weight:500!important;color:var(--soft)!important}
+ .rate .rbar{height:3px!important;min-width:60px!important;max-width:120px!important}
+ .rate .rbar i{background:var(--muted)!important} .rate .rbar i.mid{background:var(--warn)!important} .rate .rbar i.lo{background:var(--bad)!important}
+ .rate .rest{border-style:solid!important;border-color:var(--line)!important}
+ #thinking .dot{background:var(--muted)!important}
+ .trhead .live{background:var(--muted)!important}
+ #demobadge,.demonote,#idcbox,#idcbox.on{background:var(--chip)!important;border-color:var(--line2)!important;color:var(--soft)!important}
+ .ex{background:var(--panel)!important;border-color:var(--line)!important}
+ .card .cat,.card .cat.send,.card .cat.spend,.card .cat.execute{background:var(--chip)!important;color:var(--soft)!important}
+ /* swarm graph: muted nodes, thin lines, no glow */
+ #swarm{border-color:var(--line)!important;background:var(--panel)!important}
+ .swlines path{stroke:var(--line2)!important;stroke-width:1.25!important;opacity:1!important}
+ .hub{width:56px!important;height:56px!important;border:2px solid var(--line2)!important}
+ .hub .inner{width:40px!important;height:40px!important;border:1px solid var(--line)!important}
+ .hub .core{width:22px!important;height:22px!important;background:var(--accent)!important}
+ .ag{background:var(--panel)!important;border:1px solid var(--line)!important;border-radius:10px!important}
+ .ag.done{border-color:var(--line)!important} .ag.bad{border-color:rgba(var(--bad-rgb),.55)!important} .ag.revise{border-color:rgba(var(--warn-rgb),.6)!important}
+ .ag .agst{color:var(--muted)!important} .ag.done .agst{color:var(--ok)!important} .ag.bad .agst{color:var(--bad)!important}
+ .ag .agname{font:600 12.5px var(--font)!important}
+ .ag .prog{height:3px!important;background:var(--chip)!important} .ag .prog i{background:var(--muted)!important}
+ .ag .agkey{color:var(--muted)!important}
+ .doc,.doc svg{width:44px!important;height:54px!important}
+ .doc svg path{stroke:var(--line2)!important;fill:var(--panel2)!important}
+ .doc svg path+path+path{stroke:var(--muted)!important;fill:none!important}
+ .doc svg path:nth-child(2){fill:none!important}
+ .doc .chk{width:22px!important;height:22px!important;right:-7px!important;bottom:-4px!important;background:var(--accent)!important;border:2px solid var(--panel)!important}
+ .doc .chk svg{width:12px!important;height:12px!important}
+ .swkeys .kc{background:transparent!important}
+ /* ---- dashboard */
+ .agent{border-left:2px solid var(--line2)!important;background:var(--panel)!important}
+ .prog i{background:var(--muted)!important}
+ .ev b{color:var(--soft)!important}
+ /* ---- phones */
+ @media (max-width:760px){ body{font-size:15px} .bubble{max-width:90%!important} }
+"""

@@ -15,7 +15,7 @@ HELP_PAGE = r"""<!doctype html>
  .intro{font-size:16px;color:var(--soft);max-width:680px}
  .steps{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:14px;margin-top:16px}
  .step{background:var(--card);border:1px solid var(--line);border-radius:18px;padding:16px 18px;box-shadow:0 10px 30px rgba(0,0,0,.3)}
- .step b{display:block;color:var(--strong);font-size:17px;margin-bottom:4px} .step .ic{font-size:26px} .step .ic::before{content:attr(data-ic)}
+ .step b{display:block;color:var(--strong);font-size:17px;margin-bottom:4px} .step .ic{display:none} .step .ic::before{content:attr(data-ic)}
  .sample{max-width:420px;background:var(--panel2);border:1px solid var(--line2);border-radius:16px;padding:16px 18px;text-align:center;margin:8px 0}
  .sample .q{font-size:17px;font-weight:700;color:var(--strong)} .sample .q2{font-size:13px;color:var(--soft)}
  .sample .btns{display:flex;gap:10px;margin-top:12px} .sample span.b{flex:1;padding:12px;border-radius:999px;font-weight:700;color:#fff}
@@ -25,11 +25,11 @@ HELP_PAGE = r"""<!doctype html>
  .row{display:flex;gap:12px;align-items:center;flex-wrap:wrap}
  .btn{display:inline-flex;align-items:center;gap:6px;padding:10px 18px;border-radius:999px;border:1px solid var(--line2);background:var(--panel2);color:var(--text)!important;
   font:600 14px var(--font);text-decoration:none;cursor:pointer;min-height:42px}
- .btn.primary{background:linear-gradient(90deg,var(--blue2),var(--purple));border-color:transparent}
+ .btn.primary{background:var(--accent);border-color:transparent}
  .switch{display:inline-flex;align-items:center;gap:10px;cursor:pointer;font-weight:600;color:var(--text)}
  .switch input{appearance:none;width:42px;height:24px;border-radius:999px;background:var(--chip);border:1px solid var(--line2);position:relative;cursor:pointer;margin:0}
  .switch input::after{content:"";position:absolute;top:2px;left:2px;width:18px;height:18px;border-radius:50%;background:#D1D5DB;transition:left .2s}
- .switch input:checked{background:linear-gradient(90deg,var(--blue2),var(--purple));border-color:transparent} .switch input:checked::after{left:20px;background:#fff}
+ .switch input:checked{background:var(--accent);border-color:transparent} .switch input:checked::after{left:20px;background:#fff}
  .muted{color:var(--muted)}
  @media (max-width:760px){ .steps{grid-template-columns:1fr} main{padding:14px 12px 40px} h1{font-size:24px} }
 /*TIP_CSS*/

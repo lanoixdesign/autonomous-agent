@@ -90,7 +90,7 @@ from . import __version__, devmode, export, i18n, schedule, uploads
 from .idc import IDC, IDCConfig
 from .keys import role_task
 from . import sandbox as sandbox_mod
-from .theme import THEME_HEAD
+from .theme import CALM_CSS, THEME_HEAD
 
 LOCAL_HOSTS = ("127.0.0.1", "localhost", "::1")
 _I18N_DATA = json.dumps(i18n.ui_strings(), ensure_ascii=False).replace("</", "<\\/")
@@ -112,6 +112,8 @@ def render_page(page: str, lang: str | None = None, default_lang: str | None = N
     out = out.replace('<meta charset="utf-8">', '<meta charset="utf-8">\n' + pwa.HEAD + "\n" + th, 1)
     out = out.replace("width=device-width, initial-scale=1", "width=device-width, initial-scale=1, viewport-fit=cover", 1)
     out = out.replace("</script></body></html>", pwa.REGISTER_JS + "\n</script></body></html>", 1)
+    # v0.9.1: the calm layer goes last in <head>, so it wins over each page's own colours and effects
+    out = out.replace("</head>", "<style>" + CALM_CSS + "</style></head>", 1)
     if lang:
         out = out.replace('<html lang="en">', f'<html lang="{i18n.normalize(lang)}">', 1)
     return out.encode("utf-8")

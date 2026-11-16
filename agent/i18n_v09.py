@@ -1,6 +1,7 @@
 """v0.9 strings (EN / FR): self-evaluation (Critic), handoffs, semantic memory, business APIs. French uses "tu"."""
 
 EN_V09 = {
+    "ui.advanced": "Advanced options",
     # Critic / self-evaluation
     "who.critic": "Critic",
     "human.handoff": "{who} wants to hand the task over to « {role} »",
@@ -35,7 +36,7 @@ EN_V09 = {
     "mem.semantic": "Memory: by meaning + keywords ({model})",
     "mem.keyword": "Memory: keywords (add a key with « embeddings » ticked in Settings → API keys to search by meaning)",
     # business APIs (Connect tab)
-    "apis.title": "🔌 My APIs",
+    "apis.title": "My APIs",
     "apis.help": "Connect a business API (CRM, invoicing, your own service…). The agent can then read it and, with your OK, change data in it. The secret (auth header value) is stored like your keys: never shown again, never given to the model.",
     "apis.none": "No API yet.",
     "apis.name": "Name",
@@ -52,6 +53,7 @@ EN_V09 = {
     "apis.autoGet": "The agent may read (GET) without asking me",
     "apis.spends": "This API can spend money (payments, orders): always ask me",
     "apis.add": "Add the API",
+    "apis.addTitle": "+ Add an API",
     "apis.save": "Save",
     "apis.edit": "Edit",
     "apis.delete": "Remove",
@@ -81,6 +83,7 @@ FR_V09 = {
     "simple.apiSend": "🔌 {who} a modifié des données dans {api} : {method} {path}",
     "human.apiPay": "💳 {who} veut faire un PAIEMENT / une commande avec {api} : {method} {path}",
     "simple.apiPay": "💳 {who} a appelé {api} (paiement) : {method} {path}",
+    "ui.advanced": "Options avancées",
     "critic.task": "Critique : vérifier la réponse (tour {n})",
     "critic.toggle": "Vérifier la réponse avant de l'envoyer",
     "critic.toggle.title": "Un Critique relit le brouillon de réponse (ce que tu as demandé, l'exactitude, la langue). Si ce n'est pas assez bon, l'agent corrige. Consomme un peu plus de jetons.",
@@ -101,7 +104,7 @@ FR_V09 = {
     "swarm.score": "note {s}/10",
     "mem.semantic": "Mémoire : par le sens + mots-clés ({model})",
     "mem.keyword": "Mémoire : mots-clés (ajoute une clé avec « embeddings » coché dans Réglages → Clés d'API pour chercher par le sens)",
-    "apis.title": "🔌 Mes API",
+    "apis.title": "Mes API",
     "apis.help": "Connecte une API métier (CRM, facturation, ton propre service…). L'agent peut alors la lire et, avec ton accord, y modifier des données. Le secret (valeur de l'en-tête d'authentification) est rangé comme tes clés : jamais réaffiché, jamais donné au modèle.",
     "apis.none": "Aucune API pour l'instant.",
     "apis.name": "Nom",
@@ -118,6 +121,7 @@ FR_V09 = {
     "apis.autoGet": "L'agent peut lire (GET) sans me demander",
     "apis.spends": "Cette API peut dépenser de l'argent (paiements, commandes) : toujours me demander",
     "apis.add": "Ajouter l'API",
+    "apis.addTitle": "+ Ajouter une API",
     "apis.save": "Enregistrer",
     "apis.edit": "Modifier",
     "apis.delete": "Retirer",

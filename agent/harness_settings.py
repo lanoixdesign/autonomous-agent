@@ -14,26 +14,26 @@ COMMON_CSS = r"""
  button,.btn{display:inline-flex;align-items:center;justify-content:center;gap:6px;padding:9px 18px;border-radius:999px;border:1px solid var(--line2);background:var(--panel2);
   color:var(--text);font:600 13px var(--font);cursor:pointer;text-decoration:none;min-height:38px}
  button:hover,.btn:hover{border-color:var(--blue)} button:disabled{opacity:.55;cursor:default}
- .primary{background:linear-gradient(90deg,var(--blue2),var(--purple));border-color:transparent;color:#fff!important;box-shadow:0 0 18px rgba(37,99,235,.35)}
- .blue{background:#2563EB;border-color:#2563EB;color:#fff} .grey{background:#374151;border-color:#374151;color:#fff}
+ .primary{background:var(--accent);border-color:transparent;color:#fff!important;}
+ .blue{background:var(--accent);border-color:var(--accent);color:#fff} .grey{background:#374151;border-color:#374151;color:#fff}
  .danger{background:#7F1D1D;border-color:#B91C1C;color:#FECACA}
  .linkish{background:none;border:0;color:var(--blue);padding:0;min-height:0;text-decoration:underline}
  input[type=text],input[type=password],input[type=number],input[type=url],select{width:100%;padding:10px 12px;font:14px var(--font);min-height:40px}
  label.f{display:block;font-size:12.5px;color:var(--soft);margin:10px 0 4px;font-weight:600}
  .row{display:flex;gap:10px;align-items:center;flex-wrap:wrap} .row>*{min-width:0}
  .pill{display:inline-block;padding:2px 10px;border-radius:999px;font-size:11.5px;font-weight:600;background:var(--chip);color:var(--soft)}
- .pill.ok{background:rgba(34,197,94,.15);color:var(--ok)} .pill.bad{background:rgba(248,113,113,.15);color:var(--bad)}
- .pill.blue{background:rgba(0,212,255,.14);color:var(--blue)} .pill.purple{background:rgba(157,0,255,.18);color:var(--t-violet)}
+ .pill.ok{background:rgba(var(--ok-rgb),0.09);color:var(--ok)} .pill.bad{background:rgba(var(--bad-rgb),0.09);color:var(--bad)}
+ .pill.blue{background:rgba(var(--accent-rgb),0.084);color:var(--blue)} .pill.purple{background:rgba(var(--accent-rgb),0.108);color:var(--t-violet)}
  .switch{display:inline-flex;align-items:center;gap:10px;cursor:pointer;font-weight:600;color:var(--text)}
  .switch input{appearance:none;width:42px;height:24px;border-radius:999px;background:var(--chip);border:1px solid var(--line2);position:relative;cursor:pointer;margin:0;flex-shrink:0;transition:background .2s}
  .switch input::after{content:"";position:absolute;top:2px;left:2px;width:18px;height:18px;border-radius:50%;background:#D1D5DB;transition:left .2s}
- .switch input:checked{background:linear-gradient(90deg,var(--blue2),var(--purple));border-color:transparent} .switch input:checked::after{left:20px;background:#fff}
+ .switch input:checked{background:var(--accent);border-color:transparent} .switch input:checked::after{left:20px;background:#fff}
  #toast{position:fixed;left:50%;bottom:24px;transform:translateX(-50%);background:var(--panel2);border:1px solid var(--line2);border-radius:999px;padding:10px 18px;
   box-shadow:0 12px 30px rgba(0,0,0,.5);color:var(--text);font-weight:600;z-index:60;display:none;max-width:90vw;text-align:center}
  #toast.on{display:block} #toast.err{border-color:var(--bad);color:var(--t-bad)}
  #overlay{position:fixed;inset:0;background:var(--card);z-index:80;display:flex;align-items:center;justify-content:center;flex-direction:column;gap:14px;text-align:center;padding:24px}
  #overlay[hidden]{display:none} #overlay .big{font-size:20px;color:var(--strong);font-weight:700;max-width:520px}
- .spin{width:34px;height:34px;border-radius:50%;border:4px solid rgba(0,212,255,.25);border-top-color:var(--blue);animation:spin 1s linear infinite}
+ .spin{width:34px;height:34px;border-radius:50%;border:4px solid rgba(var(--accent-rgb),0.15);border-top-color:var(--blue);animation:spin 1s linear infinite}
  @keyframes spin{to{transform:rotate(360deg)}}
 """
 
@@ -85,11 +85,11 @@ SETTINGS_PAGE = r"""<!doctype html>
  .cols{display:flex;flex-direction:column;gap:16px;min-width:0}
  section.card{scroll-margin-top:80px}
  .banner{max-width:1180px;margin:14px auto 0;padding:12px 18px;border-radius:14px;font-weight:600}
- .banner.lock{background:rgba(245,158,11,.12);border:1px solid rgba(245,158,11,.45);color:var(--t-warn)}
- .banner.warn{background:rgba(248,113,113,.12);border:1px solid rgba(248,113,113,.45);color:var(--t-bad)}
- .banner.restart{background:rgba(0,212,255,.10);border:1px solid rgba(0,212,255,.45);color:var(--t-cyan);display:flex;gap:12px;align-items:center;flex-wrap:wrap}
+ .banner.lock{background:rgba(var(--warn-rgb),0.072);border:1px solid rgba(var(--warn-rgb),0.27);color:var(--t-warn)}
+ .banner.warn{background:rgba(var(--bad-rgb),0.072);border:1px solid rgba(var(--bad-rgb),0.27);color:var(--t-bad)}
+ .banner.restart{background:rgba(var(--accent-rgb),0.06);border:1px solid rgba(var(--accent-rgb),0.27);color:var(--t-cyan);display:flex;gap:12px;align-items:center;flex-wrap:wrap}
  .banner[hidden]{display:none}
- .pcard{border:1px solid rgba(185,43,255,.55);border-radius:14px;padding:12px 14px;margin:10px 0;background:var(--sunk);box-shadow:0 0 14px rgba(157,0,255,.18)}
+ .pcard{border:1px solid rgba(var(--accent-rgb),0.33);border-radius:14px;padding:12px 14px;margin:10px 0;background:var(--sunk);}
  .pcard.off{opacity:.6;border-color:var(--line2);box-shadow:none}
  .pcard .ptop{display:flex;gap:10px;align-items:center;flex-wrap:wrap}
  .pcard .pname{font-weight:700;color:var(--strong);font-size:15px} .pcard code{font:12.5px var(--mono);color:var(--soft);background:var(--sunk);border:1px solid var(--line);border-radius:8px;padding:2px 8px}
@@ -99,9 +99,9 @@ SETTINGS_PAGE = r"""<!doctype html>
  .ibtn{width:34px;min-height:34px;padding:0} 
  .lim{display:grid;grid-template-columns:repeat(auto-fill,minmax(210px,1fr));gap:4px 16px;margin-top:8px}
  .lim .ql{display:flex;justify-content:space-between;font-size:12px;color:var(--soft)} .bar{height:5px;background:var(--chip);border-radius:3px;margin:2px 0 4px;overflow:hidden}
- .bar i{display:block;height:100%;background:linear-gradient(90deg,#00D4FF,#7DD3FC);box-shadow:0 0 8px #00D4FF} .bar i.hi{background:var(--warn);box-shadow:none} .bar i.full{background:var(--bad);box-shadow:none}
+ .bar i{display:block;height:100%;background:var(--accent);} .bar i.hi{background:var(--warn);box-shadow:none} .bar i.full{background:var(--bad);box-shadow:none}
  .testline{font-size:12.5px;margin-top:6px} .testline.ok{color:var(--ok)} .testline.bad{color:var(--bad)}
- #pform{border:1px solid rgba(0,212,255,.4);border-radius:16px;padding:14px 16px;margin-top:12px;background:var(--sunk);box-shadow:0 0 22px rgba(0,212,255,.10)}
+ #pform{border:1px solid rgba(var(--accent-rgb),0.24);border-radius:16px;padding:14px 16px;margin-top:12px;background:var(--sunk);}
  #pform[hidden]{display:none}
  .grid2{display:grid;grid-template-columns:1fr 1fr;gap:0 16px} .grid3{display:grid;grid-template-columns:repeat(auto-fill,minmax(200px,1fr));gap:0 14px}
  .chips{display:flex;flex-wrap:wrap;gap:8px} .chips label{display:inline-flex;align-items:center;gap:6px;padding:6px 12px;border:1px solid var(--line2);border-radius:999px;cursor:pointer;font-size:13px}
@@ -112,18 +112,18 @@ SETTINGS_PAGE = r"""<!doctype html>
  .seg{display:inline-flex;border:1px solid var(--line2);border-radius:999px;overflow:hidden;background:var(--sunk)}
  .seg label{position:relative;cursor:pointer} .seg input{position:absolute;opacity:0;width:1px;height:1px}
  .seg span{display:inline-block;padding:7px 14px;font:600 12.5px var(--font);color:var(--soft)}
- .seg input:checked+span{background:linear-gradient(90deg,var(--blue2),var(--purple));color:#fff}
+ .seg input:checked+span{background:var(--accent);color:#fff}
  .seg input:focus-visible+span{outline:2px solid var(--blue);outline-offset:-2px}
  .seg input:disabled+span{opacity:.35;cursor:not-allowed;text-decoration:line-through}
  .lock{font-size:11.5px;color:var(--t-bad);margin-top:3px}
  .langbtns{display:inline-flex;gap:8px}
- .langbtns button.on{background:linear-gradient(90deg,var(--blue2),var(--purple));border-color:transparent;color:#fff}
- #qrbox svg{width:240px;height:auto;background:#fff;padding:8px;border-radius:12px;box-shadow:0 0 28px rgba(0,212,255,.35);display:block;margin:10px 0}
+ .langbtns button.on{background:var(--accent);border-color:transparent;color:#fff}
+ #qrbox svg{width:240px;height:auto;background:#fff;padding:8px;border-radius:12px;display:block;margin:10px 0}
  #tokbox{word-break:break-all;font:13px var(--mono);background:var(--sunk);border:1px solid var(--line);border-radius:10px;padding:10px;margin-top:8px}
  #tokbox[hidden]{display:none}
  fieldset{border:0;padding:0;margin:0} fieldset:disabled{opacity:.6}
- .sbx{margin:10px 0 6px;padding:10px 14px;border-radius:12px;font-weight:600;background:rgba(34,197,94,.12);border:1px solid rgba(34,197,94,.45);color:var(--t-ok)}
- .sbx.off{background:rgba(248,113,113,.12);border-color:rgba(248,113,113,.55);color:var(--t-bad)} body:not(.simple) #sbxsimple{display:none}
+ .sbx{margin:10px 0 6px;padding:10px 14px;border-radius:12px;font-weight:600;background:rgba(var(--ok-rgb),0.072);border:1px solid rgba(var(--ok-rgb),0.27);color:var(--t-ok)}
+ .sbx.off{background:rgba(var(--bad-rgb),0.072);border-color:rgba(var(--bad-rgb),0.33);color:var(--t-bad)} body:not(.simple) #sbxsimple{display:none}
  body.simple .xp{display:none!important} #simplebar{display:none} body.simple #simplebar{display:flex}
  .disp{display:grid;grid-template-columns:repeat(auto-fill,minmax(250px,1fr));gap:4px 18px;align-items:start}
  @media (max-width:760px){
@@ -150,12 +150,14 @@ SETTINGS_PAGE = r"""<!doctype html>
  <section id="keys" class="card"><h2 data-i18n="set.sec.keys"></h2>
   <p class="muted" data-i18n="set.keys.help"></p>
   <div class="row" style="justify-content:space-between"><span><label class="switch"><input type="checkbox" id="demo"><span data-i18n="set.demo"></span></label><button class="tip" data-tip="tip.demo"></button></span><span id="modebadge" class="pill"></span></div>
+  <div id="plist"></div>
+  <details class="adv"><summary data-i18n="ui.advanced"></summary>
   <p id="storage" class="muted"></p>
   <p class="muted"><span data-i18n="set.keys.failover"></span><button class="tip" data-tip="tip.failover"></button></p>
   <p class="bwhy" id="backuphint" data-i18n="set.keys.backupHint"></p>
   <div id="poolbox" class="poolbox"><label class="f" for="parsel" style="display:inline"><span data-i18n="pool.title"></span></label><select id="parsel"></select>
    <p id="poolnow" class="muted"></p><p class="bwhy" data-i18n="bulk.why"></p><p class="muted" data-i18n="pool.share"></p></div>
-  <div id="plist"></div>
+  </details>
   <div class="row"><button id="addkey" class="primary" data-i18n="set.keys.add"></button><button id="bulkb" type="button" data-i18n="bulk.open"></button><button id="jobsb" type="button" data-i18n="jobs.open"></button></div>
   <div id="bulkp" class="subp" hidden><div class="row" style="justify-content:space-between"><h3 data-i18n="bulk.title" style="margin:0"></h3><button id="bulkx" type="button" class="linkish" data-i18n="bulk.close"></button></div><div id="bulkw"></div></div>
   <div id="jobsp" class="subp" hidden></div>
@@ -212,8 +214,9 @@ SETTINGS_PAGE = r"""<!doctype html>
   <details><summary data-i18n="sbx.allowedT"></summary><p class="muted" data-i18n="sbx.allowed"></p><p class="muted" id="sbxlim"></p></details></section>
  <section id="critic" class="card"><h2><span data-i18n="set.sec.critic"></span><button class="tip" data-tip="tip.critic"></button></h2><p class="muted" data-i18n="set.critic.help"></p>
   <label class="switch"><input type="checkbox" id="criton"><span data-i18n="set.critic.enabled"></span></label>
+  <details class="adv"><summary data-i18n="ui.advanced"></summary>
   <div class="row" style="margin-top:8px;align-items:center;gap:8px"><label class="f" for="critr" data-i18n="set.critic.rounds" style="margin:0"></label><select id="critr" style="width:auto"></select></div>
-  <p id="memstate" class="muted"></p></section>
+  <p id="memstate" class="muted"></p></details></section>
  <section id="safety" class="card xp"><h2><span data-i18n="set.sec.safety"></span><button class="tip" data-tip="tip.safety"></button></h2><p class="muted" data-i18n="set.safety.help"></p>
   <table class="perm"><tbody id="perms"></tbody></table><p id="permtools" class="muted"></p>
   <div class="row"><button id="psave" class="blue" data-i18n="set.save"></button></div></section>
@@ -224,8 +227,8 @@ SETTINGS_PAGE = r"""<!doctype html>
  <section id="phone" class="card"><h2 data-i18n="set.sec.phone"></h2><p class="muted" data-i18n="set.phone.help"></p>
   <p id="phonestate" class="pill"></p>
   <label class="switch"><input type="checkbox" id="remon"><span data-i18n="set.phone.enable"></span></label>
-  <div class="grid2"><div><label class="f" for="tunnel"><span data-i18n="set.phone.tunnel"></span><button class="tip" data-tip="tip.tunnel"></button></label><select id="tunnel"></select></div>
-   <div><label class="f" for="purl" data-i18n="set.phone.url"></label><input id="purl" type="url" data-i18n-placeholder="set.phone.urlPh"></div></div>
+  <details class="adv"><summary data-i18n="ui.advanced"></summary><div class="grid2"><div><label class="f" for="tunnel"><span data-i18n="set.phone.tunnel"></span><button class="tip" data-tip="tip.tunnel"></button></label><select id="tunnel"></select></div>
+   <div><label class="f" for="purl" data-i18n="set.phone.url"></label><input id="purl" type="url" data-i18n-placeholder="set.phone.urlPh"></div></div></details>
   <div class="row" style="margin-top:10px"><button id="rsave" class="blue" data-i18n="set.save"></button><button id="qrb" data-i18n="set.phone.qr"></button><button id="newtok" class="grey xp" data-i18n="set.phone.newToken"></button></div>
   <div id="qrbox"></div><div id="tokbox" hidden></div>
   <p id="remset" class="muted"></p></section>
@@ -433,26 +436,26 @@ WELCOME_PAGE = r"""<!doctype html>
 /*THEME*/
 /*COMMON_CSS*/
  main{max-width:620px;margin:0 auto;padding:28px 18px 40px}
- .logo{width:84px;height:84px;margin:6px auto 14px;border-radius:50%;border:6px solid var(--blue);box-shadow:0 0 22px var(--blue),0 0 48px rgba(0,212,255,.35);display:flex;align-items:center;justify-content:center;background:var(--sunk)}
- .logo i{width:28px;height:28px;border-radius:7px;background:var(--blue2);box-shadow:0 0 12px rgba(37,99,235,.8)}
+ .logo{width:84px;height:84px;margin:6px auto 14px;border-radius:50%;border:6px solid var(--blue);display:flex;align-items:center;justify-content:center;background:var(--sunk)}
+ .logo i{width:28px;height:28px;border-radius:7px;background:var(--blue2);}
  .steps{display:flex;justify-content:center;gap:8px;margin-bottom:14px} .steps span{width:34px;height:5px;border-radius:3px;background:var(--chip)}
- .steps span.on{background:linear-gradient(90deg,var(--blue),var(--purple));box-shadow:0 0 10px rgba(0,212,255,.5)}
+ .steps span.on{background:var(--accent);}
  .card{text-align:center} h1{font-size:24px;margin-bottom:6px} .card p{color:var(--soft)}
  .stepn{color:var(--muted);font-size:12px;text-transform:uppercase;letter-spacing:.06em}
  .big2{display:grid;grid-template-columns:1fr 1fr;gap:12px;margin:18px 0 6px} .big2 button{padding:18px;font-size:17px;border-radius:16px}
- .big2 button.on{background:linear-gradient(90deg,var(--blue2),var(--purple));border-color:transparent;color:#fff}
+ .big2 button.on{background:var(--accent);border-color:transparent;color:#fff}
  .provs{display:grid;grid-template-columns:1fr 1fr;gap:10px;margin:14px 0;text-align:left}
  .provs label{display:flex;gap:10px;align-items:flex-start;padding:12px 14px;border:1px solid var(--line2);border-radius:14px;cursor:pointer;background:var(--sunk)}
  .provs input{margin-top:4px!important} .provs b{display:block;color:var(--strong);font-size:15px} .provs small{display:block;color:var(--soft);font-size:12.5px;line-height:1.4}
  .badge{display:inline-block;font:700 11px var(--font);padding:2px 8px;border-radius:999px;margin:3px 0;background:var(--chip);color:var(--soft)}
  .badge.rec{background:#14532D;color:#BBF7D0} .badge.paid{background:#3F2A0B;color:#FCD34D}
- .demotile{display:block;width:100%;text-align:left;padding:16px 18px;border-radius:18px;border:1px solid var(--purple);background:linear-gradient(135deg,rgba(124,58,237,.28),rgba(37,99,235,.18));cursor:pointer;color:var(--text);margin:14px 0 4px}
+ .demotile{display:block;width:100%;text-align:left;padding:16px 18px;border-radius:18px;border:1px solid var(--purple);background:rgba(var(--accent-rgb),0.08);cursor:pointer;color:var(--text);margin:14px 0 4px}
  .demotile b{display:block;font-size:18px;color:var(--strong)} .demotile span{color:var(--soft);font-size:14px}
- .demotile:hover{box-shadow:0 0 18px rgba(168,85,247,.45)}
+ .demotile:hover{}
  .guide{text-align:left;background:var(--sunk);border:1px solid var(--line2);border-radius:14px;padding:10px 14px;margin:6px 0 12px}
  .guide summary{cursor:pointer;font-weight:700;color:var(--blue)} .guide ol{margin:8px 0 10px;padding-left:22px;color:var(--soft)} .guide li{margin:4px 0}
  .note{font-size:13px;min-height:18px;color:var(--soft)} .note.ok{color:var(--ok)} .note.bad{color:var(--t-bad)}
- .provs label:has(input:checked){border-color:var(--blue);box-shadow:0 0 14px rgba(0,212,255,.25)} .provs input{accent-color:var(--blue);margin:0}
+ .provs label:has(input:checked){border-color:var(--blue);} .provs input{accent-color:var(--blue);margin:0}
  .form{text-align:left} .acts{display:flex;gap:10px;justify-content:center;flex-wrap:wrap;margin-top:16px}
  .or{display:flex;align-items:center;gap:10px;color:var(--muted);margin:18px 0 10px} .or::before,.or::after{content:"";flex:1;height:1px;background:var(--line)}
  .testline{font-size:13px;margin-top:8px;min-height:20px} .testline.ok{color:var(--ok)} .testline.bad{color:var(--bad)}
