@@ -37,6 +37,7 @@ API (JSON):
   POST /app/providers/test    test a key typed in the form (not saved);  POST /app/providers/order {"ids"}
   POST /app/providers/bulk    {"text"}: many keys, one per line ("label: key"), tested at once, good ones saved
   POST /app/providers/propose proposed task types per key;  POST /app/providers/tasks {"assign": {id: [..]}}
+  GET  /keys/rate             tokens / requests left per minute, per key (masked; provider headers or estimate)
   GET  /app/pool              live key pool: per key (masked) the agents using it, in-flight requests, usage
   POST /app/setup             first-run wizard {"lang", "demo", "done"};  POST /app/remote/token (new token)
   POST /app/restart, /app/quit   stop the server cleanly (restart: the launcher starts it again)
@@ -684,6 +685,13 @@ class Harness:
                 task.add_event("stop", agent=data.get("agent", "root"), reason=data.get("reason"))
             elif kind == "idc":
                 task.add_event("idc", **{"agent": "root", **data})
+            elif kind == "keys":   # key switch / pause (masked keys only): plain status in the chat + dashboard
+                # masks only; "from_mask" (not "key_mask") so the stored history keeps the masked value readable
+                ev = {k: v for k, v in data.items() if k in ("agent", "action", "to_mask", "seconds", "status",
+                                                             "reason", "backup_kind")}
+                if data.get("key_mask"):
+                    ev["from_mask"] = data["key_mask"]
+                task.add_event("keys", **{"agent": "root", **ev})
             elif kind == "step":
                 task.on_progress(data.get("agent", "root"), data.get("steps"), data.get("max_steps"),
                                  {k: data[k] for k in ("key", "key_mask", "key_task", "key_match") if k in data})
@@ -1032,6 +1040,19 @@ class Harness:
                 self.run_due()
             except Exception as e:  # noqa: BLE001 - never let the scheduler thread die
                 print(f"scheduler: {type(e).__name__}: {e}", file=sys.stderr)
+
+    # -- per-minute counter (v0.8.1)
+    def rate_view(self) -> dict:
+        """Per key (MASKED): tokens / requests left this minute, from the provider's x-ratelimit-* headers
+        (source "provider") or estimated from the tokens used in the last 60 s (source "estimate")."""
+        router = self.active_router()
+        if router is None:
+            return {"mode": "demo" if (self.control is not None and self.control.effective_mode() == "demo")
+                    else "single-key (.env)", "keys": []}
+        keys = [{f: k.get(f) for f in ("name", "key", "provider", "available", "cooldown_s", "refused", "rate",
+                                        "categories", "agents")}
+                for k in router.status().get("keys", [])]
+        return {"mode": "settings" if router is not self.key_router else "router", "keys": keys}
 
     # -- health
     def health(self, check_backend: bool = False, timeout: float = 3.0) -> dict:
@@ -1521,6 +1542,8 @@ def make_handler(h: Harness, token: str | None, local_only: bool, auth: "remote.
                 return self._send(200, {"schedules": h.list_schedules()})
             if path == "/settings":
                 return self._send(200, h.get_settings())
+            if path == "/keys/rate":   # v0.8.1: tokens / requests left per minute, per key (masked)
+                return self._send(200, h.rate_view())
             if path == "/keys":
                 router = h.active_router()
                 if router is None:

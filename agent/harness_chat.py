@@ -2,6 +2,7 @@
 Dark "neon" theme (agent/theme.py), live swarm graph (GET /tasks/{id}/graph). Live updates by Server-Sent Events (/tasks/{id}/stream), falling back to polling if the stream fails.
 Bilingual (EN/FR): every visible string comes from agent/i18n.py through t(); see agent/i18n_js.py."""
 from .i18n_js import I18N_JS, LANG_CSS, LANG_SWITCH
+from .ratebar import RATE_CSS, RATE_JS
 from .theme import APPROVAL_JS, BASE_CSS, NAV_CSS, NAV_HTML, NAV_JS, THEME_BTN, TIP_CSS, TIP_JS
 
 CHAT_PAGE = r"""<!doctype html>
@@ -272,6 +273,7 @@ CHAT_PAGE = r"""<!doctype html>
   <button id="expjson" class="tbtn" style="display:none" data-i18n-title="chat.expjson.title">⇩ JSON</button>
   <button id="stopall" class="tbtn" data-i18n="btn.stopall" data-i18n-title="title.stopall"></button>
   <button id="compose" class="ibtn" data-i18n-title="chat.compose"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 20h9"/><path d="M16.5 3.5a2.1 2.1 0 0 1 3 3L7 19l-4 1 1-4Z"/></svg></button></div>
+ <div id="ratebar" hidden><div class="rnote" id="ratenote" aria-live="polite"></div><span id="rates" style="display:contents"></span></div>
  <div id="idcpanel" hidden></div>
  <section id="swarm" hidden aria-live="polite"></section>
  <div id="log"></div>
@@ -396,6 +398,7 @@ function traceKind(e){
   if(e.kind==="user") return "turn";
   if(e.kind==="message") return (e.final && depth(e.agent)===0) ? "out" : "trace";
   if(e.kind==="audit" || e.kind==="approval" || e.kind==="idc") return "trace";
+  if(e.kind==="keys" && ["wait","resume"].includes(e.action)) return "trace";   // live in the status bar; history in the trace
   return "out";
 }
 function traceSummary(st){
@@ -444,6 +447,8 @@ function node(e){
         support:t(c.supported?"idc.supported":"idc.unsupported"),cost:num(c.cost,2),text:short(c.text,220)})+(c.revises?" · "+t("idc.revises",{id:c.revises}):"")); }
     if(e.collapse) return el("div","step conflict",t("idc.step.collapse",{agent:e.agent,why:tr("idc.why",e.collapse),v:num(e.vitality,1)}));
     return null; }
+  if(e.kind==="keys"){ const x=keysText(e); if(!x) return null;
+    return el("div","sys keys"+(["refused","exhausted"].includes(e.action)?" bad":(e.action==="resume"?" okk":"")),(depth(e.agent)>0?agentShort(e.agent)+" · ":"")+x); }
   if(e.kind==="idc_toggle") return el("div","sys",t("idc.step.toggled",{state:t(e.enabled?"idc.on":"idc.off")}));
   if(e.kind==="audit" && !TRACE_TECH){ const x=simpleAudit(e); if(x!==undefined) return x; }
   if(e.kind==="approval" && !TRACE_TECH){ const k={pending:"waiting",approved:"allowed",denied:"refusedByYou",expired:"expired","auto-approved":"auto"}[e.status];
@@ -596,6 +601,25 @@ async function quotas(){
     Object.entries(k.limits).forEach(([f,v])=>{ const r=el("div","ql"); r.append(el("span",null,tr("limit",f)), el("span",null,t("quota.left",{left:fmt(f,v.remaining),limit:fmt(f,v.limit)})));
       const pct=v.limit? Math.min(100,100*v.used/v.limit):0, b=el("div","bar"), i=el("i",pct>=100?"full":pct>=80?"hi":""); i.style.width=pct+"%"; b.append(i); d.append(r,b); });
     box.append(d); });
+}
+// ---- v0.8.1 status bar: tokens left per minute per key (all modes, mobile too) + the current key pause
+function evAge(e){ const s=String(e.ts||"").replace(/([+-]\d\d)(\d\d)$/,"$1:$2"), ms=Date.parse(s); return isNaN(ms)?0:(Date.now()-ms)/1000; }
+function rateNote(){
+  const evs=((cache[cur]||{}).events)||[]; let note="";
+  for(let i=evs.length-1;i>=0;i--){ const e=evs[i];
+    if(e.kind==="progress"||e.kind==="message"||(e.kind==="status"&&e.status!=="running")) break;
+    if(e.kind==="keys"){ if(e.action==="resume") break;
+      if(e.action==="wait"){ const left=Math.ceil((e.seconds||0)-evAge(e)); if(left>0) note=keysText({...e,seconds:left}); }
+      else note=keysText(e)||""; break; } }
+  $("ratenote").textContent=note||"";
+}
+async function rateBar(){
+  const st=await rateFetch(), bar=$("ratebar"), box=$("rates");
+  const ks=((st&&st.keys)||[]).filter(k=>k.available);
+  if(!ks.length){ bar.hidden=true; return; }
+  bar.hidden=false; box.replaceChildren(); ks.slice(0,3).forEach(k=>box.append(rateBox(k,true)));
+  if(ks.length>3) box.append(el("span","muted",t("rate.more",{n:ks.length-3})));
+  rateNote();
 }
 // ---- live swarm graph: the real agent tree of the current turn (GET /tasks/{id}/graph), refreshed on events
 const SVGNS="http://www.w3.org/2000/svg";
@@ -787,12 +811,12 @@ const narrow = matchMedia("(max-width:760px)");
 function placeholder(){ $("input").placeholder = t(narrow.matches ? "chat.input.short" : "chat.input.placeholder"); }
 narrow.addEventListener && narrow.addEventListener("change", placeholder);
 placeholder();
-onLang = () => { placeholder(); render(); mode(); poll(); quotas(); chips(); idcUI(); gsig=""; drawSwarm(); thinking();
+onLang = () => { placeholder(); render(); mode(); poll(); quotas(); rateBar(); chips(); idcUI(); gsig=""; drawSwarm(); thinking();
   if(!$("filesp").hidden) loadFiles(); if(tstep>=0) tour(tstep); };
-render(); appStatus(); setInterval(appStatus,15000); loadConfig(); loadSettings(); setInterval(poll,1000); stream(); poll(); loadGraph(); setInterval(quotas,5000); quotas();
+render(); appStatus(); setInterval(appStatus,15000); loadConfig(); loadSettings(); setInterval(poll,1000); stream(); poll(); loadGraph(); setInterval(quotas,5000); quotas(); setInterval(rateBar,3000); rateBar(); setInterval(()=>{ if(cur) rateNote(); },1000);
 </script></body></html>
 """
 CHAT_PAGE = CHAT_PAGE.replace("/*THEME*/", BASE_CSS).replace("/*APPROVAL_JS*/", APPROVAL_JS)
-CHAT_PAGE = CHAT_PAGE.replace("/*TIP_CSS*/", TIP_CSS).replace("/*TIP_JS*/", TIP_JS)
+CHAT_PAGE = CHAT_PAGE.replace("/*TIP_CSS*/", TIP_CSS + RATE_CSS).replace("/*TIP_JS*/", TIP_JS + RATE_JS)
 CHAT_PAGE = CHAT_PAGE.replace("/*NAV_CSS*/", NAV_CSS).replace("/*NAV*/", NAV_HTML).replace("/*NAV_JS*/", NAV_JS)
 CHAT_PAGE = CHAT_PAGE.replace("/*THEME_BTN*/", THEME_BTN).replace("/*LANG_CSS*/", LANG_CSS).replace("/*LANG_SWITCH*/", THEME_BTN + LANG_SWITCH).replace("/*I18N_JS*/", I18N_JS)

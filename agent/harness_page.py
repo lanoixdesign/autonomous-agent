@@ -1,6 +1,7 @@
 """The harness compact dashboard (served at /dashboard; the chat page is harness_chat.py).
 Plain HTML + JS, no external resources. Bilingual (EN/FR): strings come from agent/i18n.py."""
 from .i18n_js import I18N_JS, LANG_CSS, LANG_SWITCH
+from .ratebar import RATE_CSS, RATE_JS
 from .theme import APPROVAL_JS, BASE_CSS, DASH_CSS, NAV_CSS, NAV_HTML, NAV_JS, THEME_BTN, TIP_CSS, TIP_JS
 
 DASH_EXTRA = r"""
@@ -66,6 +67,7 @@ PAGE = r"""<!doctype html>
   <h2 style="margin-top:12px" data-i18n="dash.result"></h2><pre id="result" class="muted">—</pre>
   <h2 data-i18n="dash.events"></h2><div id="events"></div></section>
  <section><h2 data-i18n="dash.approvals"></h2><div id="approvals" class="muted"></div>
+  <h2 style="margin-top:14px" data-i18n="dash.rate"></h2><div id="rates"></div>
   <h2 style="margin-top:14px" data-i18n="dash.keys"></h2><div id="keys" class="muted" data-i18n="dash.singleKey"></div></section>
  <section style="grid-column:1 / 3"><h2 data-i18n="dash.usage"></h2><div id="usage" class="muted">—</div></section>
  <section><h2 data-i18n="sched.title"></h2>
@@ -115,6 +117,7 @@ function evLine(e){
                         : (e.tool+" ["+(e.category?tr("cat",e.category):"")+"] "+tr("decision",e.decision)+(e.error?t("ev.error",{error:e.error}):""));
   else if(e.kind==="message") txt = (e.final?t("ev.answer"):"")+e.content;
   else if(e.kind==="approval") txt = t("ev.approval",{tool:e.tool,status:tr("status",e.status)});
+  else if(e.kind==="keys") txt = keysText(e)||("keys "+e.action);
   else txt = e.kind+" "+(e.status?tr("status",e.status):(e.reason?tr("status",e.reason):""));
   d.append(el("span","muted",e.ts.slice(11,19)+" "), el("b",null,who), el("span",null,txt)); return d;
 }
@@ -202,11 +205,13 @@ $("stopall").onclick=async()=>{ if(!confirm(t("confirm.stopall"))) return;
   try{ const r=await api("POST","/stop-all",{disable_schedules:true});
     $("msg").textContent=t("msg.stopped",{tasks:r.cancelled.length,approvals:r.approvals_denied.length,schedules:r.schedules_paused.length}); refresh(); refreshSchedules(); }
   catch(e){ fail(e); } };
+async function refreshRates(){ const st=await rateFetch(), box=$("rates"); if(!st) return; box.replaceChildren();
+  if(!(st.keys||[]).length){ box.append(el("div","muted","—")); return; } st.keys.forEach(k=>box.append(rateBox(k,false))); }
 function slow(){ refreshKeys(); refreshUsage(); refreshSchedules(); refreshRules(); refreshHealth(); }
 onLang = () => { const box=$("events"); box.replaceChildren(...evcache.map(evLine)); refresh(); slow(); };
-setInterval(refresh, 1000); refresh(); setInterval(slow, 5000); slow();
+setInterval(refresh, 1000); refresh(); setInterval(slow, 5000); slow(); setInterval(refreshRates, 3000); refreshRates();
 </script></body></html>
 """
 PAGE = PAGE.replace("/*LANG_CSS*/", LANG_CSS).replace("/*LANG_SWITCH*/", THEME_BTN + LANG_SWITCH).replace("/*I18N_JS*/", I18N_JS)
-PAGE = PAGE.replace("/*THEME*/", BASE_CSS + DASH_CSS + DASH_EXTRA + NAV_CSS + TIP_CSS).replace("/*APPROVAL_JS*/", APPROVAL_JS)
-PAGE = PAGE.replace("/*NAV*/", NAV_HTML).replace("/*NAV_JS*/", NAV_JS).replace("/*TIP_JS*/", TIP_JS)
+PAGE = PAGE.replace("/*THEME*/", BASE_CSS + DASH_CSS + DASH_EXTRA + NAV_CSS + TIP_CSS + RATE_CSS).replace("/*APPROVAL_JS*/", APPROVAL_JS)
+PAGE = PAGE.replace("/*NAV*/", NAV_HTML).replace("/*NAV_JS*/", NAV_JS).replace("/*TIP_JS*/", TIP_JS + RATE_JS)

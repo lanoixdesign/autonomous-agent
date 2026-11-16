@@ -188,6 +188,26 @@ in the sandbox and answers in plain words, **⬇ Download the project (.zip)** g
 |---|---|
 | ![Coder and Tester](docs/v8-chat-coder-tester-light-en.png) | ![Preview](docs/v8-dev-preview-dark-en.png) |
 
+#### Never stopped by a rate limit (new in 0.8.1)
+
+🔁 **Automatic backup key** — when a key hits a rate limit or quota (429), times out or the service has an
+error (5xx), the same request goes **at once** to another key (one made for the same job first, then any
+other key, and as a last resort a key saved for another use). Helpers in a swarm do the same, mid-task,
+without losing their work. With a single key (e.g. a free Groq key) the assistant **waits for the key to
+come back** (it follows the provider's "retry after", at most 60 s per pause) and carries on instead of
+stopping. Only keys that cannot come back end a task (every key refused / revoked, daily limit reached),
+with a clear message. The chat says what happens in plain words: *"Limit reached on key gsk_••••43gO,
+switching to the backup key…"*, *"All keys are paused, resuming in 4 s…"*.
+
+📊 **Tokens left per minute** — a status bar under the chat header (also on phones) and the dashboard show,
+per key (masked), *"Tokens left: 5,200 / 8,000 per minute · back in 12 s"* with a small bar, from the
+provider's own figures (`x-ratelimit-*` headers) or, until the first answer, an **estimate** (clearly marked)
+from the tokens used in the last 60 seconds. Tip: add a second (backup) key to avoid pauses.
+
+| Switch to the backup key | Phone: pause and counter |
+|---|---|
+| ![Backup key](docs/v81-chat-switch-light-en.png) | ![Pause](docs/v81-mobile-wait-dark-fr.png) |
+
 Notes: the server only listens on `127.0.0.1` (your computer); port 8765 if free, else another one. The
 macOS builds are separate for Apple Silicon and Intel. Advanced: build it yourself with
 `pip install pyinstaller && pyinstaller packaging/autonomous-agent.spec` (output in `dist/`), or run
@@ -485,9 +505,17 @@ keys:
   is set, not cooling down, and can take the request **without exceeding any limit**. The request is
   reserved before it is sent (tokens: estimated prompt + a `max_tokens` cap sent to the provider,
   cost from `pricing`), so parallel agents cannot overshoot together. The real usage is recorded after.
-- **Failover**: a 429 (honouring `Retry-After`) or a 5xx / network error puts the key on cooldown and
-  the next key is tried. When no key can serve the category, the call stops with a clear error listing
-  the reason for each key (the agent ends with `llm_error`). Nothing is ever sent over a limit.
+- **Failover (0.8.1)**: a 429 (honouring `Retry-After`, or Groq's "try again in Xs"), a timeout, a
+  network error or a 5xx puts the key on cooldown and the **same call** goes at once to the next key: same
+  job first, then any key of the category, then (last resort) a key of the other chat category (`text` /
+  `code`). When every key is only paused, the call **waits** for the first to come back (max 60 s per
+  pause, 6 pauses) and resumes; the agent keeps its progress. A 401 / 402 / 403 sets the key aside (until
+  the keys are edited); the call stops with `llm_error` only when no key can come back (all refused,
+  missing, daily / monthly limit), with the reason for each key. Each switch / pause is a `keys` event
+  (masked keys only). Nothing is ever sent over a limit.
+- **Tokens per minute (0.8.1)**: `GET /keys/rate` gives, per key (masked), tokens (and requests) left,
+  limit and seconds until reset, from the provider's `x-ratelimit-*` headers (`source: provider`) or
+  estimated from the last 60 s (`source: estimate`; 8,000 tokens/minute assumed for Groq).
 - **Usage** is persisted in `<state-dir>/usage.json` (per minute / day / month, local time, plus
   cooldowns), so limits survive restarts. Hitting a limit or a provider error is audit-logged
   (`event: key_limit` / `key_error`).
@@ -805,6 +833,11 @@ builds, each smoke-tested, attached to a GitHub Release.
 
 ### Honest limitations
 
+- **Rate limits (0.8.1)**: with a single key, the task waits instead of stopping (max 60 s per pause, 6
+  pauses per request, nothing waited for beyond 5 min); a long pause still makes a slow task. The tokens per
+  minute counter shows the provider's figures after the first answer; before that, and for providers that
+  send no `x-ratelimit-*` headers, it is an estimate (Groq assumed 8,000 tokens/minute). Single `.env` key
+  mode (no Settings keys) waits too but shows no counter.
 - **No security audit has been done.** This is a small educational project.
 - **The shell is dangerous if you set it to `allow`.** Command deny patterns are a seatbelt, easy to
   bypass (`bash -c`, scripts, aliases…). For untrusted tasks, run the agent in a container/VM.
@@ -1048,6 +1081,28 @@ résultat tout de suite : **👁 Aperçu** affiche le site dans un cadre protég
 | Codeur + Testeur au travail | Aperçu en direct |
 |---|---|
 | ![Codeur et Testeur](docs/v8-chat-coder-tester-light-fr.png) | ![Aperçu](docs/v8-dev-preview-dark-fr.png) |
+
+#### Plus jamais coupé par une limite (nouveau en 0.8.1)
+
+🔁 **Clé de secours automatique** — quand une clé atteint une limite ou un quota (429), ne répond pas à temps
+ou que le service a une erreur (5xx), la même demande part **aussitôt** sur une autre clé (d'abord une clé
+prévue pour le même travail, puis n'importe quelle autre, et en dernier recours une clé enregistrée pour un
+autre usage). Les assistants d'un essaim font pareil, en pleine tâche, sans perdre leur travail. Avec une
+seule clé (par exemple une clé Groq gratuite), l'assistant **attend que la clé revienne** (il suit le
+« réessayez dans » du fournisseur, 60 s maximum par pause) et continue au lieu de s'arrêter. Seules les clés
+qui ne peuvent pas revenir arrêtent une tâche (toutes les clés refusées ou révoquées, limite du jour
+atteinte), avec un message clair. Le chat explique en mots simples : *« Limite atteinte sur la clé
+gsk_••••43gO, je passe sur la clé de secours… »*, *« Toutes les clés sont en pause, je reprends dans 4 s… »*.
+
+📊 **Tokens restants par minute** — une barre sous l'en-tête du chat (aussi sur téléphone) et le tableau de
+bord affichent, par clé (masquée), *« Tokens restants : 5 200 / 8 000 par minute · reprise dans 12 s »* avec
+une petite jauge, d'après les chiffres du fournisseur (en-têtes `x-ratelimit-*`) ou, avant la première
+réponse, une **estimation** (indiquée « estimé ») à partir des tokens utilisés pendant les 60 dernières
+secondes. Astuce : ajoutez une deuxième clé (de secours) pour éviter les pauses.
+
+| Passage sur la clé de secours | Téléphone : pause et compteur |
+|---|---|
+| ![Clé de secours](docs/v81-chat-switch-light-fr.png) | ![Pause](docs/v81-mobile-wait-dark-fr.png) |
 
 Remarques : le serveur n'écoute que sur `127.0.0.1` (votre ordinateur) ; port 8765 s'il est libre, sinon
 un autre. Les versions macOS sont distinctes pour puce Apple et Intel. Avancé : compiler soi-même avec
@@ -1356,10 +1411,19 @@ keys:
   limite**. La requête est réservée avant l'envoi (jetons : invite estimée + plafond `max_tokens`
   envoyé au fournisseur, coût d'après `pricing`), donc des agents en parallèle ne peuvent pas dépasser
   ensemble. La consommation réelle est enregistrée ensuite.
-- **Bascule** : un 429 (avec `Retry-After`) ou une erreur 5xx / réseau met la clé en pause et la clé
-  suivante est essayée. Quand aucune clé ne peut servir la catégorie, l'appel s'arrête avec une erreur
-  claire qui donne la raison pour chaque clé (l'agent finit en `llm_error`). Rien n'est jamais envoyé
-  au-delà d'une limite.
+- **Bascule (0.8.1)** : un 429 (avec `Retry-After`, ou le « try again in Xs » de Groq), un délai dépassé,
+  une erreur réseau ou 5xx met la clé en pause et **la même demande** part aussitôt sur la clé suivante :
+  même travail d'abord, puis n'importe quelle clé de la catégorie, puis (dernier recours) une clé de l'autre
+  catégorie de chat (`text` / `code`). Quand toutes les clés sont seulement en pause, la demande **attend**
+  la première qui revient (60 s max par pause, 6 pauses) et reprend ; l'agent garde son travail. Un 401 /
+  402 / 403 met la clé de côté (jusqu'à la modification des clés) ; l'appel s'arrête en `llm_error`
+  seulement quand aucune clé ne peut revenir (toutes refusées, absentes, limite du jour / du mois), avec la
+  raison pour chaque clé. Chaque bascule / pause est un évènement `keys` (clés masquées). Rien n'est jamais
+  envoyé au-delà d'une limite.
+- **Tokens par minute (0.8.1)** : `GET /keys/rate` donne, par clé (masquée), les tokens (et requêtes)
+  restants, la limite et les secondes avant la remise à zéro, d'après les en-têtes `x-ratelimit-*` du
+  fournisseur (`source: provider`) ou estimés sur les 60 dernières secondes (`source: estimate` ; 8 000
+  tokens/minute supposés pour Groq).
 - **Consommation** enregistrée dans `<state-dir>/usage.json` (par minute / jour / mois, heure locale,
   plus les pauses), donc les limites tiennent après un redémarrage. Une limite atteinte ou une erreur
   du fournisseur est journalisée (`event: key_limit` / `key_error`).
@@ -1698,6 +1762,11 @@ de bout en bout hors ligne avec le backend mock, et une compilation de l'applica
 
 ### Limites (honnêtement)
 
+- **Limites de débit (0.8.1)** : avec une seule clé, la tâche attend au lieu de s'arrêter (60 s max par
+  pause, 6 pauses par demande, rien au-delà de 5 min d'attente) ; une longue pause rend quand même la tâche
+  plus lente. Le compteur de tokens par minute affiche les chiffres du fournisseur après la première réponse ;
+  avant, et pour les fournisseurs sans en-têtes `x-ratelimit-*`, c'est une estimation (Groq : 8 000
+  tokens/minute supposés). Le mode clé unique `.env` (sans clé dans Réglages) attend aussi mais sans compteur.
 - **Aucun audit de sécurité n'a été fait.** C'est un petit projet pédagogique.
 - **Le shell est dangereux si vous le mettez en `allow`.** Les motifs de commandes interdites sont une
   ceinture de sécurité facile à contourner (`bash -c`, scripts, alias…). Pour des tâches non fiables,

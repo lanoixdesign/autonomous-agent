@@ -761,6 +761,11 @@ from .i18n_v8 import EN_V8, FR_V8  # noqa: E402
 EN.update(EN_V8)
 FR.update(FR_V8)
 
+from .i18n_v81 import EN_V81, FR_V81  # noqa: E402
+
+EN.update(EN_V81)
+FR.update(FR_V81)
+
 STRINGS = {"en": EN, "fr": FR}
 PLACEHOLDER_RE = re.compile(r"\{(\w+)[^}]*\}")
 
