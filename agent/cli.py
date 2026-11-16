@@ -144,8 +144,13 @@ def new_agent(args, perms: Permissions, ctx: ToolContext, audit: AuditLog, confi
         llm = base_llm()
     registry = default_registry(enable_web=not args.offline, enable_github=not args.offline)
     budget = Budget(max_steps=args.max_steps, max_tool_calls=args.max_tool_calls, max_tokens=args.max_tokens)
+    pool = None
+    if control is not None:          # one assistant per working key (or the number chosen in Settings)
+        pool = lambda: control.parallel_limit(args.category, max(1, args.max_parallel))  # noqa: E731
+    elif router is not None and getattr(args, "max_parallel_auto", False):
+        pool = lambda: router.usable(args.category)  # noqa: E731
     swarm = (SwarmConfig(max_depth=args.max_depth, max_children=args.max_children,
-                         max_parallel=max(1, args.max_parallel)) if args.max_depth > 0 else None)
+                         max_parallel=max(1, args.max_parallel), pool_size=pool) if args.max_depth > 0 else None)
     ctrl = None
     cfg = idc_config(args, perms)
     if cfg.enabled if idc is None else idc:

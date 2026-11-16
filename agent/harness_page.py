@@ -150,8 +150,11 @@ async function refreshKeys(){
   const box=$("keys");
   if(!st.keys.length){ box.removeAttribute("data-i18n"); box.className="muted"; box.textContent=t(st.mode==="demo"?"dash.keysDemo":"dash.keysSingle"); return; }
   box.className=""; box.removeAttribute("data-i18n"); box.replaceChildren();
+  const nk=st.keys.filter(k=>k.available && !k.cooldown_s).length; if(nk) box.append(el("div","muted",t("quota.pool",{keys:nk,n:st.parallel||nk})));
   st.keys.forEach(k=>{ const d=el("div","ap"); d.append(el("div","who",k.name+"  "+k.key+(k.available?"":t("dash.keyNotSet"))+(k.cooldown_s?t("dash.keyCooldown",{s:k.cooldown_s}):"")),
-      el("div","muted",t("quota.priority",{categories:k.categories.join(", "),p:k.priority})));
+      el("div","muted",t("quota.priority",{categories:k.categories.join(", "),p:k.priority})),
+      el("div","muted",t("quota.tasks",{tasks:(k.tasks&&k.tasks.length)?k.tasks.map(x=>tr("task",x)).join(", "):t("jobs.any")})+" · "+t("quota.requests",{n:(k.used||{}).requests_per_day||0})+(k.in_flight?" · ⏳ "+k.in_flight:"")));
+    if((k.agents||[]).length) d.append(el("div",null,t("quota.agents",{agents:k.agents.join(", ")})));
     Object.entries(k.limits).forEach(([f,v])=>d.append(el("div",null,t("dash.limitLine",{limit:tr("limit",f),used:num(v.used,4),max:num(v.limit,4),left:num(v.remaining,4)})))); box.append(d); });
 }
 function money(v){ return num(v,4); }

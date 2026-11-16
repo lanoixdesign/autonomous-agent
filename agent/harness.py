@@ -35,6 +35,9 @@ API (JSON):
   GET  /app/providers         API keys entered in the UI, MASKED, with usage;  POST /app/providers (add)
   POST /app/providers/{id}    edit ("key" empty/absent = keep);  POST /app/providers/{id}/delete | /test
   POST /app/providers/test    test a key typed in the form (not saved);  POST /app/providers/order {"ids"}
+  POST /app/providers/bulk    {"text"}: many keys, one per line ("label: key"), tested at once, good ones saved
+  POST /app/providers/propose proposed task types per key;  POST /app/providers/tasks {"assign": {id: [..]}}
+  GET  /app/pool              live key pool: per key (masked) the agents using it, in-flight requests, usage
   POST /app/setup             first-run wizard {"lang", "demo", "done"};  POST /app/remote/token (new token)
   POST /app/restart, /app/quit   stop the server cleanly (restart: the launcher starts it again)
       /app/* changes: only from this computer, unless AGENT_REMOTE_SETTINGS=1 (then sign-in + X-CSRF-Token)
@@ -82,6 +85,7 @@ from . import pwa, qr, remote
 from .redact import redact
 from . import __version__, export, i18n, schedule, uploads
 from .idc import IDC, IDCConfig
+from .keys import role_task
 from .theme import THEME_HEAD
 
 LOCAL_HOSTS = ("127.0.0.1", "localhost", "::1")
@@ -341,13 +345,21 @@ class Task:
                 u = self.agent_usage.setdefault(entry["agent"], {"parent": entry.get("parent"), **_zero()})
                 _add(u, entry)
 
-    def on_progress(self, agent: str, steps: Any, max_steps: Any) -> None:
-        """One model step done by `agent` (live progress for the swarm graph)."""
+    def on_progress(self, agent: str, steps: Any, max_steps: Any, key: dict | None = None) -> None:
+        """One model step done by `agent` (live progress for the swarm graph). `key`: the pool key that
+        served it (name and MASKED value only, never the secret) and the task type it was picked for."""
+        key = {k: v for k, v in (key or {}).items() if k in ("key", "key_mask", "key_task", "key_match")}
         with self._lock:
             a = self.agents.get(agent)
             if a is not None:
                 a["steps"], a["max_steps"] = steps, max_steps
-        self.add_event("progress", agent=agent, steps=steps, max_steps=max_steps)
+                if key.get("key"):
+                    keys = a.setdefault("keys", [])
+                    if key["key"] not in keys:
+                        keys.append(key["key"])          # more than one: the agent failed over
+                    a.update(key)
+        self.add_event("progress", agent=agent, steps=steps, max_steps=max_steps,
+                       **({"key": key["key"], "key_mask": key.get("key_mask")} if key.get("key") else {}))
 
     def graph(self) -> dict:
         """The current turn's agent tree with live progress, plus what was merged / written (swarm graph)."""
@@ -364,7 +376,10 @@ class Task:
             out.append({"id": a["id"], "parent": a.get("parent"), "depth": a.get("depth") or 0,
                         "task": (a.get("task") or "")[:300], "status": a.get("status"), "steps": st,
                         "max_steps": mx or None, "progress": round(prog, 3),
-                        "isolated": bool(a.get("isolated")), "answer": (a.get("answer") or "")[:500] or None})
+                        "isolated": bool(a.get("isolated")), "answer": (a.get("answer") or "")[:500] or None,
+                        "role": a.get("role") or role_task(a.get("task") if a["id"] != "root" else ""),
+                        "key": a.get("key"), "key_mask": a.get("key_mask"), "key_task": a.get("key_task"),
+                        "key_match": bool(a.get("key_match")), "keys": list(a.get("keys") or [])})
         merges = [{"agent": e.get("agent"), "children": e.get("children") or [],
                    "applied": e.get("applied") or [], "conflicts": e.get("conflicts") or [],
                    "skipped": e.get("skipped")} for e in evs if e.get("event") == "merge"]
@@ -632,7 +647,8 @@ class Harness:
             elif kind == "idc":
                 task.add_event("idc", **{"agent": "root", **data})
             elif kind == "step":
-                task.on_progress(data.get("agent", "root"), data.get("steps"), data.get("max_steps"))
+                task.on_progress(data.get("agent", "root"), data.get("steps"), data.get("max_steps"),
+                                 {k: data[k] for k in ("key", "key_mask", "key_task", "key_match") if k in data})
 
         # wait for a free slot (max_tasks), unless cancelled while queued
         while not self._slots.acquire(timeout=0.1):
@@ -1173,6 +1189,8 @@ def make_handler(h: Harness, token: str | None, local_only: bool, auth: "remote.
             if path == "/app/providers":
                 return self._send(200, {"providers": c.providers_view(), "storage": c.secrets.backend,
                                         "currency": c.router.currency})
+            if path == "/app/pool":
+                return self._send(200, c.pool_view())
             return self._send(404, {"error": "not found"})
 
         def _app_post(self, path: str, data: dict) -> None:
@@ -1197,6 +1215,12 @@ def make_handler(h: Harness, token: str | None, local_only: bool, auth: "remote.
                     return self._send(200, c.test_provider(data=data))
                 if path == "/app/providers/order":
                     return self._send(200, {"providers": c.reorder(data.get("ids"))})
+                if path == "/app/providers/bulk":     # many keys at once: parse, test all, save the good ones
+                    return self._send(200, c.bulk_add(data.get("text"), save=data.get("save", True) is not False))
+                if path == "/app/providers/propose":
+                    return self._send(200, {"proposal": c.propose_tasks()})
+                if path == "/app/providers/tasks":
+                    return self._send(200, {"providers": c.set_tasks(data.get("assign"))})
                 if path == "/app/remote/token":
                     return self._send(200, c.new_token())
                 if path in ("/app/restart", "/app/quit"):
@@ -1441,7 +1465,9 @@ def make_handler(h: Harness, token: str | None, local_only: bool, auth: "remote.
                 if router is None:
                     demo = h.control is not None and h.control.effective_mode() == "demo"
                     return self._send(200, {"mode": "demo" if demo else "single-key (.env)", "keys": [], "categories": {}})
-                return self._send(200, {"mode": "settings" if router is not h.key_router else "router", **router.status()})
+                par = h.control.parallel_limit("text") if h.control is not None else None
+                return self._send(200, {"mode": "settings" if router is not h.key_router else "router", **router.status(),
+                                        **({"parallel": par} if par else {})})
             if path == "/files":
                 if h.workspace is None:
                     return self._send(200, {"available": False, "files": []})

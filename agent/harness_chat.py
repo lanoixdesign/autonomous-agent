@@ -21,6 +21,7 @@ CHAT_PAGE = r"""<!doctype html>
  .conv .t{white-space:nowrap;overflow:hidden;text-overflow:ellipsis;color:var(--text)} .conv small{color:var(--muted)}
  #quota{max-height:38vh;overflow:auto;padding:4px 12px;font-size:11.5px;border-top:1px solid var(--line)}
  #quota h2{font-size:11px;text-transform:uppercase;letter-spacing:.05em;color:var(--muted);margin:6px 0}
+ .qpool{font-size:12px;color:var(--t-cyan);margin:0 0 2px;font-weight:600} .qwhy{font-size:11.5px;color:var(--muted);margin:0 0 8px} .qagents{color:var(--t-ok);font-size:11.5px}
  .qk{margin:0 0 8px} .qk b{color:var(--text)} .qk code{color:var(--muted);font-size:11px} .qk .off{color:var(--bad)}
  .ql{display:flex;justify-content:space-between;color:var(--soft)} .bar{height:3px;background:var(--chip);border-radius:2px;margin:1px 0 3px}
  .bar i{display:block;height:3px;background:var(--ok);border-radius:2px} .bar i.hi{background:var(--warn)} .bar i.full{background:var(--bad)}
@@ -130,6 +131,11 @@ CHAT_PAGE = r"""<!doctype html>
  .ag .prog{height:6px;border-radius:4px;background:var(--panel2);overflow:hidden}
  .ag .prog i{display:block;height:100%;width:0;background:linear-gradient(90deg,#00D4FF,#7DD3FC);box-shadow:0 0 10px #00D4FF;transition:width .5s ease}
  .ag .agmeta{font-size:10.5px;color:var(--muted);margin-top:4px}
+ .ag .agkey{font-size:11px;color:var(--t-cyan);margin-top:3px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis} .ag .agkey.shared{color:var(--t-warn)}
+ .ag .agkey code{font:10.5px var(--mono);color:var(--muted)}
+ .swkeys{display:flex;flex-wrap:wrap;gap:6px;align-items:center;font-size:12px;color:var(--soft);margin:2px 0 6px}
+ .swkeys .kc{display:inline-flex;gap:6px;align-items:center;padding:2px 10px;border-radius:999px;border:1px solid var(--line2);background:var(--sunk)}
+ .swkeys .kc b{color:var(--strong)} .swkeys .kc code{font:10.5px var(--mono);color:var(--muted)}
  #swarm.merging .ag{transform:translate(var(--dx),var(--dy)) scale(.25);opacity:0}
  #swarm.merging .swlines{opacity:0;transition:opacity .5s}
  #swarm.merged .swcol,#swarm.merged .swlines{display:none}
@@ -573,15 +579,19 @@ async function download(fmt){ if(!cur) return;
   const url=URL.createObjectURL(await r.blob()), a=el("a"); a.href=url; a.download="conversation-"+cur+"."+fmt; document.body.append(a); a.click(); a.remove(); setTimeout(()=>URL.revokeObjectURL(url),5000); }
 $("expmd").onclick=()=>download("md"); $("expjson").onclick=()=>download("json");
 // ---- API keys: remaining quota per key and category (keys arrive masked from the server)
+function taskNames(ts){ return (ts&&ts.length) ? ts.map(k=>tr("task",k)).join(", ") : t("jobs.any"); }
 function fmt(f,v){ return f.startsWith("cost") ? num(v,2) : (v>=10000 ? num(Math.round(v/1000),0)+"k" : num(v,2)); }
 async function quotas(){
   let st; try{ st=await api("GET","/keys"); }catch(e){ return; }
   const box=$("quota"); box.replaceChildren(); if(!st.keys || !st.keys.length) return;
   box.append(el("h2",null,t("quota.title")+(st.currency?t("quota.currency",{currency:st.currency}):"")));
+  const nk=st.keys.filter(k=>k.available && !k.cooldown_s).length; if(nk) box.append(el("div","qpool",t("quota.pool",{keys:nk,n:st.parallel||nk})), el("div","qwhy",t("bulk.why")));
   st.keys.forEach(k=>{ const d=el("div","qk"); const h=el("div");
     h.append(el("b",null,k.name+" "), el("code",null,k.key));
     if(!k.available) h.append(el("span","off",t("quota.notSet"))); if(k.cooldown_s) h.append(el("span","off",t("quota.cooldown",{s:k.cooldown_s})));
     d.append(h, el("div",null,t("quota.priority",{categories:k.categories.join(", "),p:k.priority})));
+    d.append(el("div",null,t("quota.tasks",{tasks:taskNames(k.tasks)})+" · "+t("quota.requests",{n:(k.used||{}).requests_per_day||0})));
+    if((k.agents||[]).length) d.append(el("div","qagents",t("quota.agents",{agents:k.agents.map(x=>TRACE_TECH?x:(x==="root"?t("who.short.root"):agentShort(x))).join(", ")})));
     Object.entries(k.limits).forEach(([f,v])=>{ const r=el("div","ql"); r.append(el("span",null,tr("limit",f)), el("span",null,t("quota.left",{left:fmt(f,v.remaining),limit:fmt(f,v.limit)})));
       const pct=v.limit? Math.min(100,100*v.used/v.limit):0, b=el("div","bar"), i=el("i",pct>=100?"full":pct>=80?"hi":""); i.style.width=pct+"%"; b.append(i); d.append(r,b); });
     box.append(d); });
@@ -646,14 +656,22 @@ document.addEventListener("keydown",e=>{ if(e.key!=="Escape") return; if(tstep>=
 function svgEl(tag,attrs){ const e=document.createElementNS(SVGNS,tag); for(const k in attrs) e.setAttribute(k,attrs[k]); return e; }
 function agCard(a){ const c=el("div","ag"); c.dataset.id=a.id;
   const top=el("div","agtop"); top.append(el("span","agname",TRACE_TECH?a.id:agentShort(a.id)), el("span","agst")); c.append(top, el("div","agrole",a.task||""));
-  const p=el("div","prog"), i=el("i"); p.append(i); c.append(p, el("div","agmeta")); c.title=a.task||""; return c; }
+  const p=el("div","prog"), i=el("i"); p.append(i); c.append(p, el("div","agmeta"), el("div","agkey")); c.title=a.task||""; return c; }
+// which pool key serves this agent (masked) and for which job; "shared" when no key is tagged for its job
+function keyLine(a){ const task=tr("task",a.key_task||a.role||"general");
+  if(!a.key) return BUSY.includes(a.status)&&a.steps===0 ? t("swarm.keyWaiting") : "";
+  const name=a.key+(TRACE_TECH&&a.key_mask?" ("+a.key_mask+")":"");
+  const s=(a.key_match || (a.key_task||"general")==="general") ? t("swarm.keyFor",{name,task}) : t("swarm.keyShared",{name,task});
+  return s+((a.keys||[]).length>1?" · "+t("swarm.keyChanged",{n:a.keys.length-1}):""); }
 function agUpdate(c,a){ const busy=BUSY.includes(a.status);
   c.classList.toggle("done",a.status==="done"); c.classList.toggle("bad",!busy && a.status!=="done");
   c.querySelector(".agst").textContent=tr("status",a.status||"running");
   c.querySelector(".prog i").style.width=Math.round(100*(a.progress||0))+"%";
   c.querySelector(".prog").setAttribute("aria-label",Math.round(100*(a.progress||0))+"%");
   c.querySelector(".agmeta").textContent=(a.max_steps?t("swarm.steps",{s:a.steps||0,max:a.max_steps}):t("swarm.stepsNoMax",{s:a.steps||0}))
-    +(a.parent && a.parent!=="root"?" · ↳ "+a.parent:"")+(a.isolated?" · "+t("swarm.isolated"):""); }
+    +(a.parent && a.parent!=="root"?" · ↳ "+a.parent:"")+(a.isolated?" · "+t("swarm.isolated"):"");
+  const k=c.querySelector(".agkey"); k.textContent=keyLine(a); k.classList.toggle("shared",!!a.key && !a.key_match && (a.key_task||"general")!=="general");
+  k.title=a.key_mask?a.key+" · "+a.key_mask:""; }
 function drawSwarm(){
   const box=$("swarm"), g=graph;
   if(!g || !g.children || g.task!==cur){ box.hidden=true; box.replaceChildren(); gsig=""; return; }
@@ -680,7 +698,7 @@ function drawSwarm(){
     if(merged && gmerged[key]===undefined) gmerged[key]="shown";   // opened after the fact: no animation
   }
   box.querySelector(".swhead .sum").textContent=t("swarm.summary",{n:kids.length,running});
-  box.querySelector(".hublabel small").textContent=t("swarm.root")+" · "+tr("status",root.status||g.status);
+  box.querySelector(".hublabel small").textContent=t("swarm.root")+" · "+tr("status",root.status||g.status)+(root.key?" · 🔑 "+root.key:"");
   kids.forEach(a=>{ const c=box.querySelector('.ag[data-id="'+CSS.escape(a.id)+'"]'); if(c) agUpdate(c,a); });
   foot(g, kids);
   if(merged && gmerged[key]!=="shown"){            // first time we see the swarm finish: merge animation
@@ -691,6 +709,10 @@ function drawSwarm(){
   requestAnimationFrame(lines);
 }
 function foot(g,kids){ const f=$("swarm").querySelector(".swfoot"); f.replaceChildren();
+  const byKey={}; g.agents.forEach(a=>{ if(!a.key) return; const k=byKey[a.key]=byKey[a.key]||{mask:a.key_mask,agents:[]}; k.agents.push(TRACE_TECH?a.id:(a.id==="root"?t("who.short.root"):agentShort(a.id))); });
+  if(Object.keys(byKey).length){ const kr=el("div","swkeys"); kr.append(el("span",null,t("swarm.keysUsed")));
+    Object.entries(byKey).forEach(([name,k])=>{ const c=el("span","kc"); c.append(el("b",null,"🔑 "+name)); if(k.mask) c.append(el("code",null,k.mask)); c.append(el("span",null,k.agents.join(", "))); kr.append(c); });
+    f.append(kr); }
   f.append(el("div",null,t("swarm.merged",{n:kids.length})));
   const conflicts=(g.merges||[]).reduce((n,m)=>n+(m.conflicts||[]).length,0);
   if(conflicts) f.append(el("div","step conflict",t("swarm.conflicts",{n:conflicts})));
