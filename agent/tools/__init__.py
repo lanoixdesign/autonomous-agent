@@ -99,7 +99,7 @@ class Registry:
         return name in self.tools
 
 
-def default_registry(enable_web: bool = True, enable_github: bool = True) -> Registry:
+def default_registry(enable_web: bool = True, enable_github: bool = True, mcp_registry=None) -> Registry:
     from . import builtin, files, shell, web, github
 
     reg = Registry()
@@ -110,5 +110,8 @@ def default_registry(enable_web: bool = True, enable_github: bool = True) -> Reg
             reg.add(t)
     if enable_github:
         for t in github.TOOLS:
+            reg.add(t)
+    if mcp_registry is not None:
+        for t in mcp_registry.get_tools():
             reg.add(t)
     return reg
