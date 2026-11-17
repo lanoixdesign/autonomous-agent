@@ -71,9 +71,26 @@ PAGE = r"""<!doctype html>
   <h2 style="margin-top:14px" data-i18n="dash.keys"></h2><div id="keys" class="muted" data-i18n="dash.singleKey"></div></section>
  <section style="grid-column:1 / 3"><h2 data-i18n="dash.usage"></h2><div id="usage" class="muted">—</div></section>
  <section><h2 data-i18n="sched.title"></h2>
-  <div class="row"><input id="sprompt" type="text" data-i18n-placeholder="sched.prompt"></div>
-  <div class="row"><select id="skind"><option value="every" data-i18n="sched.every"></option><option value="daily" data-i18n="sched.daily"></option></select>
-   <input id="swhen" type="text" data-i18n-placeholder="sched.whenPh" style="width:90px"><button id="sadd" data-i18n="sched.add"></button></div>
+  <p class="muted" data-i18n="sched.help"></p>
+  <div class="row"><input id="sprompt" type="text" data-i18n-placeholder="sched.prompt" style="width:100%;max-width:480px"></div>
+  <div class="row">
+    <select id="skind">
+      <option value="every" data-i18n="sched.every"></option>
+      <option value="daily" data-i18n="sched.daily"></option>
+      <option value="weekly" data-i18n="sched.weekly"></option>
+    </select>
+    <select id="sday" hidden>
+      <option value="mon" data-i18n="sched.mon"></option>
+      <option value="tue" data-i18n="sched.tue"></option>
+      <option value="wed" data-i18n="sched.wed"></option>
+      <option value="thu" data-i18n="sched.thu"></option>
+      <option value="fri" data-i18n="sched.fri"></option>
+      <option value="sat" data-i18n="sched.sat"></option>
+      <option value="sun" data-i18n="sched.sun"></option>
+    </select>
+    <input id="swhen" type="text" data-i18n-placeholder="sched.whenPh" style="width:100px">
+    <button id="sadd" data-i18n="sched.add"></button>
+  </div>
   <div id="schedules" class="muted"></div>
   <h2 style="margin-top:14px" data-i18n="rules.title"></h2><div id="rules" class="muted"></div>
   <h2 style="margin-top:14px" data-i18n="health.title"></h2><pre id="health" class="muted">—</pre></section>
@@ -176,10 +193,23 @@ async function refreshUsage(){
   row("conv",[t("usage.total"),"",num(u.total.steps,0),num(u.total.tool_calls,0),num(u.total.tokens,0),money(u.total.cost),"","",""]);
   box.replaceChildren(tb);
 }
+$("skind").onchange = () => {
+  const k = $("skind").value;
+  $("sday").hidden = k !== "weekly";
+  $("swhen").placeholder = k === "every" ? t("sched.whenEvery") : t("sched.whenTime");
+};
 $("sadd").onclick=async()=>{ const prompt=$("sprompt").value.trim(), w=$("swhen").value.trim(); if(!prompt||!w) return;
-  const body=$("skind").value==="every" ? {prompt, every_minutes:Number(w.replace(",","."))} : {prompt, daily_at:w};
+  const k = $("skind").value;
+  let body = {prompt};
+  if(k==="every") body.every_minutes = Number(w.replace(",","."));
+  else if(k==="daily") body.daily_at = w;
+  else body.weekly = {weekday: $("sday").value, at: w};
   try{ await api("POST","/schedules",body); $("sprompt").value=$("swhen").value=""; refreshSchedules(); }catch(e){ fail(e); } };
-function when(s){ return s.kind==="interval" ? t("sched.everyN",{n:num(s.every_minutes,2)}) : t("sched.dailyAt",{at:s.at}); }
+function when(s){
+  if(s.kind==="interval") return t("sched.everyN",{n:num(s.every_minutes,2)});
+  if(s.kind==="weekly") return t("sched.weeklyAt",{day:t("sched."+s.weekday), at:s.at});
+  return t("sched.dailyAt",{at:s.at});
+}
 async function refreshSchedules(){
   let r; try{ r=await api("GET","/schedules"); }catch(e){ return; }
   const box=$("schedules"); box.className=r.schedules.length?"":"muted"; box.replaceChildren(); if(!r.schedules.length) box.textContent=t("dash.none");
