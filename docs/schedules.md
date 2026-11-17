@@ -4,7 +4,7 @@
 
 ## Français
 
-Tu peux demander à l’assistant de faire quelque chose **tous les jours**, **toutes les semaines** ou **toutes les X minutes**, sans rester devant l’ordinateur.
+Tu peux créer ces tâches directement dans le tableau de bord (section **Tâches planifiées**) ou simplement les demander dans le chat.
 
 Exemples que tu peux dire dans le chat :
 
@@ -28,7 +28,7 @@ Tu peux activer, désactiver ou supprimer ces tâches dans les réglages (ou en 
 
 ## English
 
-You can ask the assistant to do something **every day**, **every week** or **every X minutes**, without staying in front of the computer.
+You can create these tasks directly on the dashboard (section **Scheduled tasks**) or simply ask for them in the chat.
 
 Examples you can say in the chat:
 
