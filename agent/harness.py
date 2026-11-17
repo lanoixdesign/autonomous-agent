@@ -64,6 +64,7 @@ from __future__ import annotations
 
 import dataclasses
 import json
+import os
 import re
 import sys
 import threading
@@ -286,6 +287,7 @@ class Task:
         self.dev: str | None = None     # developer mode: project name (projects/<name>/), None otherwise
         self.ui_lang: str | None = None  # language of the page the user wrote from (when the text is unclear)
         self.last_text: str | None = None  # this turn's message as the user wrote it
+        self.pinned = False             # v0.9.5: kept at the top of the conversation list
         self.store = store
         self._lock = threading.Condition(threading.RLock())   # also wakes SSE streams on new events
 
@@ -299,7 +301,7 @@ class Task:
                            "agent_usage": self.agent_usage,
                            "agents": [_pool_fields(a, POOL_OUT) for a in self.agents.values()],
                            "turns": self.turns, "history": history, "idc": self.idc, "dev": self.dev,
-                           "idc_commitments": self.commitments()})
+                           "pinned": self.pinned, "idc_commitments": self.commitments()})
 
     def commitments(self) -> list[dict]:
         return self.idc_ctrl.commitments if self.idc_ctrl is not None else list(self.idc_saved)
@@ -319,6 +321,7 @@ class Task:
         t.agent_usage = rec.get("agent_usage") or {}
         t.idc = bool(rec.get("idc"))
         t.dev = rec.get("dev") if isinstance(rec.get("dev"), str) else None
+        t.pinned = rec.get("pinned") is True
         t.idc_saved = [c for c in rec.get("idc_commitments") or [] if isinstance(c, dict)]
         t.agents = {a["id"]: _pool_fields(a, POOL_IN) for a in rec.get("agents") or [] if isinstance(a, dict)} or t.agents
         t.events = events
@@ -507,6 +510,8 @@ class Task:
                  "turns": self.turns, "source": self.source}
             d["idc"] = self.idc
             d["dev"] = self.dev
+            d["pinned"] = self.pinned
+            d["folder"] = conv_folder_rel(self.id, self.dev)
             if full:
                 d["idc_state"] = ({**self.idc_ctrl.snapshot(), "list": self.idc_ctrl.commitments}
                                   if self.idc_ctrl is not None else {"list": list(self.idc_saved)})
@@ -549,6 +554,37 @@ class Busy(Exception):
     pass
 
 
+def conv_folder_rel(task_id: str, dev: str | None) -> str:
+    """v0.9.5: a conversation's folder in the work folder: its developer project, else conversations/<id>/."""
+    return f"projects/{dev}" if dev else f"conversations/{task_id}"
+
+
+def open_in_file_manager(path: Path) -> bool:
+    """Show a folder in Finder / Explorer / the Linux file manager. No shell, the path is one argument."""
+    import subprocess
+    import sys as _sys
+    if os.environ.get("AGENT_NO_OPEN") == "1":
+        return False
+    if _sys.platform == "darwin":
+        cmd = ["open", "--", str(path)]
+    elif _sys.platform == "win32":
+        cmd = ["explorer", str(path)]
+    else:
+        cmd = ["xdg-open", str(path)]
+    try:
+        subprocess.Popen(cmd, stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
+                         close_fds=True)
+        return True
+    except OSError:
+        return False
+
+
+class ConvError(Exception):
+    def __init__(self, status: int, code: str, message: str):
+        super().__init__(message)
+        self.status, self.code = status, code
+
+
 class Harness:
     def __init__(self, agent_factory: AgentFactory, audit_path: str | Path, approval_timeout: float = 300.0,
                  max_tasks: int = 4, workspace: str | Path | None = None,
@@ -556,6 +592,8 @@ class Harness:
                  store: Any = None, backend: dict | None = None, clock: Callable[[], float] = time.time,
                  scheduler_tick: float | None = 1.0, idc_config: IDCConfig | None = None, lang: str = "en"):
         self.factory = agent_factory
+        self.csrf_secret = os.urandom(32)      # v0.9.5: conversation actions (pin / folder / delete)
+        self.folder_opener: Callable[[Path], bool] = open_in_file_manager
         self.idc_config = idc_config or IDCConfig()   # parameters; .enabled = default for new conversations
         self.lang = i18n.normalize(lang)
         self.key_router = key_router   # keys.KeyRouter or None (.env single-key mode)
@@ -681,6 +719,9 @@ class Harness:
             except devmode.DevError:
                 kind = None
             extra = devmode.rules(task.dev, kind, lang)
+        elif self.workspace is not None:     # v0.9.5: one folder per conversation, opened from its ⋯ menu
+            extra = (f"Files you create for this conversation go in conversations/{task.id}/ (create it) unless the "
+                     "user names another place. Uploaded files stay where they are.")
         agent.extra_rules = extra
         agent.child_rules = devmode.child_rules(task.dev, lang) if task.dev else ""
         ctx = getattr(agent, "ctx", None)
@@ -842,7 +883,86 @@ class Harness:
     def list(self) -> list[dict]:
         with self._lock:
             tasks = list(self._tasks.values())
-        return [t.snapshot(full=False) for t in tasks]
+        return [t.snapshot(full=False) for t in tasks]   # the page puts pinned ones at the top
+
+    # -- v0.9.5: pin, open the folder, delete
+    def pin(self, task_id: str, pinned: bool) -> Task:
+        task = self.get(task_id)
+        if task is None:
+            raise ConvError(404, "unknown", "unknown conversation")
+        with task._lock:
+            task.pinned = bool(pinned)
+        task.save()
+        return task
+
+    def conv_folder(self, task: Task, create: bool = False) -> Path:
+        """The conversation's folder, always inside the work folder (no symlink on the way)."""
+        if self.workspace is None:
+            raise ConvError(409, "no_workspace", "there is no work folder")
+        root = Path(self.workspace).resolve()
+        rel = conv_folder_rel(task.id, task.dev)
+        if not re.fullmatch(r"(conversations/[0-9a-f]{6,32}|projects/[A-Za-z0-9][A-Za-z0-9._-]{0,63})", rel) \
+                or ".." in rel:
+            raise ConvError(400, "bad_folder", "invalid folder")
+        d = root
+        for part in rel.split("/"):
+            d = d / part
+            if d.is_symlink():
+                raise ConvError(400, "symlink", "the folder goes through a link: refused")
+            if create and not d.exists():
+                d.mkdir(mode=0o700)
+        real = d.resolve()
+        if real != root and root not in real.parents:
+            raise ConvError(400, "outside", "the folder is outside the work folder")
+        for deny in self.deny_paths or []:
+            dr = Path(deny).resolve()
+            if real == dr or dr in real.parents:
+                raise ConvError(400, "private", "private app data")
+        return real
+
+    def open_folder(self, task_id: str) -> dict:
+        task = self.get(task_id)
+        if task is None:
+            raise ConvError(404, "unknown", "unknown conversation")
+        path = self.conv_folder(task, create=True)
+        opened = bool(self.folder_opener(path))
+        self._audit(task, event="open_folder", agent="root", folder=conv_folder_rel(task.id, task.dev), opened=opened)
+        return {"path": str(path), "rel": conv_folder_rel(task.id, task.dev), "opened": opened}
+
+    def delete_task(self, task_id: str, delete_folder: bool = False) -> dict:
+        import shutil
+        task = self.get(task_id)
+        if task is None:
+            raise ConvError(404, "unknown", "unknown conversation")
+        if task.status not in TERMINAL:
+            raise ConvError(409, "running", "stop the conversation before deleting it")
+        removed: list[str] = []
+        if delete_folder and self.workspace is not None:
+            if task.dev:
+                with self._lock:
+                    others = [t for t in self._tasks.values() if t is not task and t.dev == task.dev]
+                if others:
+                    raise ConvError(409, "shared", "this project is used by another conversation")
+            root = Path(self.workspace).resolve()
+            targets = [self.conv_folder(task)]
+            if not task.dev:
+                up = root / "uploads" / task.id
+                if up.exists() and not up.is_symlink() and up.resolve().parent == (root / "uploads").resolve():
+                    targets.append(up.resolve())
+            for d in targets:
+                if d.is_dir() and not d.is_symlink() and d != root:
+                    shutil.rmtree(d)
+                    removed.append(d.relative_to(root).as_posix())
+        with self._lock:
+            self._tasks.pop(task.id, None)
+            for r in [r for r in self.rules.values() if r.get("task_id") == task.id]:
+                self.rules.pop(r["id"], None)
+                if self.store is not None:
+                    self.store.delete("rules", r["id"])
+        if self.store is not None:
+            self.store.delete("tasks", task.id)          # also its events (journal)
+        self._audit(None, event="conversation_deleted", task_id=task.id, folder_deleted=removed)
+        return {"deleted": task.id, "folder_deleted": removed}
 
     def cancel(self, task_id: str) -> Task | None:
         task = self.get(task_id)
@@ -1233,6 +1353,7 @@ def _probe(url: str, timeout: float) -> dict:
 
 # ---------------------------------------------------------------------------- HTTP
 FILE_VIEW_MAX = 2 * 1024 * 1024
+CONV_RE = re.compile(r"^/conv/([0-9a-f]{6,32})/(pin|folder|delete)$")
 TASK_RE = re.compile(r"^/tasks/([0-9a-f]+)(/events|/cancel|/messages|/stream|/export|/idc|/graph|/file)?$")
 APPROVAL_RE = re.compile(r"^/approvals/([0-9a-f]+)$")
 RULE_RE = re.compile(r"^/rules/([0-9a-f]+)/revoke$")
@@ -1356,7 +1477,8 @@ def make_handler(h: Harness, token: str | None, local_only: bool, auth: "remote.
             import hmac as _hmac
             who = self._who() or "none"
             subject = remote.cookie_value(self.headers.get("Cookie")) if who == "cookie" else who
-            return _hmac.new(h.control.csrf_secret, (subject or "").encode(), hashlib.sha256).hexdigest()[:40]
+            secret = h.control.csrf_secret if h.control is not None else h.csrf_secret
+            return _hmac.new(secret, (subject or "").encode(), hashlib.sha256).hexdigest()[:40]
 
         def _app_get(self, path: str) -> None:
             c = h.control
@@ -1389,6 +1511,34 @@ def make_handler(h: Harness, token: str | None, local_only: bool, auth: "remote.
         def _audit_api(self, action: str, out: dict) -> None:
             h._audit(None, event="settings_api", agent="user", action=action.strip("/"), api=out.get("name") or out.get("id"),
                      base_url=out.get("base_url"), auto_get=out.get("auto_get"), spends=out.get("spends"))
+
+        def _conv_post(self, task_id: str, action: str, data: dict) -> None:
+            """v0.9.5: pin / open the folder / delete a conversation. CSRF token required; the folder is
+            computed here from the conversation (no path from the page) and opened on this computer only."""
+            import hmac as _hmac
+            if not _hmac.compare_digest(str(self.headers.get(CSRF_HEADER) or ""), self._csrf()):
+                return self._send(403, {"error": "missing or invalid CSRF token (reload the page)", "csrf": True,
+                                        "code": "csrf"})
+            try:
+                if action == "pin":
+                    if not isinstance(data.get("pinned"), bool):
+                        return self._send(400, {"error": "'pinned' must be true or false"})
+                    return self._send(200, h.pin(task_id, data["pinned"]).snapshot(full=False))
+                if action == "folder":
+                    if not self._direct_local():
+                        return self._send(403, {"error": "the folder opens on the computer running the app",
+                                                "code": "local_only"})
+                    return self._send(200, h.open_folder(task_id))
+                if action == "delete":
+                    df = data.get("delete_folder", False)
+                    if not isinstance(df, bool):
+                        return self._send(400, {"error": "'delete_folder' must be true or false"})
+                    return self._send(200, h.delete_task(task_id, df))
+            except ConvError as e:
+                return self._send(e.status, {"error": str(e), "code": e.code})
+            except OSError as e:
+                return self._send(500, {"error": f"folder error: {e.strerror or e}", "code": "os"})
+            return self._send(404, {"error": "not found"})
 
         def _app_post(self, path: str, data: dict) -> None:
             import hmac as _hmac
@@ -1694,6 +1844,8 @@ def make_handler(h: Harness, token: str | None, local_only: bool, auth: "remote.
                 return self._send(200, {"schedules": h.list_schedules()})
             if path == "/settings":
                 return self._send(200, h.get_settings())
+            if path == "/conv/csrf":    # v0.9.5: token for the conversation actions (same-origin pages only)
+                return self._send(200, {"csrf": self._csrf()})
             if path == "/keys/rate":   # v0.8.1: tokens / requests left per minute, per key (masked)
                 return self._send(200, h.rate_view())
             if path == "/keys":
@@ -1757,7 +1909,10 @@ def make_handler(h: Harness, token: str | None, local_only: bool, auth: "remote.
                         since = 0
                     events, nxt = task.events_since(since)
                     return self._send(200, {"events": events, "next": nxt, "status": task.status})
-                return self._send(200, task.snapshot())
+                snap = task.snapshot()
+                if h.workspace is not None:     # v0.9.5: the folder's full path, shown (copyable) in the chat
+                    snap["folder_path"] = str(Path(h.workspace).resolve() / snap["folder"])
+                return self._send(200, snap)
             self._send(404, {"error": "not found"})
 
         def do_POST(self) -> None:  # noqa: N802
@@ -1778,6 +1933,9 @@ def make_handler(h: Harness, token: str | None, local_only: bool, auth: "remote.
                 return
             if path.startswith("/app/"):
                 return self._app_post(path, data)
+            m = CONV_RE.match(path)
+            if m:
+                return self._conv_post(m.group(1), m.group(2), data)
             if path == "/tasks":
                 text = self._text(data, "task")
                 if text is None:

@@ -18,9 +18,30 @@ CHAT_PAGE = r"""<!doctype html>
  .sn-opts details.adv{margin:0;border:0;padding:0} .sn-opts summary{font-size:12.5px}
  aside button.new{margin:0 2px 8px;padding:10px;border:1px solid transparent;border-radius:999px;color:#fff;cursor:pointer;font:600 13px var(--font);
   background:var(--accent);}
- #convs{flex:1;overflow:auto;padding:0} .conv{padding:9px 12px;cursor:pointer;border-radius:12px;border:1px solid transparent;margin:2px 0}
+ #convs{flex:1;overflow:auto;padding:0} .conv{position:relative;display:flex;align-items:flex-start;border-radius:12px;border:1px solid transparent;margin:2px 0}
  .conv:hover{background:var(--panel2)} .conv.sel{background:rgba(var(--accent-rgb),0.084);border-color:rgba(var(--accent-rgb),0.21);}
- .conv .t{white-space:nowrap;overflow:hidden;text-overflow:ellipsis;color:var(--text)} .conv small{color:var(--muted)}
+ .conv .cmain{flex:1;min-width:0;text-align:left;background:transparent!important;border:0!important;border-radius:12px;padding:9px 4px 9px 12px;cursor:pointer;color:var(--text);font:inherit}
+ .conv .t{display:block;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;color:var(--text)} .conv small{color:var(--muted)}
+ .conv .pin{display:inline-block;width:12px;height:12px;margin-right:5px;vertical-align:-1px;color:var(--muted)}
+ .cmore{flex:0 0 auto;margin:6px 6px 0 0;width:28px;height:28px;padding:0!important;border-radius:8px!important;border:1px solid transparent!important;
+  background:transparent!important;color:var(--muted)!important;font-size:16px;line-height:1;cursor:pointer;opacity:0}
+ .conv:hover .cmore,.conv:focus-within .cmore,.cmore[aria-expanded=true]{opacity:1} .cmore:hover,.cmore[aria-expanded=true]{background:var(--chip)!important;color:var(--strong)!important}
+ @media (hover:none),(max-width:760px){.cmore{opacity:1}}
+ .clabel{font-size:11px;letter-spacing:.04em;text-transform:uppercase;color:var(--muted);margin:10px 12px 2px}
+ .sr{position:absolute!important;width:1px;height:1px;overflow:hidden;clip:rect(0 0 0 0);white-space:nowrap}
+ #convmenu{position:fixed;z-index:80;min-width:190px;background:var(--panel);border:1px solid var(--line2);border-radius:12px;padding:4px;box-shadow:0 8px 24px rgba(0,0,0,.18)}
+ #convmenu[hidden]{display:none} #convmenu button{display:block;width:100%;text-align:left;background:transparent!important;border:0!important;border-radius:8px;padding:8px 10px;color:var(--text);font-size:13.5px;cursor:pointer}
+ #convmenu button:hover,#convmenu button:focus{background:var(--panel2)!important;outline:none} #convmenu button.del{color:var(--bad)!important}
+ #folderline{display:flex;align-items:center;gap:8px;padding:2px 16px 6px;font-size:12px;color:var(--muted);min-width:0} #folderline[hidden]{display:none}
+ #folderline code{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;padding:1px 6px;border-radius:6px;font-size:11.5px}
+ #folderline button{padding:2px 10px;font-size:12px} #foldermsg{color:var(--muted)}
+ #delbox{position:fixed;inset:0;z-index:85;display:flex;align-items:center;justify-content:center;background:rgba(0,0,0,.35)} #delbox[hidden]{display:none}
+ #delcard{width:min(420px,92vw);background:var(--panel);border:1px solid var(--line2);border-radius:16px;padding:18px 20px}
+ #delcard h3{margin:0 0 8px;color:var(--strong);font-size:17px} #delcard p{margin:0 0 10px;font-size:14px;color:var(--soft);overflow-wrap:anywhere}
+ #delcard label{display:flex;gap:8px;align-items:center;font-size:14px;color:var(--text)} #delcard .fhelp{font-size:12.5px;color:var(--muted);margin:4px 0 12px}
+ #delcard .ta{display:flex;justify-content:flex-end;gap:8px} #delcard .ta button{border-radius:999px!important;padding:7px 16px} #delerr{color:var(--bad)!important;font-size:13px}
+ #toast{position:fixed;left:50%;bottom:96px;transform:translateX(-50%);z-index:90;max-width:min(560px,92vw);background:var(--panel2);color:var(--text);
+  border:1px solid var(--line2);border-radius:12px;padding:8px 14px;font-size:13px;overflow-wrap:anywhere} #toast[hidden]{display:none}
  #quota{max-height:38vh;overflow:auto;padding:4px 12px;font-size:11.5px;border-top:1px solid var(--line)}
  #quota h2{font-size:11px;text-transform:uppercase;letter-spacing:.05em;color:var(--muted);margin:6px 0}
  .qpool{font-size:12px;color:var(--t-cyan);margin:0 0 2px;font-weight:600} .qwhy{font-size:11.5px;color:var(--muted);margin:0 0 8px} .qagents{color:var(--t-ok);font-size:11.5px}
@@ -262,6 +283,7 @@ CHAT_PAGE = r"""<!doctype html>
   <button id="expjson" class="tbtn" style="display:none" data-i18n-title="chat.expjson.title">⇩ JSON</button>
   <button id="stopall" class="tbtn" style="display:none" data-i18n="btn.stopall" data-i18n-title="title.stopall"></button>
   <button id="compose" class="ibtn" data-i18n-title="chat.compose"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 20h9"/><path d="M16.5 3.5a2.1 2.1 0 0 1 3 3L7 19l-4 1 1-4Z"/></svg></button></div>
+ <div id="folderline" hidden><span data-i18n="conv.folderLine"></span><code id="folderpath"></code><button id="foldercopy" type="button" class="tbtn" data-i18n="conv.copy" data-i18n-title="conv.copyTitle"></button><span id="foldermsg" aria-live="polite"></span></div>
  <div id="ratebar" hidden><div class="rnote" id="ratenote" aria-live="polite"></div><span id="rates" style="display:contents"></span></div>
  <div id="idcpanel" hidden></div>
  <section id="swarm" hidden aria-live="polite"></section>
@@ -276,6 +298,11 @@ CHAT_PAGE = r"""<!doctype html>
  <div id="drop" data-i18n="chat.drop"></div>
 </main>
 <div id="popups"></div>
+<div id="convmenu" role="menu" hidden><button type="button" role="menuitem" id="cmpin"></button><button type="button" role="menuitem" id="cmfolder" data-i18n="conv.folder"></button><button type="button" role="menuitem" id="cmdel" class="del" data-i18n="conv.delete"></button></div>
+<div id="delbox" hidden><div id="delcard" role="alertdialog" aria-modal="true" aria-labelledby="delt" aria-describedby="deld"><h3 id="delt" data-i18n="del.title"></h3><p id="deld"></p>
+ <label><input type="checkbox" id="delfolder"><span data-i18n="del.folder"></span></label><p id="delkeep" class="fhelp"></p><p id="delerr" role="alert"></p>
+ <div class="ta"><button id="delcancel" type="button" data-i18n="del.cancel"></button><button id="delok" type="button" class="danger" data-i18n="del.confirm"></button></div></div></div>
+<div id="toast" role="status" aria-live="polite" hidden></div>
 <div id="scrim"></div>
 <section id="filesp" hidden role="dialog" aria-labelledby="fptitle"><header><h2 id="fptitle" data-i18n="files.title"></h2><button id="fclose" class="tbtn" data-i18n="files.close"></button></header>
  <p class="fhelp" data-i18n="files.help"></p><button id="fadd" class="tbtn fadd" data-i18n="files.add"></button><input id="fpick" type="file" multiple hidden>
@@ -299,7 +326,7 @@ function pick(id, fromHistory){ const changed=id!==cur; cur=id;
   const url=id?"#"+id:location.pathname+location.search;
   if(!fromHistory){ if(changed) history.pushState({c:id},"",url); else history.replaceState({c:id},"",url); }
   if(id) cache[id]=cache[id]||{since:0,events:[]};
-  graph=null; greveal=false; drawSwarm(); render(); stream(); poll(); loadGraph(); }
+  graph=null; greveal=false; drawSwarm(); render(); stream(); poll(); loadGraph(); folderLine(); }
 // back / forward between conversations
 window.addEventListener("popstate",()=>{ const id=location.hash.slice(1)||null; if(id!==cur) pick(id,true); });
 if(cur && !location.hash) history.replaceState({c:cur},"","#"+cur);
@@ -493,22 +520,116 @@ function simpleAudit(e){
 }
 async function poll(){
   try{
-    tasks=(await api("GET","/tasks")).tasks; const box=$("convs"); box.replaceChildren();
+    tasks=(await api("GET","/tasks")).tasks;
     $("stopall").style.display = tasks.some(x=>["queued","running","cancelling"].includes(x.status)) ? "" : "none";   // only when something runs
-    tasks.slice().reverse().forEach(x=>{ const d=el("div","conv"+(x.id===cur?" sel":""));
-      d.append(el("div","t",x.task)); const s=el("small",null,t("chat.turns",{n:x.turns})+" "); s.append(badge(x.status));
-      d.append(s); d.onclick=()=>{ nav(false); pick(x.id); }; box.append(d); });
+    drawConvs();
     const c=tasks.find(x=>x.id===cur);
     $("title").textContent = c ? c.task : t("chat.newTitle");
     $("status").replaceChildren(c ? badge(c.status) : "");
     $("cancel").style.display = c && ["queued","running","cancelling"].includes(c.status) ? "" : "none";
     $("expmd").style.display = $("expjson").style.display = c ? "" : "none";
     idcUI();
+    if(cur!==folderFor) folderLine();
     if(cur && c && BUSY.includes(c.status) && !live) graphSoon();
     if(cur){ stream(); if(!live){ const k=cache[cur], r=await api("GET","/tasks/"+cur+"/events?since="+k.since); add(k, r.events); } }
     await popups(); thinking(); $("err").textContent="";
   }catch(e){ fail(e); }
 }
+// ---- v0.9.5: conversation list with a ⋯ menu (pin, open the folder, delete)
+const PIN_IC='<svg class="pin" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 17v5"/><path d="M5 17h14v-1.76a2 2 0 0 0-1.11-1.79l-1.78-.9A2 2 0 0 1 15 10.76V6h1a2 2 0 0 0 0-4H8a2 2 0 0 0 0 4h1v4.76a2 2 0 0 1-1.11 1.79l-1.78.9A2 2 0 0 0 5 15.24Z"/></svg>';
+let menuFor=null, menuBtn=null, delFor=null, convSig="";
+function drawConvs(force){
+  if(!force && (menuFor || delFor)) return;                 // never rebuild under an open menu / dialog
+  const list=tasks.slice().reverse(), pinned=list.filter(x=>x.pinned), rest=list.filter(x=>!x.pinned);
+  const sig=JSON.stringify([LANG,cur,list.map(x=>[x.id,x.task,x.turns,x.status,x.pinned])]);
+  if(!force && sig===convSig) return; convSig=sig;
+  const box=$("convs"), had=document.activeElement && box.contains(document.activeElement) ? document.activeElement.dataset.focus : null;
+  box.replaceChildren();
+  const row=x=>{ const d=el("div","conv"+(x.id===cur?" sel":"")); d.dataset.id=x.id;
+    const b=el("button","cmain"); b.type="button"; b.dataset.focus="m"+x.id; if(x.id===cur) b.setAttribute("aria-current","true");
+    const tt=el("span","t"); if(x.pinned){ tt.insertAdjacentHTML("afterbegin",PIN_IC); tt.append(el("span","sr",t("conv.isPinned")+" ")); }
+    tt.append(document.createTextNode(x.task)); b.append(tt);
+    const sm=el("small",null,t("chat.turns",{n:x.turns})+" "); sm.append(badge(x.status)); b.append(sm);
+    b.onclick=()=>{ nav(false); pick(x.id); };
+    const m=el("button","cmore","⋯"); m.type="button"; m.dataset.focus="o"+x.id; m.setAttribute("aria-haspopup","menu");
+    m.setAttribute("aria-expanded","false"); m.setAttribute("aria-controls","convmenu"); m.setAttribute("aria-label",t("conv.menu",{name:short(x.task,60)}));
+    m.title=m.getAttribute("aria-label"); m.onclick=e=>{ e.stopPropagation(); openMenu(x.id,m); };
+    d.append(b,m); return d; };
+  if(pinned.length){ box.append(el("div","clabel",t("conv.pinned"))); pinned.forEach(x=>box.append(row(x)));
+    if(rest.length) box.append(el("div","clabel",t("conv.recent"))); }
+  rest.forEach(x=>box.append(row(x)));
+  if(had){ const f=box.querySelector('[data-focus="'+had+'"]'); if(f) f.focus(); }
+}
+function closeMenu(focusBack){ const m=$("convmenu"); if(m.hidden) return; m.hidden=true;
+  if(menuBtn){ menuBtn.setAttribute("aria-expanded","false"); if(focusBack) menuBtn.focus(); }
+  menuFor=null; drawConvs(); }
+function openMenu(id,btn){
+  if(menuFor===id){ closeMenu(true); return; } closeMenu(false);
+  const x=tasks.find(v=>v.id===id); if(!x) return; menuFor=id; menuBtn=btn;
+  const m=$("convmenu"); $("cmpin").textContent=t(x.pinned?"conv.unpin":"conv.pin"); $("cmfolder").textContent=t("conv.folder"); $("cmdel").textContent=t("conv.delete");
+  m.setAttribute("aria-label",t("conv.menu",{name:short(x.task,60)}));
+  m.hidden=false; btn.setAttribute("aria-expanded","true"); placeMenu(); $("cmpin").focus({preventScroll:true}); }
+function placeMenu(){ const m=$("convmenu"); if(m.hidden || !menuBtn) return;
+  const r=menuBtn.getBoundingClientRect(), w=m.offsetWidth, hgt=m.offsetHeight;
+  m.style.left=Math.max(8,Math.min(innerWidth-w-8,r.right-w))+"px";
+  m.style.top=(r.bottom+4+hgt>innerHeight ? Math.max(8,r.top-hgt-4) : r.bottom+4)+"px"; }
+$("convmenu").addEventListener("keydown",e=>{ const items=[...$("convmenu").querySelectorAll("button")], i=items.indexOf(document.activeElement);
+  if(e.key==="ArrowDown"||e.key==="ArrowUp"){ e.preventDefault(); items[(i+(e.key==="ArrowDown"?1:items.length-1))%items.length].focus(); }
+  else if(e.key==="Home"||e.key==="End"){ e.preventDefault(); items[e.key==="Home"?0:items.length-1].focus(); }
+  else if(e.key==="Escape"){ e.preventDefault(); closeMenu(true); }
+  else if(e.key==="Tab"){ closeMenu(false); } });
+document.addEventListener("click",e=>{ if(menuFor && !$("convmenu").contains(e.target)) closeMenu(false); });
+window.addEventListener("resize",placeMenu);
+$("convs").addEventListener("scroll",placeMenu);   // the menu follows its ⋯ button
+let CSRF=null;
+async function convPost(id, action, body){
+  for(let tries=0; tries<2; tries++){
+    if(!CSRF) CSRF=(await api("GET","/conv/csrf")).csrf;
+    const h={"Content-Type":"application/json","X-CSRF-Token":CSRF}; if(tok.value) h.Authorization="Bearer "+tok.value;
+    const r=await fetch("/conv/"+id+"/"+action,{method:"POST",headers:h,body:JSON.stringify(body||{})});
+    const j=await r.json().catch(()=>({}));
+    if(r.status===403 && j.code==="csrf" && !tries){ CSRF=null; continue; }
+    const sk=["srv",j.code].join(".");
+    if(!r.ok){ const e=new Error(j.code && I18N.en[sk]!=null ? t(sk) : (j.error||("HTTP "+r.status))); e.status=r.status; e.body=j; throw e; }
+    return j; } }
+let toastT=0;
+function toast(msg){ const b=$("toast"); b.textContent=msg; b.hidden=false; clearTimeout(toastT); toastT=setTimeout(()=>{ b.hidden=true; },6000); }
+$("cmpin").onclick=async()=>{ const id=menuFor, x=tasks.find(v=>v.id===id); closeMenu(true); if(!x) return;
+  try{ await convPost(id,"pin",{pinned:!x.pinned}); x.pinned=!x.pinned; drawConvs(true);
+    const f=$("convs").querySelector('[data-focus="o'+id+'"]'); if(f) f.focus(); }catch(e){ toast(e.message); } };
+$("cmfolder").onclick=async()=>{ const id=menuFor, x=tasks.find(v=>v.id===id); closeMenu(true); if(!x) return;
+  try{ const r=await convPost(id,"folder",{}); toast(t(r.opened?"conv.opened":"conv.notOpened",{path:r.path})); if(id===cur) folderLine(); }
+  catch(e){ toast(e.body && e.body.code==="local_only" ? t("conv.openLocal",{path:x.folder}) : e.message); } };
+$("cmdel").onclick=()=>{ const id=menuFor; closeMenu(false); askDelete(id); };
+async function askDelete(id){
+  const x=tasks.find(v=>v.id===id); if(!x) return; delFor=id;
+  $("deld").textContent=t("del.text",{name:short(x.task,80)}); $("delfolder").checked=false; $("delerr").textContent="";
+  $("delkeep").textContent=t("del.keep",{path:x.folder}); $("toast").hidden=true; $("delbox").hidden=false; $("delcancel").focus(); }
+function closeDelete(){ $("delbox").hidden=true; const id=delFor; delFor=null; drawConvs(true);
+  const f=$("convs").querySelector('[data-focus="o'+id+'"]') || $("new"); if(f) f.focus(); }
+$("delcancel").onclick=closeDelete;
+$("delbox").addEventListener("click",e=>{ if(e.target===$("delbox")) closeDelete(); });
+$("delbox").addEventListener("keydown",e=>{
+  if(e.key==="Escape"){ e.preventDefault(); closeDelete(); return; }
+  if(e.key==="Tab"){ const f=[$("delfolder"),$("delcancel"),$("delok")], i=f.indexOf(document.activeElement);
+    e.preventDefault(); f[(i+(e.shiftKey?f.length-1:1)+f.length)%f.length].focus(); } });
+$("delok").onclick=async()=>{ const id=delFor; if(!id) return; $("delok").disabled=true;
+  try{ await convPost(id,"delete",{delete_folder:$("delfolder").checked});
+    delete cache[id]; tasks=tasks.filter(v=>v.id!==id); $("delbox").hidden=true; delFor=null;
+    if(cur===id) pick(null); drawConvs(true); $("new").focus(); toast(t("del.done")); }
+  catch(e){ $("delerr").textContent=e.message; }
+  $("delok").disabled=false; };
+// the selected conversation's folder, in a small copyable line
+let folderFor=null;
+async function folderLine(){
+  const box=$("folderline"); if(!cur){ box.hidden=true; folderFor=null; return; }
+  try{ const s=await api("GET","/tasks/"+cur); if(!s.folder_path){ box.hidden=true; return; }
+    $("folderpath").textContent=s.folder_path; $("folderpath").title=s.folder_path; box.hidden=false; folderFor=cur; }
+  catch(e){ box.hidden=true; } }
+$("foldercopy").onclick=async()=>{ const p=$("folderpath").textContent;
+  try{ await navigator.clipboard.writeText(p); }
+  catch(e){ const r=document.createRange(); r.selectNodeContents($("folderpath")); const sel=getSelection(); sel.removeAllRanges(); sel.addRange(r); try{ document.execCommand("copy"); }catch(_){} }
+  $("foldermsg").textContent=t("conv.copied"); setTimeout(()=>{ $("foldermsg").textContent=""; },2500); };
 async function popups(){
   const list=(await api("GET","/approvals")).approvals, box=$("popups"), ids=new Set(list.map(a=>a.id));
   [...box.children].forEach(c=>{ if(!ids.has(c.dataset.id) || c.dataset.lang!==LANG) c.remove(); });
@@ -812,7 +933,7 @@ const narrow = matchMedia("(max-width:760px)");
 function placeholder(){ $("input").placeholder = t(narrow.matches ? "chat.input.short" : "chat.input.placeholder"); }
 narrow.addEventListener && narrow.addEventListener("change", placeholder);
 placeholder();
-onLang = () => { placeholder(); render(); mode(); poll(); quotas(); rateBar(); chips(); idcUI(); gsig=""; drawSwarm(); thinking();
+onLang = () => { placeholder(); render(); mode(); drawConvs(true); poll(); quotas(); rateBar(); chips(); idcUI(); gsig=""; drawSwarm(); thinking();
   if(!$("filesp").hidden) loadFiles(); if(tstep>=0) tour(tstep); };
 render(); appStatus(); setInterval(appStatus,15000); loadConfig(); loadSettings(); setInterval(poll,1000); stream(); poll(); loadGraph(); setInterval(quotas,5000); quotas(); setInterval(rateBar,3000); rateBar(); setInterval(()=>{ if(cur) rateNote(); },1000);
 </script></body></html>
