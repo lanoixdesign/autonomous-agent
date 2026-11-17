@@ -62,6 +62,16 @@ CONNECT_PAGE = r"""<!doctype html>
    <button id="apisave" type="submit" data-i18n="apis.add"></button><button id="apicancel" type="button" class="lite" hidden data-i18n="apis.cancel"></button>
    <p id="apimsg" aria-live="polite"></p></form></details>
   <details class="adv"><summary data-i18n="ui.advanced"></summary><p class="muted" data-i18n="apis.how"></p></details></section>
+ <section><h2 data-i18n="mcp.title"></h2>
+  <p class="muted" data-i18n="mcp.help"></p>
+  <div class="row"><input id="mname" type="text" data-i18n-placeholder="mcp.namePh" style="width:160px"></div>
+  <div class="row">
+    <select id="mtype"><option value="stdio">stdio</option><option value="http">http</option></select>
+    <input id="mcmd" type="text" data-i18n-placeholder="mcp.cmdPh" style="width:280px">
+    <button id="madd" data-i18n="mcp.add"></button>
+  </div>
+  <div id="mservers" class="muted"></div>
+ </section>
  <section><details><summary><h2 style="display:inline" data-i18n="connect.howTitle"></h2></summary>
   <ol><li data-i18n="connect.how1"></li><li data-i18n="connect.how2"></li><li data-i18n="connect.how3"></li></ol>
   <p class="muted" data-i18n="connect.howMore"></p></details></section>
@@ -76,6 +86,31 @@ async function api(method, path, body){
   const j = await r.json().catch(() => ({})); if(!r.ok){ const e = new Error(j.error || ("HTTP " + r.status)); e.status = r.status; throw e; } return j;
 }
 let status = {}, timer = null;
+$("madd").onclick = async () => {
+  const name = $("mname").value.trim(), type = $("mtype").value, cmd = $("mcmd").value.trim();
+  if(!name || !cmd) return;
+  const body = {name, transport: type};
+  if(type === "stdio") body.command = cmd;
+  else body.url = cmd;
+  try{ await api("POST", "/mcp", body); $("mname").value = $("mcmd").value = ""; refreshMCP(); }
+  catch(e){ $("msg").textContent = e.message; }
+};
+function el(tag, cls, text){const e=document.createElement(tag); if(cls) e.className=cls; if(text!=null) e.textContent=text; return e;}
+async function refreshMCP(){
+  try{
+    const r = await api("GET", "/mcp");
+    const box = $("mservers"); box.className = r.servers.length ? "" : "muted"; box.replaceChildren();
+    if(!r.servers.length) box.textContent = t("mcp.none");
+    r.servers.forEach(s => {
+      const d = el("div", "row");
+      d.append(el("span", null, s.name + " (" + s.transport + ") · " + s.tools + " outils"));
+      const b = el("button", "lite", t("mcp.remove"));
+      b.onclick = () => api("POST", "/mcp/" + s.id + "/delete", {}).then(refreshMCP);
+      d.append(b); box.append(d);
+    });
+  }catch(e){}
+}
+refreshMCP();
 async function refresh(){
   try{ status = await api("GET", "/auth/status"); }catch(e){ status = {}; }
   const authed = !!status.authenticated;

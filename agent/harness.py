@@ -87,7 +87,7 @@ FILE_DOWNLOAD_MAX = 200 * 1024 * 1024   # "My files" downloads
 FILES_LIST_MAX = 500
 from . import pwa, qr, remote
 from .redact import MASK as MASK_TEXT, redact
-from . import __version__, devmode, export, i18n, schedule, uploads
+from . import __version__, devmode, export, i18n, schedule, uploads, mcp
 from .idc import IDC, IDCConfig
 from .keys import role_task
 from . import sandbox as sandbox_mod
@@ -615,6 +615,7 @@ class Harness:
         self.stopping = threading.Event()
         self.rules: dict[str, dict] = {}
         self.schedules: dict[str, dict] = {}
+        self.mcp = mcp.MCPRegistry(self.audit_path.parent, None, None)  # simple registry; secrets later
         self.settings: dict[str, Any] = {"idc": bool(self.idc_config.enabled), "critic": False, "critic_rounds": 2}
         self.public_url: str | None = None   # remote mode: the URL a phone should open (tunnel, LAN...)
         self.control: Any = None             # userconfig.AppControl: Settings page, keys from the UI, restart / quit
@@ -1842,6 +1843,8 @@ def make_handler(h: Harness, token: str | None, local_only: bool, auth: "remote.
                 return self._send(200, {"rules": h.list_rules(), "never_remembered": list(NEVER_REMEMBER)})
             if path == "/schedules":
                 return self._send(200, {"schedules": h.list_schedules()})
+            if path == "/mcp":
+                return self._send(200, {"servers": h.mcp.list_servers()})
             if path == "/settings":
                 return self._send(200, h.get_settings())
             if path == "/conv/csrf":    # v0.9.5: token for the conversation actions (same-origin pages only)
@@ -2038,6 +2041,16 @@ def make_handler(h: Harness, token: str | None, local_only: bool, auth: "remote.
                     return self._send(201, h.add_schedule(data))
                 except ValueError as e:
                     return self._send(400, {"error": str(e)})
+            if path == "/mcp":
+                try:
+                    sid = h.mcp.add(data)
+                    return self._send(201, {"id": sid, "servers": h.mcp.list_servers()})
+                except Exception as e:
+                    return self._send(400, {"error": str(e)})
+            m = re.match(r"^/mcp/([0-9a-f]+)/delete$", path)
+            if m:
+                h.mcp.remove(m.group(1))
+                return self._send(200, {"ok": True, "servers": h.mcp.list_servers()})
             m = SCHEDULE_RE.match(path)
             if m:
                 sid, action = m.group(1), m.group(2)
