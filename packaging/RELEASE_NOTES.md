@@ -1,3 +1,10 @@
+**New in 0.9.6 / Nouveautés de la 0.9.6 — simpler schedules and MCP for non-devs / tâches planifiées et MCP plus simples pour les non-dev**
+
+- **Weekly scheduled tasks**: create tasks that run every week on a chosen day and time (e.g. every Friday at 17:00). / **Tâches planifiées hebdomadaires** : crée des tâches qui tournent chaque semaine un jour et une heure choisis (ex. chaque vendredi à 17 h).
+- **Simpler schedules form** on the dashboard: clear help text, “What should it do?”, and three choices (every N minutes / every day / every week with day selector). Still asks for permission before anything risky. / **Formulaire de planification plus simple** dans le tableau de bord : texte d’aide clair, « Que doit-il faire ? », et trois choix (toutes les N minutes / chaque jour / chaque semaine avec choix du jour). Demande toujours l’accord avant toute action risquée.
+- **Simple MCP servers section** in the Connect tab: add a server by name + type (stdio or HTTP) + command or URL, then list and remove them. Only servers you add yourself are used. / **Section simple « Mes serveurs MCP »** dans l’onglet Connexion : ajoute un serveur par nom + type (stdio ou HTTP) + commande ou URL, puis liste et supprime. Seuls les serveurs que tu ajoutes toi-même sont utilisés.
+- **Plain-language guide** for scheduled tasks (docs/schedules.md, FR/EN). / **Guide en langage simple** pour les tâches planifiées (docs/schedules.md, FR/EN).
+
 **New in 0.9.5 / Nouveautés de la 0.9.5 — pin, delete and open the folder of a conversation / épingler, supprimer et ouvrir le dossier d'une conversation**
 
 - **A discreet "⋯" menu on each conversation** in the sidebar (shown on hover on a computer, always on a phone) with three actions: Pin, Open the folder, Delete. Fully usable with the keyboard (arrows, Escape) and read out by screen readers. / **Un menu « ⋯ » discret sur chaque conversation** dans la barre latérale (visible au survol sur ordinateur, toujours sur téléphone) avec trois actions : Épingler, Ouvrir le dossier, Supprimer. Utilisable entièrement au clavier (flèches, Échap) et lu par les lecteurs d'écran.
