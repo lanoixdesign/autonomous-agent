@@ -207,7 +207,10 @@ $("sadd").onclick=async()=>{ const prompt=$("sprompt").value.trim(), w=$("swhen"
   try{ await api("POST","/schedules",body); $("sprompt").value=$("swhen").value=""; refreshSchedules(); }catch(e){ fail(e); } };
 function when(s){
   if(s.kind==="interval") return t("sched.everyN",{n:num(s.every_minutes,2)});
-  if(s.kind==="weekly") return t("sched.weeklyAt",{day:t("sched."+s.weekday), at:s.at});
+  if(s.kind==="weekly") {
+    const dayKey = "sched." + s.weekday;
+    return t("sched.weeklyAt",{day:t(dayKey), at:s.at});
+  }
   return t("sched.dailyAt",{at:s.at});
 }
 async function refreshSchedules(){
