@@ -10,13 +10,14 @@ Autonomous-agent can connect to external MCP servers (stdio or HTTP) and turn th
 
 In the Connect tab → **My MCP servers**:
 
-- Name
-- Command (stdio) or URL (HTTP streamable)
-- Optional environment variables or token (stored masked, mode 0600)
+You can click a ready-made button (**My files**, **GitHub**, **Calendar**) or fill the form yourself:
 
-Presets are available for common servers (filesystem, GitHub, etc.).
+- **Name**: a simple name (e.g. My files)
+- **Type**: “Local program” or “Web address”
+- **Command or address**: what to run (an example is shown under the field)
 
-Only servers you add yourself are launched. No arbitrary commands from the model.
+Optional token is stored masked.  
+Only servers **you** add are used. The assistant cannot invent commands.
 
 ### Tool naming
 
@@ -47,15 +48,16 @@ Autonomous-agent peut se connecter à des serveurs MCP externes (stdio ou HTTP) 
 
 ### Ajouter un serveur
 
-Dans l'onglet Connexion → **Mes serveurs MCP** :
+Dans l’onglet **Connexion → Mes serveurs MCP** :
 
-- Nom
-- Commande (stdio) ou URL (HTTP streamable)
-- Variables d'environnement ou jeton optionnels (stockés masqués, mode 0600)
+Tu peux cliquer sur un bouton prêt à l’emploi (**Mes fichiers**, **GitHub**, **Agenda**) ou remplir le formulaire toi-même :
 
-Des modèles prêts à l'emploi sont disponibles pour les serveurs courants.
+- **Nom** : un nom simple (ex. Mes fichiers)
+- **Type** : « Programme local » ou « Adresse web »
+- **Commande ou adresse** : ce qu’il faut lancer (un exemple est affiché sous le champ)
 
-Aucun serveur n'est lancé si tu ne l'as pas ajouté toi-même. Aucune commande arbitraire venant du modèle.
+Le jeton optionnel est stocké masqué.  
+Seuls les serveurs que **tu** ajoutes sont utilisés. L’assistant ne peut pas inventer de commandes.
 
 ### Nommage des outils
 

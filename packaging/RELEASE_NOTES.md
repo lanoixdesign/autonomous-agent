@@ -1,3 +1,10 @@
+**New in 0.9.7 / Nouveautés de la 0.9.7 — MCP even simpler for beginners / MCP encore plus simple pour les débutants**
+
+- **Clearer labels**: “Local program” / “Web address” instead of stdio/http. / **Libellés plus clairs** : « Programme local » / « Adresse web » à la place de stdio/http.
+- **Ready-made buttons**: My files, GitHub, Calendar that pre-fill the form. / **Boutons prêts à l’emploi** : Mes fichiers, GitHub, Agenda qui pré-remplissent le formulaire.
+- **Visible example** under the field and a short explanation of what MCP is. / **Exemple visible** sous le champ et une courte explication de ce qu’est le MCP.
+- Docs updated in plain language. / Documentation mise à jour en langage simple.
+
 **New in 0.9.6 / Nouveautés de la 0.9.6 — simpler schedules and MCP for non-devs / tâches planifiées et MCP plus simples pour les non-dev**
 
 - **Weekly scheduled tasks**: create tasks that run every week on a chosen day and time (e.g. every Friday at 17:00). / **Tâches planifiées hebdomadaires** : crée des tâches qui tournent chaque semaine un jour et une heure choisis (ex. chaque vendredi à 17 h).

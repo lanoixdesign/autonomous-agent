@@ -64,12 +64,21 @@ CONNECT_PAGE = r"""<!doctype html>
   <details class="adv"><summary data-i18n="ui.advanced"></summary><p class="muted" data-i18n="apis.how"></p></details></section>
  <section><h2 data-i18n="mcp.title"></h2>
   <p class="muted" data-i18n="mcp.help"></p>
-  <div class="row"><input id="mname" type="text" data-i18n-placeholder="mcp.namePh" style="width:160px"></div>
+  <div class="row" style="gap:8px;margin-bottom:8px">
+    <button type="button" class="lite" id="presetFiles" data-i18n="mcp.presetFiles"></button>
+    <button type="button" class="lite" id="presetGithub" data-i18n="mcp.presetGithub"></button>
+    <button type="button" class="lite" id="presetCalendar" data-i18n="mcp.presetCalendar"></button>
+  </div>
+  <div class="row"><input id="mname" type="text" data-i18n-placeholder="mcp.namePh" style="width:180px"></div>
   <div class="row">
-    <select id="mtype"><option value="stdio">stdio</option><option value="http">http</option></select>
-    <input id="mcmd" type="text" data-i18n-placeholder="mcp.cmdPh" style="width:280px">
+    <select id="mtype">
+      <option value="stdio" data-i18n="mcp.typeLocal"></option>
+      <option value="http" data-i18n="mcp.typeWeb"></option>
+    </select>
+    <input id="mcmd" type="text" data-i18n-placeholder="mcp.cmdPh" style="width:300px">
     <button id="madd" data-i18n="mcp.add"></button>
   </div>
+  <p class="muted" style="font-size:0.9em;margin-top:4px" data-i18n="mcp.example"></p>
   <div id="mservers" class="muted"></div>
  </section>
  <section><details><summary><h2 style="display:inline" data-i18n="connect.howTitle"></h2></summary>
@@ -86,6 +95,24 @@ async function api(method, path, body){
   const j = await r.json().catch(() => ({})); if(!r.ok){ const e = new Error(j.error || ("HTTP " + r.status)); e.status = r.status; throw e; } return j;
 }
 let status = {}, timer = null;
+$("presetFiles").onclick = () => {
+  $("mname").value = t("mcp.presetFiles");
+  $("mtype").value = "stdio";
+  $("mcmd").value = "npx -y @modelcontextprotocol/server-filesystem /Users/toi/Documents";
+  $("mcmd").focus();
+};
+$("presetGithub").onclick = () => {
+  $("mname").value = "GitHub";
+  $("mtype").value = "stdio";
+  $("mcmd").value = "npx -y @modelcontextprotocol/server-github";
+  $("mcmd").focus();
+};
+$("presetCalendar").onclick = () => {
+  $("mname").value = t("mcp.presetCalendar");
+  $("mtype").value = "http";
+  $("mcmd").value = "https://example.com/mcp";
+  $("mcmd").focus();
+};
 $("madd").onclick = async () => {
   const name = $("mname").value.trim(), type = $("mtype").value, cmd = $("mcmd").value.trim();
   if(!name || !cmd) return;
