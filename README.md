@@ -1,5 +1,7 @@
 # autonomous-agent
 
+**⬇ [Download page / Page de téléchargement](https://lanoixdesign.github.io/autonomous-agent/)** — Mac & Windows, free / gratuit
+
 **[English](#english) | [Français](#francais)**
 
 <a id="english"></a>
