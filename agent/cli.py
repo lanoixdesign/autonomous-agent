@@ -152,6 +152,9 @@ def new_agent(args, perms: Permissions, ctx: ToolContext, audit: AuditLog, confi
         from . import apis as apis_mod
         for t in apis_mod.TOOLS:
             registry.add(t)
+    if getattr(ctx, "mcp", None) is not None and not args.offline:   # v0.9.8: services connected in the Connect tab
+        for t in ctx.mcp.agent_tools():
+            registry.add(t)
     budget = Budget(max_steps=args.max_steps, max_tool_calls=args.max_tool_calls, max_tokens=args.max_tokens)
     pool = None
     if control is not None:          # one assistant per working key (or the number chosen in Settings)
@@ -181,6 +184,10 @@ def idc_config(args, perms: Permissions):
 
 def build(args) -> tuple[Agent, Permissions]:
     perms, ctx, state = parts(args)
+    if (state / "mcp.json").is_file():       # services connected in the app also work from the terminal
+        from . import userconfig
+        from .mcp import MCPRegistry
+        ctx.mcp = MCPRegistry(state, userconfig.SecretStore(state / userconfig.SECRETS_FILE), lang=args.lang or "en")
     agent = new_agent(args, perms, ctx, AuditLog(state / "audit.jsonl"), make_confirm(sys.stdin.isatty(), args.lang),
                       None if args.quiet else printer)
     return agent, perms
@@ -210,6 +217,9 @@ def serve(args) -> int:
     from .apis import ApiRegistry
     from .vectors import RouterEmbedder
     control.apis = ctx.apis = ApiRegistry(cfg.dir, secrets_store, perms)
+    from .mcp import MCPRegistry
+    control.mcp = MCPRegistry(cfg.dir, secrets_store, lang=getattr(args, "lang", None) or "en")
+    ctx.mcp = None if args.offline else control.mcp       # the Connect tab still lists them when offline
     # semantic memory: keys tagged "Embeddings" in Settings (else the keys file), read at each call
     ctx.memory.embedder = RouterEmbedder(lambda: control.router if control.router.entries else args._router)
     ctx.deny_paths = list(dict.fromkeys([state, cfg.dir]))
@@ -286,6 +296,7 @@ def serve(args) -> int:
     finally:
         h.shutdown()
         srv.server_close()
+        control.mcp.close_all()      # stop the local MCP programs
         if tunnel_proc is not None:
             tunnel_proc.terminate()
         if store is not None:

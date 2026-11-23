@@ -32,6 +32,7 @@ class ToolContext:
     # developer mode: write_file / edit_file (and sandbox commands that change files) stay under this
     # workspace-relative folder, e.g. "projects/site/"; None = anywhere in the workspace
     write_prefix: str | None = None
+    mcp: Any = None           # mcp.MCPRegistry: services connected in the Connect tab (v0.9.8)
     apis: Any = None          # apis.ApiRegistry: business APIs added in the Connect tab (v0.9)
     # v0.9.3: protected files (permissions `paths.deny`), checked again on the REAL path (symlinks, "..", case)
     path_deny: list[str] = field(default_factory=lambda: list(_default_path_deny()))
@@ -55,6 +56,8 @@ class Tool:
     func: Callable[[ToolContext, dict], str]
     subject_kind: str | None = None   # "path" | "command" | "url"
     subject_arg: str | Callable[[dict], str] | None = None
+    service: str | None = None        # v0.9.8: a connected MCP service ("GitHub"), shown in the chat
+    title: str | None = None          # its plain name for the action ("List issues")
 
     def __post_init__(self):
         assert self.category in CATEGORIES, self.category
@@ -100,6 +103,7 @@ class Registry:
 
 
 def default_registry(enable_web: bool = True, enable_github: bool = True, mcp_registry=None) -> Registry:
+    """`mcp_registry`: an mcp.MCPRegistry; the tools of its enabled services are added (v0.9.8)."""
     from . import builtin, files, shell, web, github
 
     reg = Registry()
@@ -112,6 +116,6 @@ def default_registry(enable_web: bool = True, enable_github: bool = True, mcp_re
         for t in github.TOOLS:
             reg.add(t)
     if mcp_registry is not None:
-        for t in mcp_registry.get_tools():
+        for t in mcp_registry.agent_tools():
             reg.add(t)
     return reg

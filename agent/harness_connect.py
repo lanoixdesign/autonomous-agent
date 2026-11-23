@@ -26,6 +26,14 @@ CONNECT_PAGE = r"""<!doctype html>
  #apiadd>summary{cursor:pointer;font-weight:600;margin:10px 0 4px} details.adv>summary{cursor:pointer;margin:10px 0 4px}
  label.f{display:block;font-weight:600;font-size:14px;margin:10px 0 4px} label.ck{display:flex;gap:8px;align-items:flex-start;margin:10px 0;font-size:15px} label.ck input{width:auto;margin-top:4px}
  #apimsg.ok,#apimsg.err{margin-top:8px}
+ .presets{display:flex;gap:8px;flex-wrap:wrap} .presets button{width:auto;flex:1 1 140px;margin-top:4px} p.f{font-weight:600;font-size:14px;margin:14px 0 4px}
+ .apil{border-color:var(--line,#dde1e6)!important}
+ .mcps .top{display:flex;justify-content:space-between;gap:8px;align-items:baseline} .mcps .st{font-size:13px;white-space:nowrap}
+ .mcps .st::before{content:"\25CF\00a0"} .st-connected{color:var(--ok,#1f7a45)} .st-error{color:var(--bad,#b3261e)} .st-off,.st-untested{color:var(--muted,#5a6270)}
+ .mcps .st-off::before,.mcps .st-untested::before{content:"\25CB\00a0"} .mcps .why{margin:6px 0 0;font-size:14px} .small{font-size:13px!important;word-break:break-all}
+ .mcps details.can>summary{cursor:pointer;font-size:14px;margin-top:6px} .mcps ul{margin:4px 0 0;padding-left:20px;font-size:14px}
+ .mcps .acts{flex-wrap:wrap;align-items:center} label.sw{margin:8px 0 0 auto;font-size:14px}
+ textarea{width:100%;font:14px ui-monospace,monospace;padding:10px;border:1px solid #cfd4da;border-radius:10px}
  code{font-size:13px;background:#f0f2f5;padding:1px 4px;border-radius:4px} ol{padding-left:20px;margin:6px 0}
 /*LANG_CSS*/
 /*THEME*/
@@ -46,6 +54,26 @@ CONNECT_PAGE = r"""<!doctype html>
   <div id="qr"></div><p id="qrurl" hidden></p><p id="qrexp" class="muted"></p><p id="qrwarn" class="warn" hidden></p>
   <button id="revoke" class="danger" data-i18n="connect.revokeAll"></button>
   <button id="logout" class="lite" data-i18n="connect.logout"></button></section>
+ <section id="mcp" hidden><h2><span data-i18n="mcp.title"></span><button class="tip" data-tip="mcp.tip"></button></h2>
+  <p class="muted" data-i18n="mcp.help"></p>
+  <div id="mcplist"></div>
+  <div id="mcpadd"><p class="f" data-i18n="mcp.addTitle"></p>
+   <div class="presets"><button type="button" class="lite" data-preset="files" data-i18n="mcp.p.files"></button><button type="button" class="lite" data-preset="github" data-i18n="mcp.p.github"></button><button type="button" class="lite" data-preset="web" data-i18n="mcp.p.web"></button></div>
+   <form id="mcpform" hidden autocomplete="off">
+    <p id="mcpintro" class="muted"></p>
+    <p id="mcpneeds" class="warn" hidden></p>
+    <div data-f="folder"><label class="f" for="mfolder" data-i18n="mcp.folder"></label><input id="mfolder" maxlength="300"><p class="muted" data-i18n="mcp.folderHelp"></p></div>
+    <div data-f="url"><label class="f" for="murl" data-i18n="mcp.url"></label><input id="murl" type="url" maxlength="300" data-i18n-placeholder="mcp.urlPh"></div>
+    <div data-f="command"><label class="f" for="mcmd" data-i18n="mcp.command"></label><input id="mcmd" maxlength="500" data-i18n-placeholder="mcp.commandPh"></div>
+    <div data-f="token"><label class="f" for="mtoken" data-i18n="mcp.token"></label><input id="mtoken" type="password" autocomplete="new-password"><p class="muted"><span id="mtokenhelp"></span> <a id="mtokenlink" target="_blank" rel="noopener" hidden data-i18n="mcp.tokenLink"></a></p></div>
+    <div data-f="env"><label class="f" for="menv" data-i18n="mcp.env"></label><textarea id="menv" rows="2" data-i18n-placeholder="mcp.envPh"></textarea></div>
+    <div data-f="name"><label class="f" for="mname" data-i18n="mcp.name"></label><input id="mname" maxlength="40" data-i18n-placeholder="mcp.namePh"></div>
+    <button id="mcpsave" type="submit" data-i18n="mcp.addTest"></button><button id="mcpcancel" type="button" class="lite" data-i18n="mcp.cancel"></button>
+   </form>
+   <details class="adv"><summary data-i18n="mcp.advanced"></summary><p class="muted" data-i18n="mcp.advancedHelp"></p>
+    <button type="button" class="lite" data-preset="custom" data-i18n="mcp.p.custom"></button></details>
+  </div>
+  <p id="mcpmsg" aria-live="polite"></p></section>
  <section id="apis" hidden><h2><span data-i18n="apis.title"></span><button class="tip" data-tip="apis.help"></button></h2>
   <div id="apilist"></div>
   <details id="apiadd"><summary data-i18n="apis.addTitle"></summary>
@@ -62,25 +90,6 @@ CONNECT_PAGE = r"""<!doctype html>
    <button id="apisave" type="submit" data-i18n="apis.add"></button><button id="apicancel" type="button" class="lite" hidden data-i18n="apis.cancel"></button>
    <p id="apimsg" aria-live="polite"></p></form></details>
   <details class="adv"><summary data-i18n="ui.advanced"></summary><p class="muted" data-i18n="apis.how"></p></details></section>
- <section><h2 data-i18n="mcp.title"></h2>
-  <p class="muted" data-i18n="mcp.help"></p>
-  <div class="row" style="gap:8px;margin-bottom:8px">
-    <button type="button" class="lite" id="presetFiles" data-i18n="mcp.presetFiles"></button>
-    <button type="button" class="lite" id="presetGithub" data-i18n="mcp.presetGithub"></button>
-    <button type="button" class="lite" id="presetCalendar" data-i18n="mcp.presetCalendar"></button>
-  </div>
-  <div class="row"><input id="mname" type="text" data-i18n-placeholder="mcp.namePh" style="width:180px"></div>
-  <div class="row">
-    <select id="mtype">
-      <option value="stdio" data-i18n="mcp.typeLocal"></option>
-      <option value="http" data-i18n="mcp.typeWeb"></option>
-    </select>
-    <input id="mcmd" type="text" data-i18n-placeholder="mcp.cmdPh" style="width:300px">
-    <button id="madd" data-i18n="mcp.add"></button>
-  </div>
-  <p class="muted" style="font-size:0.9em;margin-top:4px" data-i18n="mcp.example"></p>
-  <div id="mservers" class="muted"></div>
- </section>
  <section><details><summary><h2 style="display:inline" data-i18n="connect.howTitle"></h2></summary>
   <ol><li data-i18n="connect.how1"></li><li data-i18n="connect.how2"></li><li data-i18n="connect.how3"></li></ol>
   <p class="muted" data-i18n="connect.howMore"></p></details></section>
@@ -95,49 +104,6 @@ async function api(method, path, body){
   const j = await r.json().catch(() => ({})); if(!r.ok){ const e = new Error(j.error || ("HTTP " + r.status)); e.status = r.status; throw e; } return j;
 }
 let status = {}, timer = null;
-$("presetFiles").onclick = () => {
-  $("mname").value = t("mcp.presetFiles");
-  $("mtype").value = "stdio";
-  $("mcmd").value = "npx -y @modelcontextprotocol/server-filesystem /Users/toi/Documents";
-  $("mcmd").focus();
-};
-$("presetGithub").onclick = () => {
-  $("mname").value = "GitHub";
-  $("mtype").value = "stdio";
-  $("mcmd").value = "npx -y @modelcontextprotocol/server-github";
-  $("mcmd").focus();
-};
-$("presetCalendar").onclick = () => {
-  $("mname").value = t("mcp.presetCalendar");
-  $("mtype").value = "http";
-  $("mcmd").value = "https://example.com/mcp";
-  $("mcmd").focus();
-};
-$("madd").onclick = async () => {
-  const name = $("mname").value.trim(), type = $("mtype").value, cmd = $("mcmd").value.trim();
-  if(!name || !cmd) return;
-  const body = {name, transport: type};
-  if(type === "stdio") body.command = cmd;
-  else body.url = cmd;
-  try{ await api("POST", "/mcp", body); $("mname").value = $("mcmd").value = ""; refreshMCP(); }
-  catch(e){ $("msg").textContent = e.message; }
-};
-function el(tag, cls, text){const e=document.createElement(tag); if(cls) e.className=cls; if(text!=null) e.textContent=text; return e;}
-async function refreshMCP(){
-  try{
-    const r = await api("GET", "/mcp");
-    const box = $("mservers"); box.className = r.servers.length ? "" : "muted"; box.replaceChildren();
-    if(!r.servers.length) box.textContent = t("mcp.none");
-    r.servers.forEach(s => {
-      const d = el("div", "row");
-      d.append(el("span", null, s.name + " (" + s.transport + ") · " + s.tools + " outils"));
-      const b = el("button", "lite", t("mcp.remove"));
-      b.onclick = () => api("POST", "/mcp/" + s.id + "/delete", {}).then(refreshMCP);
-      d.append(b); box.append(d);
-    });
-  }catch(e){}
-}
-refreshMCP();
 async function refresh(){
   try{ status = await api("GET", "/auth/status"); }catch(e){ status = {}; }
   const authed = !!status.authenticated;
@@ -206,12 +172,98 @@ $("apiform").onsubmit = async ev => { ev.preventDefault();
   try{ await capi("POST", "/app/apis" + (editing ? "/" + editing : ""), body); $("apival").value = "";
     apiMsg(t(editing ? "apis.saved" : "apis.added")); edit(null); await loadApis(); }
   catch(e){ apiMsg(e.status === 403 && e.code === "locked" ? t("apis.locked") : e.message, true); } };
+// ---- connected services (MCP, v0.9.8): presets need one field at most; secrets only shown masked
+let MCPS = [], PRESETS = [], mform = null, mediting = null, mopen = {};
+function mcpMsg(txt, bad){ $("mcpmsg").className = bad ? "err" : "ok"; $("mcpmsg").textContent = txt || ""; }
+function mcpWhy(err){ if(!err) return ""; const p = err.params || {};
+  const k = "mcp.why." + err.code; const s = t(k, p); return s === k ? t("mcp.why.other") : s; }
+function linkTo(href, txt){ const a = mk("a", null, txt); a.href = href; a.target = "_blank"; a.rel = "noopener"; return a; }
+function drawMcp(){
+  const box = $("mcplist"); box.replaceChildren();
+  if(!MCPS.length) box.append(mk("p", "muted", t("mcp.none")));
+  MCPS.forEach(s => {
+    const card = mk("div", "apil mcps"), top = mk("div", "top");
+    const st = s.status === "ready" ? "connected" : s.status;
+    top.append(mk("b", null, s.name), mk("span", "st st-" + st, tr("mcp.st", st)));
+    card.append(top);
+    if(s.status === "error"){ const w = mk("p", "why", mcpWhy(s.error));
+      if(s.error && s.error.params && s.error.params.link){ w.append(" "); w.append(linkTo(s.error.params.link, t("mcp.install", {program: s.error.params.program}))); }
+      card.append(w);
+      if(s.error && s.error.params && s.error.params.detail) card.append(mk("p", "muted small", s.error.params.detail)); }
+    const n = (s.tools || []).length, ro = (s.tools || []).filter(x => x.read_only).length;
+    card.append(mk("p", "muted small", s.where + (n ? " · " + t("mcp.can", {n, ro}) : "")));
+    if(n){ const d = mk("details", "can"); d.open = !!mopen[s.id]; d.ontoggle = () => { mopen[s.id] = d.open; };
+      d.append(mk("summary", null, t("mcp.whatCan")));
+      const ul = mk("ul");
+      s.tools.slice(0, 30).forEach(x => { const li = mk("li", null, x.title + " "); li.title = x.description || "";
+        li.append(mk("span", "muted", x.read_only ? t("mcp.readOnly") : t("mcp.asks"))); ul.append(li); });
+      d.append(ul); card.append(d); }
+    const acts = mk("div", "acts"), test = mk("button", "lite", t("mcp.test")), ed = mk("button", "lite", t("mcp.edit")),
+          del = mk("button", "danger", t("mcp.delete")), sw = mk("label", "ck sw"), cb = mk("input");
+    cb.type = "checkbox"; cb.checked = s.enabled; sw.append(cb, mk("span", null, t("mcp.on")));
+    test.onclick = async () => { test.disabled = true; test.textContent = t("mcp.testing"); mcpMsg("");
+      try{ const r = await capi("POST", "/app/mcp/" + s.id + "/test", {}); mopen[s.id] = r.status !== "error";
+        mcpMsg(r.status === "error" ? t("mcp.testBad", {name: s.name}) : t("mcp.testOk", {name: s.name, n: (r.tools || []).length}), r.status === "error"); }
+      catch(e){ mcpMsg(e.message, true); } await loadMcp(); };
+    cb.onchange = async () => { try{ await capi("POST", "/app/mcp/" + s.id + "/enable", {enabled: cb.checked});
+      mcpMsg(t(cb.checked ? "mcp.enabled" : "mcp.disabled", {name: s.name})); }catch(e){ mcpMsg(e.message, true); } await loadMcp(); };
+    ed.onclick = () => openForm(s.preset || "custom", s);
+    del.onclick = async () => { if(!confirm(t("mcp.deleteConfirm", {name: s.name}))) return;
+      try{ await capi("POST", "/app/mcp/" + s.id + "/delete", {}); mcpMsg(t("mcp.deleted", {name: s.name})); }catch(e){ mcpMsg(e.message, true); } await loadMcp(); };
+    acts.append(test, ed, del, sw); card.append(acts); box.append(card);
+  });
+}
+const MF = {files: ["folder"], github: ["token"], web: ["url", "token", "name"], custom: ["command", "env", "name"]};
+function openForm(preset, s){
+  mform = preset; mediting = s ? s.id : null;
+  if(!preset){ $("mcpform").hidden = true; return; }
+  const p = PRESETS.find(x => x.id === preset) || {};
+  $("mcpform").hidden = false;
+  document.querySelectorAll("#mcpform [data-f]").forEach(d => { d.hidden = !MF[preset].includes(d.dataset.f); });
+  $("mcpintro").textContent = tr("mcp.intro", preset);
+  const miss = p.program && !p.installed;
+  $("mcpneeds").hidden = !miss; $("mcpneeds").replaceChildren();
+  if(miss){ $("mcpneeds").append(t("mcp.needs", {program: p.program}) + " ", linkTo(p.link, t("mcp.install", {program: p.program}))); }
+  $("mfolder").value = s && s.preset === "files" ? s.where : (p.default_folder || "");
+  $("murl").value = s && s.transport === "http" && preset !== "github" ? s.where : "";
+  $("mcmd").value = s && preset === "custom" ? s.where : ""; $("menv").value = "";
+  $("mname").value = s && preset !== "files" && preset !== "github" ? s.name : "";
+  $("mtoken").value = ""; $("mtoken").placeholder = s && s.token_set ? t("mcp.tokenKeep", {mask: s.token_mask}) : (preset === "github" ? "github_pat_…" : t("mcp.tokenOpt"));
+  $("mtokenhelp").textContent = t(preset === "github" ? "mcp.tokenGithub" : "mcp.tokenHelp");
+  $("mtokenlink").hidden = !p.token_link; if(p.token_link) $("mtokenlink").href = p.token_link;
+  $("mcpsave").textContent = t(s ? "mcp.save" : "mcp.addTest");
+  const first = MF[preset][0]; setTimeout(() => { const el = {folder: "mfolder", url: "murl", command: "mcmd", token: "mtoken"}[first]; if(el) $(el).focus(); }, 0);
+}
+document.querySelectorAll("[data-preset]").forEach(b => { b.onclick = () => { mcpMsg(""); openForm(b.dataset.preset, null); }; });
+$("mcpcancel").onclick = () => openForm(null);
+$("mcpform").onsubmit = async ev => { ev.preventDefault();
+  const body = {preset: mform, lang: LANG};
+  const f = MF[mform];
+  if(f.includes("folder")) body.folder = $("mfolder").value.trim();
+  if(f.includes("url")) body.url = $("murl").value.trim();
+  if(f.includes("command")) body.command = $("mcmd").value.trim();
+  if(f.includes("name") && $("mname").value.trim()) body.name = $("mname").value.trim();
+  if(f.includes("env") && $("menv").value.trim()) body.env = $("menv").value;
+  if(f.includes("token") && $("mtoken").value.trim()) body.token = $("mtoken").value.trim();
+  if(mform === "web" && !body.name){ try{ body.name = new URL(body.url).hostname.replace(/^www\.|^mcp\./, "").split(".")[0] || "Service"; }catch(e){} }
+  if(mform === "custom" && !body.name) body.name = (body.command || "").split(/\s+/).pop().split("/").pop().replace(/^@/, "").slice(0, 40) || "Service";
+  const btn = $("mcpsave"); btn.disabled = true; btn.textContent = t("mcp.testing"); mcpMsg("");
+  try{ const r = await capi("POST", "/app/mcp" + (mediting ? "/" + mediting : ""), body); $("mtoken").value = "";
+    mopen[r.id] = r.status !== "error"; openForm(null);
+    mcpMsg(r.status === "error" ? t("mcp.addedBad", {name: r.name}) : t(mediting ? "mcp.saved" : "mcp.added", {name: r.name, n: (r.tools || []).length}), r.status === "error"); }
+  catch(e){ const k = "mcp.err." + e.code, m = t(k, e.params || {}); mcpMsg(m === k ? e.message : m, true); }
+  btn.disabled = false; btn.textContent = t(mediting ? "mcp.save" : "mcp.addTest"); await loadMcp(); };
+async function loadMcp(){
+  try{ if(!CSRF){ const st = await capi("GET", "/app/status"); CSRF = st.csrf || ""; if(st.editable === false){ $("mcpadd").hidden = true; } }
+    const r = await capi("GET", "/app/mcp"); MCPS = r.servers || []; PRESETS = r.presets || []; $("mcp").hidden = false; drawMcp(); }
+  catch(e){ $("mcp").hidden = true; }
+}
 $("apicancel").onclick = () => edit(null);
-onLang = () => { refresh(); drawApis(); edit(APIS.find(a => a.id === editing) || null); };
+onLang = () => { refresh(); drawApis(); drawMcp(); if(mform) openForm(mform, MCPS.find(x => x.id === mediting) || null); edit(APIS.find(a => a.id === editing) || null); };
 (async () => {
   const pair = new URLSearchParams(location.search).get("pair");
   if(pair){ history.replaceState(null, "", location.pathname); await login({pair}); } else await refresh();
-  if(status.authenticated || !status.required) loadApis(); edit(null);
+  if(status.authenticated || !status.required){ await loadApis(); loadMcp(); } edit(null);
 })();
 </script></body></html>
 """

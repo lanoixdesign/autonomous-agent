@@ -8,6 +8,13 @@
 
 Every release with its files and notes: [GitHub Releases](https://github.com/lanoixdesign/autonomous-agent/releases). Latest notes: [packaging/RELEASE_NOTES.md](../packaging/RELEASE_NOTES.md).
 
+#### Connected services that really work (new in 0.9.8)
+
+🔌 Services added in **Connect > Connected services** (MCP) are now used by the assistant and its helpers:
+one-click presets (My files, GitHub, any web address), a plain status with the reason when it does not work,
+a Test button listing what each service can do, an On switch, approvals for anything that is not a read, and
+the chat names the service used. See [Connected services](mcp.md).
+
 #### Answers in your language (new in 0.8.2)
 
 🗣️ The assistant, every swarm helper (Researcher, Analyst, Writer…) and the developer-mode **Coder** and
@@ -61,6 +68,14 @@ Same features, quieter screens. Neutral backgrounds (off-white by day, soft dark
 ## Français
 
 Chaque version avec ses fichiers et ses notes : [GitHub Releases](https://github.com/lanoixdesign/autonomous-agent/releases). Dernières notes : [packaging/RELEASE_NOTES.md](../packaging/RELEASE_NOTES.md).
+
+#### Des services connectés qui marchent vraiment (nouveau en 0.9.8)
+
+🔌 Les services ajoutés dans **Connexion > Services connectés** (MCP) sont maintenant utilisés par l'assistant
+et ses aides : boutons prêts à l'emploi (Mes fichiers, GitHub, n'importe quelle adresse web), un état simple
+avec la raison quand ça ne marche pas, un bouton Tester qui liste ce que chaque service sait faire, un
+interrupteur Activé, une demande d'accord pour tout ce qui n'est pas une lecture, et le chat nomme le service
+utilisé. Voir [Services connectés](mcp.md#francais).
 
 #### Des réponses dans ta langue (nouveau en 0.8.2)
 

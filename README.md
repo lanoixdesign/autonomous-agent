@@ -35,7 +35,7 @@ No Python, no install, no command line. All versions: [Releases](https://github.
 - [API keys and limits](docs/keys.md): several keys, backup keys, free-tier limits
 - [Permissions and sandbox](docs/permissions.md): what the assistant may do, and how to change it
 - [Swarm and IDC mode](docs/swarm.md): helpers working in parallel
-- [Tools and skills](docs/tools.md) · [MCP servers](docs/mcp.md) · [Scheduled tasks](docs/schedules.md) · [Use from your phone](docs/phone.md)
+- [Tools and skills](docs/tools.md) · [Connected services (MCP)](docs/mcp.md) · [Scheduled tasks](docs/schedules.md) · [Use from your phone](docs/phone.md)
 - [Architecture](docs/architecture.md) · [Command line, development and tests](docs/development.md)
 - [Security](docs/SECURITY.md) · [Version history](docs/changelog.md)
 
@@ -76,7 +76,7 @@ Pas de Python, rien à installer, aucune ligne de commande. Toutes les versions 
 - [Clés d'API et limites](docs/keys.md#francais) : plusieurs clés, clés de secours, limites de l'offre gratuite
 - [Permissions et bac à sable](docs/permissions.md#francais) : ce que l'assistant a le droit de faire, et comment le changer
 - [Essaim et mode IDC](docs/swarm.md#francais) : des assistants qui travaillent en parallèle
-- [Outils et compétences](docs/tools.md#francais) · [Serveurs MCP](docs/mcp.md#francais) · [Tâches planifiées](docs/schedules.md#francais) · [Utiliser depuis ton téléphone](docs/phone.md#francais)
+- [Outils et compétences](docs/tools.md#francais) · [Services connectés (MCP)](docs/mcp.md#francais) · [Tâches planifiées](docs/schedules.md#francais) · [Utiliser depuis ton téléphone](docs/phone.md#francais)
 - [Architecture](docs/architecture.md#francais) · [Ligne de commande, développement et tests](docs/development.md#francais)
 - [Sécurité](docs/SECURITY.md) · [Historique des versions](docs/changelog.md#francais)
 
