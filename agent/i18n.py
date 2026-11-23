@@ -250,19 +250,6 @@ EN: dict[str, str] = {
     "connect.revoked": "{n} session(s) closed.",
     "connect.logout": "Sign out of this device",
     "connect.howTitle": "Use it from your phone",
-    "mcp.title": "My MCP servers",
-    "mcp.help": "MCP lets you plug in existing tools (your files, GitHub, calendar…) without coding. Only servers you add yourself are used.",
-    "mcp.namePh": "Name (e.g. My files)",
-    "mcp.typeLocal": "Local program",
-    "mcp.typeWeb": "Web address",
-    "mcp.cmdPh": "command or address",
-    "mcp.example": "Example: npx -y @modelcontextprotocol/server-filesystem /Users/you/Documents",
-    "mcp.add": "Add",
-    "mcp.none": "None yet",
-    "mcp.remove": "Remove",
-    "mcp.presetFiles": "My files",
-    "mcp.presetGithub": "GitHub",
-    "mcp.presetCalendar": "Calendar",
     "connect.how1": "Start the harness with --remote (desktop app: AGENT_REMOTE=1 in .env). Access stays protected by a token.",
     "connect.how2": "Tailscale (recommended): install it on the computer and the phone, then tailscale serve --bg 8765 (or --tunnel tailscale). Private HTTPS inside your tailnet.",
     "connect.how3": "Or Cloudflare Tunnel: cloudflared tunnel --url http://127.0.0.1:8765 (or --tunnel cloudflared) gives a public HTTPS address; the token still protects it.",
@@ -515,19 +502,6 @@ FR: dict[str, str] = {
     "connect.revoked": "{n} session(s) fermée(s).",
     "connect.logout": "Se déconnecter de cet appareil",
     "connect.howTitle": "L'utiliser depuis le téléphone",
-    "mcp.title": "Mes serveurs MCP",
-    "mcp.help": "MCP sert à brancher des outils déjà existants (tes fichiers, GitHub, agenda…) sans programmer. Seuls les serveurs que tu ajoutes toi-même sont utilisés.",
-    "mcp.namePh": "Nom (ex. Mes fichiers)",
-    "mcp.typeLocal": "Programme local",
-    "mcp.typeWeb": "Adresse web",
-    "mcp.cmdPh": "commande ou adresse",
-    "mcp.example": "Exemple : npx -y @modelcontextprotocol/server-filesystem /Users/toi/Documents",
-    "mcp.add": "Ajouter",
-    "mcp.none": "Aucun pour le moment",
-    "mcp.remove": "Supprimer",
-    "mcp.presetFiles": "Mes fichiers",
-    "mcp.presetGithub": "GitHub",
-    "mcp.presetCalendar": "Agenda",
     "connect.how1": "Lancez le harness avec --remote (application de bureau : AGENT_REMOTE=1 dans .env). L'accès reste protégé par un jeton.",
     "connect.how2": "Tailscale (recommandé) : installez-le sur l'ordinateur et le téléphone, puis tailscale serve --bg 8765 (ou --tunnel tailscale). HTTPS privé dans votre tailnet.",
     "connect.how3": "Ou Cloudflare Tunnel : cloudflared tunnel --url http://127.0.0.1:8765 (ou --tunnel cloudflared) donne une adresse HTTPS publique ; le jeton la protège toujours.",
@@ -818,6 +792,10 @@ from .i18n_v095 import EN_V095, FR_V095  # noqa: E402
 
 EN.update(EN_V095)
 FR.update(FR_V095)
+from .i18n_v098 import EN_V098, FR_V098  # noqa: E402
+
+EN.update(EN_V098)
+FR.update(FR_V098)
 FR.update(FR_TU)          # v0.8.2: one form in French, "tu", everywhere
 
 STRINGS = {"en": EN, "fr": FR}

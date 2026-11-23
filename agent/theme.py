@@ -94,8 +94,9 @@ function agentWho(id){ if(!id || id==="root") return t("who.agent"); if(/\.criti
 function agentShort(id){ if(!id || id==="root") return t("who.short.root"); if(/\.critic\d+$/.test(id)) return t("who.critic");
   return ROLES[id] || t("who.short.helper",{n:id.split(".").slice(1).join(".")}); }
 // What an agent wants to do / did, as one sentence. kind: "human" (approval card) or "simple" (trace line).
-function plain(kind, tool, g, agent, category){
+function plain(kind, tool, g, agent, category, svc){
   g=g||{}; const who=agentWho(agent), p=cutS(g.path||"",60);
+  if(svc && svc.service) return t(kind+".mcp",{who,service:cutS(svc.service,40),action:cutS(svc.action||tool,60)});   // v0.9.8: connected service
   if(kind==="human"){
     if(tool==="spawn_agents"){ const r=rolesOf(g), n=Array.isArray(g.tasks)?g.tasks.length:1;
       return r.length ? t("human.spawnMany",{who,n,names:r.join(", ")}) : t("human.spawnManyNoNames",{who,n}); }
@@ -112,7 +113,7 @@ function plain(kind, tool, g, agent, category){
   if(kind==="human" && (category==="send" || category==="spend")) return tr("human",category,v);
   return tr(kind,"other",v);
 }
-function askText(a){ return plain("human", a.tool, a.args, a.agent, a.category); }
+function askText(a){ return plain("human", a.tool, a.args, a.agent, a.category, a); }
 function reasonText(r){
   r=String(r||""); let m;
   const tail=s=>!s ? "" : (/--yolo ignored/.test(s) ? t("reason.yolo") : (/upgraded by --yolo/.test(s) ? t("reason.upgraded") : ""));

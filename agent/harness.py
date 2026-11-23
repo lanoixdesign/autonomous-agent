@@ -142,6 +142,12 @@ def _now() -> str:
 
 
 # ---------------------------------------------------------------------------- approvals
+def _service(tool: str) -> dict:
+    """v0.9.8: a tool of a connected service -> {"service": "GitHub", "action": "List issues"} for the card."""
+    lab = mcp.service_of(tool) if str(tool).startswith("mcp_") else None
+    return {"service": lab[0], "action": lab[1]} if lab else {}
+
+
 class Approval:
     def __init__(self, id: str, task_id: str, agent: str, tool: str, category: str, args: Any, reason: str):
         self.id, self.task_id, self.agent, self.tool, self.category = id, task_id, agent, tool, category
@@ -154,7 +160,8 @@ class Approval:
         return {"id": self.id, "task": self.task_id, "agent": self.agent, "tool": self.tool,
                 "category": self.category, "args": self.args, "reason": self.reason,
                 "status": self.status, "created": self.created, "decided": self.decided,
-                "rememberable": self.category not in NEVER_REMEMBER}
+                "rememberable": self.category not in NEVER_REMEMBER,
+                **_service(self.tool)}
 
 
 class ApprovalQueue:
@@ -615,7 +622,6 @@ class Harness:
         self.stopping = threading.Event()
         self.rules: dict[str, dict] = {}
         self.schedules: dict[str, dict] = {}
-        self.mcp = mcp.MCPRegistry(self.audit_path.parent, None, None)  # simple registry; secrets later
         self.settings: dict[str, Any] = {"idc": bool(self.idc_config.enabled), "critic": False, "critic_rounds": 2}
         self.public_url: str | None = None   # remote mode: the URL a phone should open (tunnel, LAN...)
         self.control: Any = None             # userconfig.AppControl: Settings page, keys from the UI, restart / quit
@@ -704,6 +710,22 @@ class Harness:
                 agent.set_idc(task.idc_ctrl)
         elif agent.idc is not None:
             agent.set_idc(None)
+    def _sync_mcp(self, task: Task) -> None:
+        """v0.9.8: a service connected (or switched off) in the Connect tab counts from the next message of an
+        open conversation too, for the assistant and its future helpers."""
+        a = task.agent
+        reg = getattr(getattr(a, "ctx", None), "mcp", None)
+        if reg is None or not hasattr(a, "registry"):
+            return
+        try:
+            tools = {t.name: t for t in reg.agent_tools()}
+        except Exception:  # noqa: BLE001 - a service problem never blocks the chat
+            return
+        for r in {id(x): x for x in (a.registry, getattr(a, "base_registry", a.registry))}.values():
+            for n in [n for n in r.tools if n.startswith("mcp_") and n not in tools]:
+                del r.tools[n]
+            r.tools.update(tools)
+
     def _sync_dev(self, task: "Task") -> None:
         """Developer-mode rules (and the current sandbox state) in the agent's system prompt before a turn."""
         agent = task.agent
@@ -864,6 +886,7 @@ class Harness:
                     task.agent = agent
                 self._sync_idc(task)
                 self._sync_dev(task)
+                self._sync_mcp(task)
                 res = task.agent.run(text)
                 task.result, task.stop_reason = res.answer, res.stop_reason
                 task.finish_turn(res)
@@ -1359,6 +1382,7 @@ TASK_RE = re.compile(r"^/tasks/([0-9a-f]+)(/events|/cancel|/messages|/stream|/ex
 APPROVAL_RE = re.compile(r"^/approvals/([0-9a-f]+)$")
 RULE_RE = re.compile(r"^/rules/([0-9a-f]+)/revoke$")
 SCHEDULE_RE = re.compile(r"^/schedules/([0-9a-f]+)(/run|/delete)?$")
+MCP_RE = re.compile(r"^/app/mcp(?:/([0-9a-f]{6,32}))?(/delete|/test|/enable)?$")
 APIS_RE = re.compile(r"^/app/apis(?:/([0-9a-f]+))?(/delete|/spec)?$")
 PROVIDER_RE = re.compile(r"^/app/providers/([0-9a-f]+)(/delete|/test)?$")
 CSRF_HEADER = "X-CSRF-Token"
@@ -1502,12 +1526,41 @@ def make_handler(h: Harness, token: str | None, local_only: bool, auth: "remote.
                                         "currency": c.router.currency})
             if path == "/app/pool":
                 return self._send(200, c.pool_view())
+            if path == "/app/mcp":         # v0.9.8: connected services (MCP)
+                reg = getattr(c, "mcp", None)
+                if reg is None:
+                    return self._send(404, {"error": "connected services are not available in this mode"})
+                return self._send(200, {"servers": reg.view(), "presets": mcp.preset_view(),
+                                        "storage": c.secrets.backend})
             if path == "/app/apis":
                 reg = getattr(c, "apis", None)
                 if reg is None:
                     return self._send(404, {"error": "business APIs are not available in this mode"})
                 return self._send(200, {"apis": reg.view(), "storage": c.secrets.backend})
             return self._send(404, {"error": "not found"})
+
+        def _mcp_post(self, c: Any, sid: str | None, action: str | None, data: dict) -> None:
+            reg = getattr(c, "mcp", None)
+            if reg is None:
+                return self._send(404, {"error": "connected services are not available in this mode"})
+            try:
+                if action == "/delete":
+                    out = reg.delete(sid)
+                elif action == "/test":
+                    out = reg.test(sid)
+                elif action == "/enable":
+                    if not isinstance(data.get("enabled"), bool):
+                        return self._send(400, {"error": "'enabled' must be true or false"})
+                    out = reg.set_enabled(sid, data["enabled"])
+                else:
+                    out = reg.save(data, sid)
+                    if sid is None and data.get("test", True) is not False:
+                        out = reg.test(out["id"])     # added: try it at once, the card says if it works
+            except mcp.MCPError as e:
+                return self._send(400, {"error": str(e), "code": e.code, "params": e.params})
+            h._audit(None, event="settings_mcp", agent="user", action=(action or ("/add" if not sid else "/edit")).strip("/"),
+                     service=out.get("name"), status=out.get("status"))
+            return self._send(201 if not sid and not action else 200, out)
 
         def _audit_api(self, action: str, out: dict) -> None:
             h._audit(None, event="settings_api", agent="user", action=action.strip("/"), api=out.get("name") or out.get("id"),
@@ -1575,6 +1628,9 @@ def make_handler(h: Harness, token: str | None, local_only: bool, auth: "remote.
                     if not c.request_stop(path == "/app/restart"):
                         return self._send(409, {"error": "restart / quit is not available in this mode", "code": "no_restart"})
                     return self._send(202, {"ok": True, "restart": path == "/app/restart"})
+                mm = MCP_RE.match(path)
+                if mm:
+                    return self._mcp_post(c, mm.group(1), mm.group(2), data)
                 ma = APIS_RE.match(path)
                 if ma:
                     reg = getattr(c, "apis", None)
@@ -1843,8 +1899,6 @@ def make_handler(h: Harness, token: str | None, local_only: bool, auth: "remote.
                 return self._send(200, {"rules": h.list_rules(), "never_remembered": list(NEVER_REMEMBER)})
             if path == "/schedules":
                 return self._send(200, {"schedules": h.list_schedules()})
-            if path == "/mcp":
-                return self._send(200, {"servers": h.mcp.list_servers()})
             if path == "/settings":
                 return self._send(200, h.get_settings())
             if path == "/conv/csrf":    # v0.9.5: token for the conversation actions (same-origin pages only)
@@ -2041,16 +2095,6 @@ def make_handler(h: Harness, token: str | None, local_only: bool, auth: "remote.
                     return self._send(201, h.add_schedule(data))
                 except ValueError as e:
                     return self._send(400, {"error": str(e)})
-            if path == "/mcp":
-                try:
-                    sid = h.mcp.add(data)
-                    return self._send(201, {"id": sid, "servers": h.mcp.list_servers()})
-                except Exception as e:
-                    return self._send(400, {"error": str(e)})
-            m = re.match(r"^/mcp/([0-9a-f]+)/delete$", path)
-            if m:
-                h.mcp.remove(m.group(1))
-                return self._send(200, {"ok": True, "servers": h.mcp.list_servers()})
             m = SCHEDULE_RE.match(path)
             if m:
                 sid, action = m.group(1), m.group(2)

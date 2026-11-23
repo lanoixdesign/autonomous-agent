@@ -514,8 +514,8 @@ function simpleAudit(e){
     (e.conflicts||[]).forEach(c=>d.append(el("div","step conflict",t("simple.conflict",{path:c.path})))); return d; }
   if(e.tool){ if(e.tool==="spawn_agents" || e.tool==="spawn_agent" || e.tool==="handoff") return null;
     const g=(e.args && typeof e.args==="object") ? e.args : {};
-    if(e.decision && e.decision!=="allow") return el("div","step deny",t("simple.refused",{what:plain("human",e.tool,g,e.agent,e.category)}));
-    return el("div","step"+(e.ok===false?" err":""), plain("simple",e.tool,g,e.agent,e.category)+(e.ok===false?t("simple.failed"):"")); }
+    if(e.decision && e.decision!=="allow") return el("div","step deny",t("simple.refused",{what:plain("human",e.tool,g,e.agent,e.category,e)}));
+    return el("div","step"+(e.ok===false?" err":""), plain("simple",e.tool,g,e.agent,e.category,e)+(e.ok===false?t("simple.failed"):"")); }
   return undefined;
 }
 async function poll(){
@@ -641,7 +641,7 @@ async function popups(){
       el("div","tech",reasonText(a.reason)), el("div","tech",t("card.conversation",{name:conv?short(conv.task,60):a.task})), el("pre",null,JSON.stringify(a.args,null,2)));
     c.append(top, q, el("div","q2",t("card.question")));
     if(I18N.en["hint."+a.category]!=null){ let sb=false; try{ sb=!!limits.sandbox; }catch(e){}
-    c.append(el("p","hint",(a.category==="execute" && sb) ? t("hint.executeSandbox") : tr("hint",a.category))); }
+    c.append(el("p","hint",a.service ? t("hint.mcp",{service:a.service}) : ((a.category==="execute" && sb) ? t("hint.executeSandbox") : tr("hint",a.category)))); }
     c.append(det);
     const b=el("div","btns"), ok=el("button","ok",t("card.allow")), no=el("button","no",t("card.refuse"));
     const answer=async (d,remember)=>{ if(answering.has(a.id)) return; answering.add(a.id); ok.disabled=no.disabled=true;
