@@ -644,13 +644,17 @@ async function popups(){
   list.forEach(a=>{ if(box.querySelector('[data-id="'+a.id+'"]')) return;
     const conv=tasks.find(x=>x.id===a.task), c=el("div","card"); c.dataset.id=a.id; c.dataset.task=a.task; c.dataset.lang=LANG;
     c.setAttribute("role","alertdialog"); const q=el("div","q",askText(a)); q.id="q-"+a.id; c.setAttribute("aria-labelledby",q.id);
-    const top=el("div","ctop"); top.append(el("span","who",TRACE_TECH?a.agent:agentShort(a.agent)), el("span","cat "+a.category,tr("cat",a.category)));
-    const det=el("details"); det.append(el("summary",null,t("card.tech")), el("div","tech",t("card.techTool",{tool:a.tool,category:tr("cat",a.category),agent:a.agent})),
+    // v0.9.10: the card shows only the sentence, Allow / Refuse and a discreet checkbox; one folded "Details"
+    // holds the plain explanation first, then the technical details (tool, arguments)
+    const det=el("details","cdet"), sum=el("summary",null,t("card.details")), why=el("div","cwhy"); why.id="w-"+a.id;
+    let sb=false; try{ sb=!!limits.sandbox; }catch(e){}
+    if(a.service) why.append(el("p","hint",t("hint.mcp",{service:a.service})));
+    else if(I18N.en["hint."+a.category]!=null) why.append(el("p","hint",(a.category==="execute" && sb) ? t("hint.executeSandbox") : tr("hint",a.category)));
+    if(!a.rememberable) why.append(el("p","never",t("card.safety")));
+    det.append(sum, why, el("div","tech",t("card.techTool",{tool:a.tool,category:tr("cat",a.category),agent:a.agent})),
       el("div","tech",reasonText(a.reason)), el("div","tech",t("card.conversation",{name:conv?short(conv.task,60):a.task})), el("pre",null,JSON.stringify(a.args,null,2)));
-    c.append(top, q, el("div","q2",t("card.question")));
-    if(I18N.en["hint."+a.category]!=null){ let sb=false; try{ sb=!!limits.sandbox; }catch(e){}
-    c.append(el("p","hint",a.service ? t("hint.mcp",{service:a.service}) : ((a.category==="execute" && sb) ? t("hint.executeSandbox") : tr("hint",a.category)))); }
-    c.append(det);
+    if(why.childNodes.length) c.setAttribute("aria-describedby",why.id);
+    c.append(q);
     const b=el("div","btns"), ok=el("button","ok",t("card.allow")), no=el("button","no",t("card.refuse"));
     const answer=async (d,remember)=>{ if(answering.has(a.id)) return; answering.add(a.id); ok.disabled=no.disabled=true;
       try{ await api("POST","/approvals/"+a.id,remember?{decision:d,remember}:{decision:d}); c.remove(); }catch(e){ fail(e); ok.disabled=no.disabled=false; }
@@ -658,11 +662,10 @@ async function popups(){
     let keep=null;
     ok.onclick=()=>answer("approve", keep && keep.checked ? "conversation" : undefined); no.onclick=()=>answer("deny");
     b.append(ok,no); c.append(b);
-    if(a.rememberable && SIMPLE()){ const m=el("div","remember"), l=el("label"); keep=el("input"); keep.type="checkbox";
-      l.append(keep, el("span",null,t("card.rememberHere"))); m.append(l); c.append(m); }
-    else if(a.rememberable){ const m=el("div","remember"), rc=el("button",null,t("card.alwaysHere")), rs=el("button",null,t("card.alwaysApp"));
-      rc.onclick=()=>answer("approve","conversation"); rs.onclick=()=>answer("approve","session"); m.append(rc,rs); c.append(m); }
-    else c.append(el("div","never",t("card.safety")));
+    if(a.rememberable){ const m=el("div","remember"), l=el("label"); keep=el("input"); keep.type="checkbox";
+      l.append(keep, el("span",null,t("card.rememberHere"))); m.append(l); c.append(m);
+      if(!SIMPLE()){ const rs=el("button","linkbtn",t("card.alwaysApp")); rs.type="button"; rs.onclick=()=>answer("approve","session"); det.append(rs); } }
+    c.append(det);
     box.append(c); if(SIMPLE()){ dockPopups(); const lg=$("log"); lg.scrollTop=lg.scrollHeight; } });
   document.body.classList.toggle("has-popups", box.children.length>0);
 }
