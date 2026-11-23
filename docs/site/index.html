@@ -1,0 +1,204 @@
+<!doctype html>
+<html lang="fr">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Autonomous Agent — ton assistant IA sur ton ordinateur</title>
+<meta name="description" content="Un assistant IA gratuit qui travaille sur ton ordinateur et te demande avant chaque action importante. Télécharge-le pour Mac ou Windows.">
+<meta name="color-scheme" content="light dark">
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Ccircle cx='16' cy='16' r='13' fill='none' stroke='%233D5A8C' stroke-width='3'/%3E%3Crect x='11' y='11' width='10' height='10' rx='3' fill='%233D5A8C'/%3E%3C/svg%3E">
+<style>
+:root{--bg:#F6F6F4;--card:#FFFFFF;--text:#26282C;--strong:#141518;--muted:#62666D;--line:#E2E2DE;--accent:#3D5A8C;--on:#FFFFFF;--chip:#EEEEEB}
+@media (prefers-color-scheme:dark){:root{--bg:#1D1F23;--card:#25282D;--text:#D9DBDF;--strong:#F1F2F4;--muted:#A0A4AB;--line:#363A41;--accent:#5873A3;--on:#FFFFFF;--chip:#2E3238}}
+*{box-sizing:border-box}
+html{-webkit-text-size-adjust:100%}
+body{margin:0;background:var(--bg);color:var(--text);font:16px/1.55 system-ui,-apple-system,"Segoe UI",Roboto,Ubuntu,sans-serif}
+a{color:var(--accent)} @media (prefers-color-scheme:dark){a{color:#9DB3DA}}
+.wrap{max-width:880px;margin:0 auto;padding:20px 20px 48px}
+header{display:flex;align-items:center;justify-content:space-between;gap:12px}
+.brand{display:flex;align-items:center;gap:10px;font-weight:600;color:var(--strong)}
+.brand svg{width:28px;height:28px}
+.lang{display:flex;border:1px solid var(--line);border-radius:8px;overflow:hidden}
+.lang button{border:0;background:transparent;color:var(--muted);font:600 13px system-ui,sans-serif;padding:6px 10px;cursor:pointer;min-width:44px;min-height:36px}
+.lang button[aria-pressed=true]{background:var(--chip);color:var(--strong)}
+.hero{text-align:center;padding:40px 0 24px}
+h1{font-size:clamp(28px,5vw,40px);line-height:1.15;margin:0 0 12px;color:var(--strong);font-weight:650}
+.lead{font-size:clamp(17px,2.4vw,20px);color:var(--text);max-width:36em;margin:0 auto 28px}
+.dl{display:flex;flex-direction:column;align-items:center;gap:10px}
+.btns{display:flex;gap:12px;flex-wrap:wrap;justify-content:center}
+.big{display:inline-flex;align-items:center;gap:10px;background:var(--accent);color:var(--on)!important;text-decoration:none;font-weight:600;font-size:18px;padding:16px 28px;border-radius:14px;min-height:56px}
+.big:hover{filter:brightness(1.08)} .big svg{width:22px;height:22px}
+.big.second{background:var(--card);color:var(--strong)!important;border:1px solid var(--line)}
+.note{color:var(--muted);font-size:14px;margin:0}
+.others{font-size:14px;color:var(--muted)} .others a{margin:0 6px}
+:focus-visible{outline:2px solid var(--accent);outline-offset:3px}
+figure{margin:32px 0 8px}
+figure img{width:100%;height:auto;border:1px solid var(--line);border-radius:14px;display:block;background:var(--card)}
+figcaption{text-align:center;color:var(--muted);font-size:14px;margin-top:10px}
+h2{font-size:22px;color:var(--strong);margin:44px 0 16px;text-align:center;font-weight:600}
+ol.steps{list-style:none;padding:0;margin:0;display:grid;gap:14px;grid-template-columns:repeat(auto-fit,minmax(240px,1fr))}
+.steps li{background:var(--card);border:1px solid var(--line);border-radius:14px;padding:18px}
+.steps .ic{width:40px;height:40px;border-radius:10px;background:var(--chip);display:flex;align-items:center;justify-content:center;color:var(--accent);margin-bottom:10px}
+@media (prefers-color-scheme:dark){.steps .ic{color:#9DB3DA}}
+.steps .ic svg{width:22px;height:22px}
+.steps h3{margin:0 0 6px;font-size:17px;color:var(--strong)}
+.steps p{margin:0 0 8px}
+details{margin-top:8px;border-top:1px solid var(--line);padding-top:8px}
+summary{cursor:pointer;color:var(--accent);font-weight:500;min-height:32px;display:flex;align-items:center}
+@media (prefers-color-scheme:dark){summary{color:#9DB3DA}}
+details ol{padding-left:20px;margin:8px 0 0} details li{margin:4px 0;background:none;border:0;padding:0}
+kbd,.ui{font:600 14px system-ui,sans-serif;background:var(--chip);border-radius:6px;padding:1px 6px;color:var(--strong)}
+footer{margin-top:48px;padding-top:20px;border-top:1px solid var(--line);display:flex;gap:18px;flex-wrap:wrap;justify-content:center;font-size:14px;color:var(--muted)}
+[hidden]{display:none!important}
+@media (max-width:560px){.wrap{padding:14px 16px 40px}.hero{padding:24px 0 16px}.big{width:100%;justify-content:center}.btns{width:100%;flex-direction:column}}
+</style>
+</head>
+<body>
+<div class="wrap">
+<header>
+ <div class="brand"><svg viewBox="0 0 32 32" aria-hidden="true"><circle cx="16" cy="16" r="13" fill="none" stroke="currentColor" stroke-width="3"/><rect x="11" y="11" width="10" height="10" rx="3" fill="currentColor"/></svg><span>Autonomous Agent</span></div>
+ <div class="lang" role="group" aria-label="Langue / Language"><button type="button" data-lang="fr" lang="fr">FR</button><button type="button" data-lang="en" lang="en">EN</button></div>
+</header>
+
+<main>
+<section class="hero">
+ <h1 data-t="title">Ton assistant IA, sur ton ordinateur</h1>
+ <p class="lead" data-t="lead">Tu écris ce que tu veux en mots simples ; l'assistant fait le travail et te demande toujours avant toute action importante. Gratuit, et tes fichiers restent chez toi.</p>
+ <div class="dl" id="dl">
+  <div class="btns" id="btns">
+   <!-- filled by the script; without it, the plain links below still work -->
+  </div>
+  <p class="note" id="dlnote" data-t="free">Gratuit · environ 10 Mo · sans inscription</p>
+  <p class="others" id="others"><span data-t="other">Autres systèmes :</span>
+   <a href="https://github.com/lanoixdesign/autonomous-agent/releases/latest/download/AutonomousAgent-macos-arm64.zip" data-t="macArm">Mac récent (M1, M2…)</a>·
+   <a href="https://github.com/lanoixdesign/autonomous-agent/releases/latest/download/AutonomousAgent-macos-intel.zip" data-t="macIntel">Mac Intel</a>·
+   <a href="https://github.com/lanoixdesign/autonomous-agent/releases/latest/download/AutonomousAgent-windows-x64.exe">Windows</a>·
+   <a href="https://github.com/lanoixdesign/autonomous-agent/releases/latest" data-t="allFiles">tous les fichiers</a></p>
+ </div>
+ <figure>
+  <picture>
+   <source srcset="app-dark.webp" media="(prefers-color-scheme: dark)">
+   <img src="app-light.webp" width="1280" height="800" loading="lazy" data-t-alt="shotAlt" alt="L'application en mode simple : l'agent demande « L'agent veut écrire un fichier dans Mes fichiers » avec deux boutons, Autoriser et Refuser.">
+  </picture>
+  <figcaption data-t="shotCap">Le mode simple : une conversation, et une question claire avant chaque action.</figcaption>
+ </figure>
+</section>
+
+<section aria-labelledby="how">
+ <h2 id="how" data-t="howTitle">Installer en 3 étapes</h2>
+ <ol class="steps">
+  <li>
+   <div class="ic" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3v12"/><path d="m7 10 5 5 5-5"/><path d="M5 21h14"/></svg></div>
+   <h3 data-t="s1t">1. Télécharge</h3>
+   <p data-t="s1d">Clique sur le gros bouton ci-dessus. Le fichier arrive dans ton dossier Téléchargements.</p>
+  </li>
+  <li>
+   <div class="ic" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3 4 6v6c0 5 3.5 8 8 9 4.5-1 8-4 8-9V6Z"/><path d="m9 12 2 2 4-4"/></svg></div>
+   <h3 data-t="s2t">2. Ouvre-le</h3>
+   <p data-t="s2d">L'appli n'est pas encore signée : la première fois, ton ordinateur affiche une alerte. C'est normal, et tu ne le fais qu'une fois.</p>
+   <details id="hmac"><summary data-t="macHelp">Sur Mac</summary>
+    <ol>
+     <li data-t="m1">Double-clique sur le fichier .zip, puis glisse « AutonomousAgent » dans Applications.</li>
+     <li data-t="m2">Fais un clic droit sur l'appli → Ouvrir, puis encore Ouvrir.</li>
+     <li data-t="m3">Si le Mac propose seulement « Terminé » : ouvre Réglages Système → Confidentialité et sécurité, descends et clique « Ouvrir quand même », puis confirme.</li>
+    </ol></details>
+   <details id="hwin"><summary data-t="winHelp">Sur Windows</summary>
+    <ol>
+     <li data-t="w1">Double-clique sur le fichier téléchargé.</li>
+     <li data-t="w2">Une fenêtre bleue « Windows a protégé votre ordinateur » s'affiche : clique « Informations complémentaires », puis « Exécuter quand même ».</li>
+    </ol></details>
+  </li>
+  <li>
+   <div class="ic" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="8" cy="15" r="4"/><path d="m11 12 9-9"/><path d="m17 6 3 3"/><path d="m15 8 2 2"/></svg></div>
+   <h3 data-t="s3t">3. Ajoute une clé gratuite</h3>
+   <p data-t="s3d">L'appli s'ouvre dans ton navigateur avec un assistant de bienvenue. Il t'aide à créer une clé gratuite chez Groq (sans carte bancaire) et à la coller. Tu peux aussi essayer d'abord sans clé.</p>
+   <p><a href="https://console.groq.com/keys" rel="noopener" data-t="groq">Créer une clé Groq gratuite</a></p>
+  </li>
+ </ol>
+</section>
+</main>
+
+<footer>
+ <a href="https://github.com/lanoixdesign/autonomous-agent/blob/main/docs/getting-started.md" data-t="help">Aide pour bien démarrer</a>
+ <a href="https://github.com/lanoixdesign/autonomous-agent">GitHub</a>
+ <a href="https://github.com/lanoixdesign/autonomous-agent/releases" data-t="versions">Toutes les versions</a>
+ <span data-t="privacy">Cette page n'utilise ni cookie ni traceur.</span>
+</footer>
+</div>
+
+<script>
+(function(){
+var REL="https://github.com/lanoixdesign/autonomous-agent/releases/latest/download/";
+var F={arm:"AutonomousAgent-macos-arm64.zip",intel:"AutonomousAgent-macos-intel.zip",win:"AutonomousAgent-windows-x64.exe"};
+var T={
+ fr:{title:"Ton assistant IA, sur ton ordinateur",
+  lead:"Tu écris ce que tu veux en mots simples ; l'assistant fait le travail et te demande toujours avant toute action importante. Gratuit, et tes fichiers restent chez toi.",
+  dlMac:"Télécharger pour Mac",dlWin:"Télécharger pour Windows",macArm:"Mac récent (M1, M2…)",macIntel:"Mac Intel",
+  macWhich:"Pas sûr ? Menu Pomme → À propos de ce Mac : « Puce Apple M… » = Mac récent ; « Processeur Intel » = Mac Intel.",
+  free:"Gratuit · environ 10 Mo · sans inscription",other:"Autres systèmes :",allFiles:"tous les fichiers",
+  mobile:"L'appli s'installe sur un ordinateur (Mac ou Windows). Ouvre cette page sur ton ordinateur pour la télécharger.",
+  linux:"Pas encore de version prête pour Linux : choisis un fichier ci-dessous, ou lance l'appli depuis son code (voir l'aide).",
+  shotAlt:"L'application en mode simple : l'agent demande « L'agent veut écrire un fichier dans Mes fichiers » avec deux boutons, Autoriser et Refuser.",
+  shotCap:"Le mode simple : une conversation, et une question claire avant chaque action.",
+  howTitle:"Installer en 3 étapes",s1t:"1. Télécharge",s1d:"Clique sur le gros bouton ci-dessus. Le fichier arrive dans ton dossier Téléchargements.",
+  s2t:"2. Ouvre-le",s2d:"L'appli n'est pas encore signée : la première fois, ton ordinateur affiche une alerte. C'est normal, et tu ne le fais qu'une fois.",
+  macHelp:"Sur Mac",m1:"Double-clique sur le fichier .zip, puis glisse « AutonomousAgent » dans Applications.",
+  m2:"Fais un clic droit sur l'appli → Ouvrir, puis encore Ouvrir.",
+  m3:"Si le Mac propose seulement « Terminé » : ouvre Réglages Système → Confidentialité et sécurité, descends et clique « Ouvrir quand même », puis confirme.",
+  winHelp:"Sur Windows",w1:"Double-clique sur le fichier téléchargé.",
+  w2:"Une fenêtre bleue « Windows a protégé votre ordinateur » s'affiche : clique « Informations complémentaires », puis « Exécuter quand même ».",
+  s3t:"3. Ajoute une clé gratuite",s3d:"L'appli s'ouvre dans ton navigateur avec un assistant de bienvenue. Il t'aide à créer une clé gratuite chez Groq (sans carte bancaire) et à la coller. Tu peux aussi essayer d'abord sans clé.",
+  groq:"Créer une clé Groq gratuite",help:"Aide pour bien démarrer",versions:"Toutes les versions",privacy:"Cette page n'utilise ni cookie ni traceur.",
+  docTitle:"Autonomous Agent — ton assistant IA sur ton ordinateur"},
+ en:{title:"Your AI assistant, on your computer",
+  lead:"Write what you want in plain words; the assistant does the work and always asks you before anything important. Free, and your files stay with you.",
+  dlMac:"Download for Mac",dlWin:"Download for Windows",macArm:"Recent Mac (M1, M2…)",macIntel:"Intel Mac",
+  macWhich:"Not sure? Apple menu → About This Mac: “Chip Apple M…” = recent Mac; “Processor Intel” = Intel Mac.",
+  free:"Free · about 10 MB · no sign-up",other:"Other systems:",allFiles:"all files",
+  mobile:"The app installs on a computer (Mac or Windows). Open this page on your computer to download it.",
+  linux:"No ready-made Linux version yet: pick a file below, or run the app from its source code (see the help).",
+  shotAlt:"The app in Simple mode: the agent asks “The agent wants to write a file in My files” with two buttons, Allow and Refuse.",
+  shotCap:"Simple mode: one conversation, and a clear question before each action.",
+  howTitle:"Install in 3 steps",s1t:"1. Download",s1d:"Click the big button above. The file goes to your Downloads folder.",
+  s2t:"2. Open it",s2d:"The app is not signed yet, so the first time your computer shows a warning. That is normal, and you only do it once.",
+  macHelp:"On a Mac",m1:"Double-click the .zip file, then drag “AutonomousAgent” to Applications.",
+  m2:"Right-click the app → Open, then Open again.",
+  m3:"If the Mac only offers “Done”: open System Settings → Privacy & Security, scroll down and click “Open Anyway”, then confirm.",
+  winHelp:"On Windows",w1:"Double-click the downloaded file.",
+  w2:"A blue “Windows protected your PC” window appears: click “More info”, then “Run anyway”.",
+  s3t:"3. Add a free key",s3d:"The app opens in your browser with a welcome assistant. It helps you create a free Groq key (no card needed) and paste it. You can also try it first without a key.",
+  groq:"Create a free Groq key",help:"Getting started help",versions:"All versions",privacy:"This page uses no cookies and no trackers.",
+  docTitle:"Autonomous Agent — your AI assistant on your computer"}};
+var ua=navigator.userAgent||"", touch=(navigator.maxTouchPoints||0)>1;
+var os=/iPhone|iPad|iPod|Android/i.test(ua)||(/Macintosh/.test(ua)&&touch)?"mobile":/Windows/.test(ua)?"win":/Macintosh|Mac OS X/.test(ua)?"mac":/Linux|X11|CrOS/.test(ua)?"linux":"other";
+var arch=null, L="fr";
+function pick(){try{var s=localStorage.getItem("lang");if(s==="fr"||s==="en")return s;}catch(e){}
+ var q=new URLSearchParams(location.search).get("lang"); if(q==="fr"||q==="en") return q;
+ var l=(navigator.languages&&navigator.languages[0])||navigator.language||"en"; return /^fr/i.test(l)?"fr":"en";}
+function ic(){return '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 3v12"/><path d="m7 10 5 5 5-5"/><path d="M5 21h14"/></svg>';}
+function btn(file,label,second){var a=document.createElement("a");a.className="big"+(second?" second":"");a.href=REL+file;a.innerHTML=ic();
+ var s=document.createElement("span");s.textContent=label;a.appendChild(s);return a;}
+function draw(){var d=T[L],b=document.getElementById("btns"),n=document.getElementById("dlnote");b.textContent="";n.textContent=d.free;
+ if(os==="win") b.appendChild(btn(F.win,d.dlWin));
+ else if(os==="mac"){ if(arch) b.appendChild(btn(F[arch],d.dlMac+" · "+(arch==="arm"?d.macArm:d.macIntel)));
+  else { b.appendChild(btn(F.arm,d.dlMac+" · "+d.macArm)); b.appendChild(btn(F.intel,d.dlMac+" · "+d.macIntel,true)); n.textContent=d.macWhich; } }
+ else { n.textContent=os==="mobile"?d.mobile:os==="linux"?d.linux:d.free;
+  if(os!=="mobile"){ b.appendChild(btn(F.win,d.dlWin)); b.appendChild(btn(F.arm,d.dlMac,true)); } }
+ document.getElementById("hmac").open=os==="mac"; document.getElementById("hwin").open=os==="win";}
+function apply(l){L=l;var d=T[l];document.documentElement.lang=l;document.title=d.docTitle;
+ document.querySelectorAll("[data-t]").forEach(function(e){var k=e.getAttribute("data-t");if(d[k])e.textContent=d[k];});
+ document.querySelectorAll("[data-t-alt]").forEach(function(e){e.alt=d[e.getAttribute("data-t-alt")];});
+ document.querySelectorAll(".lang button").forEach(function(b){b.setAttribute("aria-pressed",String(b.dataset.lang===l));});
+ draw();}
+document.querySelectorAll(".lang button").forEach(function(b){b.addEventListener("click",function(){try{localStorage.setItem("lang",b.dataset.lang);}catch(e){}apply(b.dataset.lang);});});
+// Mac: Apple chip or Intel? Chromium tells it; otherwise the graphics name sometimes does; else two clear choices
+function gpu(){try{var c=document.createElement("canvas").getContext("webgl");var x=c&&c.getExtension("WEBGL_debug_renderer_info");
+ var r=x?String(c.getParameter(x.UNMASKED_RENDERER_WEBGL)):"";if(/Apple M\d/.test(r))return "arm";if(/Intel|AMD|Radeon|NVIDIA/i.test(r))return "intel";}catch(e){}return null;}
+apply(pick());
+if(os==="mac"){ arch=gpu(); if(arch) draw();
+ if(navigator.userAgentData&&navigator.userAgentData.getHighEntropyValues){navigator.userAgentData.getHighEntropyValues(["architecture"]).then(function(v){
+  if(v.architecture==="arm")arch="arm";else if(v.architecture==="x86")arch="intel";draw();}).catch(function(){});} }
+})();
+</script>
+</body>
+</html>
