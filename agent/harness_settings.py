@@ -145,8 +145,8 @@ SETTINGS_PAGE = r"""<!doctype html>
 <div id="restartbar" class="banner restart" hidden><span id="restartwhat"></span><button id="restart1" class="primary" data-i18n="set.restart"></button></div>
 <div class="wrap">
  <nav class="side" data-i18n-aria="set.heading">
-  <a href="#keys" data-i18n="set.sec.keys"></a><a href="#general" data-i18n="set.sec.general"></a><a href="#sandbox" data-i18n="set.sec.sandbox"></a><a href="#critic" data-i18n="set.nav.critic"></a><a href="#safety" class="xp" data-i18n="set.sec.safety"></a>
-  <a href="#idc" class="xp" data-i18n="set.sec.idc"></a><a href="#phone" data-i18n="set.sec.phone"></a><a href="#app" data-i18n="set.sec.app"></a></nav>
+  <a href="#keys" data-i18n="set.sec.keys"></a><a href="#general" data-i18n="set.sec.general"></a><a href="#sandbox" class="xp" data-i18n="set.sec.sandbox"></a><a href="#critic" class="xp" data-i18n="set.nav.critic"></a><a href="#safety" class="xp" data-i18n="set.sec.safety"></a>
+  <a href="#idc" class="xp" data-i18n="set.sec.idc"></a><a href="#phone" class="xp" data-i18n="set.sec.phone"></a><a href="#app" data-i18n="set.sec.app"></a></nav>
  <fieldset id="all" class="cols">
  <section id="keys" class="card"><h2><span data-i18n="set.sec.keys"></span><button class="tip" data-tip="set.keys.help"></button></h2>
   <div class="row" style="justify-content:space-between"><span><label class="switch"><input type="checkbox" id="demo"><span data-i18n="set.demo"></span></label><button class="tip" data-tip="tip.demo"></button></span><span id="modebadge" class="pill"></span></div>
@@ -193,7 +193,7 @@ SETTINGS_PAGE = r"""<!doctype html>
     <div class="seg" role="radiogroup" data-i18n-aria="set.theme"><label><input type="radio" name="theme" value="light"><span data-i18n="set.theme.light"></span></label><label><input type="radio" name="theme" value="dark"><span data-i18n="set.theme.dark"></span></label><label><input type="radio" name="theme" value="auto"><span data-i18n="set.theme.auto"></span></label></div></div>
    <div><label class="f"><span data-i18n="set.uiMode"></span><button class="tip" data-tip="tip.uiMode"></button></label>
     <div class="seg" role="radiogroup" data-i18n-aria="set.uiMode"><label><input type="radio" name="uimode" value="simple"><span data-i18n="set.ui.simple"></span></label><label><input type="radio" name="uimode" value="expert"><span data-i18n="set.ui.expert"></span></label></div></div>
-   <div><label class="f"><span data-i18n="set.traceMode"></span><button class="tip" data-tip="tip.trace"></button></label>
+   <div class="xp"><label class="f"><span data-i18n="set.traceMode"></span><button class="tip" data-tip="tip.trace"></button></label>
     <div class="seg" role="radiogroup" data-i18n-aria="set.traceMode"><label><input type="radio" name="trmode" value="simple"><span data-i18n="set.trace.simple"></span></label><label><input type="radio" name="trmode" value="technical"><span data-i18n="set.trace.technical"></span></label></div></div>
    <div><label class="f">&nbsp;</label><label class="switch"><input type="checkbox" id="bigtext"><span data-i18n="set.big"></span></label></div>
   </div>
@@ -205,12 +205,12 @@ SETTINGS_PAGE = r"""<!doctype html>
   <div class="row"><button id="gsave" class="blue" data-i18n="set.save"></button></div>
   </div>
  </section>
- <section id="sandbox" class="card"><h2><span data-i18n="sbx.title"></span><button class="tip" data-tip="sbx.help"></button></h2>
+ <section id="sandbox" class="card xp"><h2><span data-i18n="sbx.title"></span><button class="tip" data-tip="sbx.help"></button></h2>
   <div id="sbxstate" class="sbx" role="status"></div>
   <p id="sbxsimple" class="muted" data-i18n="sbx.simple"></p>
   <div class="xp"><label class="switch"><input type="checkbox" id="sbxon"><span data-i18n="sbx.switch"></span></label></div>
   <details><summary data-i18n="sbx.allowedT"></summary><p class="muted" data-i18n="sbx.allowed"></p><p class="muted" id="sbxlim"></p></details></section>
- <section id="critic" class="card"><h2><span data-i18n="set.sec.critic"></span><button class="tip" data-tip="set.critic.help"></button></h2>
+ <section id="critic" class="card xp"><h2><span data-i18n="set.sec.critic"></span><button class="tip" data-tip="set.critic.help"></button></h2>
   <label class="switch"><input type="checkbox" id="criton"><span data-i18n="set.critic.enabled"></span></label>
   <details class="adv"><summary data-i18n="ui.advanced"></summary>
   <div class="row" style="margin-top:8px;align-items:center;gap:8px"><label class="f" for="critr" data-i18n="set.critic.rounds" style="margin:0"></label><select id="critr" style="width:auto"></select></div>
@@ -222,7 +222,7 @@ SETTINGS_PAGE = r"""<!doctype html>
   <label class="switch"><input type="checkbox" id="idcon"><span data-i18n="set.idc.enabled"></span></label>
   <details><summary data-i18n="set.f.advanced"></summary><div id="idcf" class="grid3"></div></details>
   <div class="row" style="margin-top:10px"><button id="isave" class="blue" data-i18n="set.save"></button></div></section>
- <section id="phone" class="card"><h2><span data-i18n="set.sec.phone"></span><button class="tip" data-tip="set.phone.help"></button></h2>
+ <section id="phone" class="card xp"><h2><span data-i18n="set.sec.phone"></span><button class="tip" data-tip="set.phone.help"></button></h2>
   <p id="phonestate" class="pill"></p>
   <label class="switch"><input type="checkbox" id="remon"><span data-i18n="set.phone.enable"></span></label>
   <details class="adv"><summary data-i18n="ui.advanced"></summary><div class="grid2"><div><label class="f" for="tunnel"><span data-i18n="set.phone.tunnel"></span><button class="tip" data-tip="tip.tunnel"></button></label><select id="tunnel"></select></div>
@@ -233,7 +233,7 @@ SETTINGS_PAGE = r"""<!doctype html>
  <section id="app" class="card"><h2><span data-i18n="set.sec.app"></span><button class="tip" data-tip="set.app.help"></button></h2>
   <p id="appinfo" class="muted"></p>
   <div class="row"><button id="restart2" class="primary" data-i18n="set.restart"></button><button id="quit" class="danger" data-i18n="set.quit"></button><a class="btn" href="/welcome" data-i18n="set.app.wizard"></a></div></section>
- <div id="simplebar" class="card row" style="justify-content:space-between"><span class="muted" data-i18n="set.hiddenSimple"></span><button id="toexpert" data-i18n="set.showExpert"></button></div>
+ <div id="simplebar" class="card row" style="justify-content:space-between"><span class="muted" data-i18n="set.simpleNote"></span><button id="toexpert" data-i18n="set.showExpert"></button></div>
  </fieldset>
 </div>
 <div id="toast" role="status" aria-live="polite"></div>
@@ -264,7 +264,7 @@ function drawCritic(){ if(!$("critr").options.length) [1,2,3].forEach(n=>{ const
   const m=HL.memory||{}; $("memstate").textContent=m.semantic?t("mem.semantic",{model:m.model||"embeddings"}):t("mem.keyword"); }
 async function saveCritic(){ try{ GS=await api("POST","/settings",{critic:$("criton").checked,critic_rounds:Number($("critr").value)}); toast(t("set.critic.saved")); }catch(err){ fail(err); } drawCritic(); }
 $("criton").onchange=saveCritic; $("critr").onchange=saveCritic;
-function draw(){ if(!V) return; document.body.classList.toggle("simple",V.ui_mode!=="expert"); drawKeys(); drawGeneral(); drawDisplay(); drawPerms(); drawSandbox(); drawIdc(); drawCritic(); drawPhone(); drawApp(); drawRestart(); }
+function draw(){ if(!V) return; document.body.classList.toggle("simple",V.ui_mode!=="expert"); document.documentElement.dataset.ui=V.ui_mode==="expert"?"expert":"simple"; drawKeys(); drawGeneral(); drawDisplay(); drawPerms(); drawSandbox(); drawIdc(); drawCritic(); drawPhone(); drawApp(); drawRestart(); }
 function drawRestart(){ const r=V.restart_needed||[], b=$("restartbar"); b.hidden=!r.length;
   $("restartwhat").textContent=t("set.restartNeeded")+" "+r.map(k=>tr("rf",k)).join(", "); $("restart1").disabled=$("restart2").disabled=!V.can_restart; }
 // ---------------- keys
@@ -543,7 +543,7 @@ onLang=()=>{ pickBtns(); drawProvs(); buildWBulk(); if(step==="2b") jobsStep(); 
 (async()=>{ try{ await status(); }catch(e){ if(e.status===401){ location.href="/connect"; return; } }
   if(!ST.available || !ST.editable){ [1,2,3].forEach(i=>$("s"+i).hidden=true); $("slock").hidden=false; return; }
   try{ const v=await api("GET","/app/settings"); PRESETS=v.presets||{}; PREFIXES=v.key_prefixes||[]; }catch(e){}
-  pickBtns(); drawProvs(); buildWBulk(); show(1); })();
+  pickBtns(); drawProvs(); buildWBulk(); show(location.hash==="#key"?2:1); })();   // v0.9.9: the chat's key banner opens step 2
 </script></body></html>
 """
 

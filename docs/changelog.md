@@ -8,6 +8,14 @@
 
 Every release with its files and notes: [GitHub Releases](https://github.com/lanoixdesign/autonomous-agent/releases). Latest notes: [packaging/RELEASE_NOTES.md](../packaging/RELEASE_NOTES.md).
 
+#### Really simple (new in 0.9.9)
+
+🧸 **Simple mode by default**: a shorter sidebar (Chat, Services, Settings, Help), a quiet top bar with one **Stop**
+button while the agent works, a kind banner while no key is set, one gentle sentence instead of step counts,
+approval cards in plain words (“The agent wants to write a file in My files”) with only **Allow** / **Refuse**, a
+paperclip to add files, and a Services screen with only your services. Everything else is in Advanced mode. See
+[Simple and Advanced mode](simple-mode.md).
+
 #### Connected services that really work (new in 0.9.8)
 
 🔌 Services added in **Connect > Connected services** (MCP) are now used by the assistant and its helpers:
@@ -68,6 +76,15 @@ Same features, quieter screens. Neutral backgrounds (off-white by day, soft dark
 ## Français
 
 Chaque version avec ses fichiers et ses notes : [GitHub Releases](https://github.com/lanoixdesign/autonomous-agent/releases). Dernières notes : [packaging/RELEASE_NOTES.md](../packaging/RELEASE_NOTES.md).
+
+#### Vraiment simple (nouveau en 0.9.9)
+
+🧸 **Mode simple par défaut** : une barre latérale plus courte (Chat, Services, Réglages, Aide), un haut de chat
+calme avec un seul bouton **Arrêter** pendant que l'agent travaille, un bandeau gentil tant qu'aucune clé n'est
+ajoutée, une phrase douce au lieu des compteurs d'étapes, des cartes de validation en mots simples (« L'agent veut
+écrire un fichier dans Mes fichiers ») avec seulement **Autoriser** / **Refuser**, un trombone pour ajouter un
+fichier, et un écran Services avec seulement tes services. Tout le reste est dans le mode avancé. Voir
+[Mode simple et mode avancé](simple-mode.md#francais).
 
 #### Des services connectés qui marchent vraiment (nouveau en 0.9.8)
 

@@ -5,6 +5,7 @@
 | Topic | Sujet |
 |---|---|
 | [Getting started (desktop app)](getting-started.md) | [Bien démarrer](getting-started.md#francais) |
+| [Simple and Advanced mode](simple-mode.md) | [Mode simple et mode avancé](simple-mode.md#francais) |
 | [API keys, limits and backup keys](keys.md) | [Clés d'API, limites, clés de secours](keys.md#francais) |
 | [Permissions, sandbox, developer mode](permissions.md) | [Permissions, bac à sable, mode développeur](permissions.md#francais) |
 | [Swarm (sub-agents) and IDC mode](swarm.md) | [Essaim et mode IDC](swarm.md#francais) |
