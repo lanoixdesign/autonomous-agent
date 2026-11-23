@@ -90,7 +90,7 @@ CONNECT_PAGE = r"""<!doctype html>
    <button id="apisave" type="submit" data-i18n="apis.add"></button><button id="apicancel" type="button" class="lite" hidden data-i18n="apis.cancel"></button>
    <p id="apimsg" aria-live="polite"></p></form></details>
   <details class="adv"><summary data-i18n="ui.advanced"></summary><p class="muted" data-i18n="apis.how"></p></details></section>
- <section><details><summary><h2 style="display:inline" data-i18n="connect.howTitle"></h2></summary>
+ <section id="how"><details><summary><h2 style="display:inline" data-i18n="connect.howTitle"></h2></summary>
   <ol><li data-i18n="connect.how1"></li><li data-i18n="connect.how2"></li><li data-i18n="connect.how3"></li></ol>
   <p class="muted" data-i18n="connect.howMore"></p></details></section>
 </main>

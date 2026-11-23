@@ -77,6 +77,7 @@ SAFE_ENV = ("PATH", "HOME", "USER", "LOGNAME", "LANG", "LC_ALL", "TMPDIR", "TEMP
 
 # tool name -> (service name, plain title): the chat says "used GitHub: List issues"
 LABELS: dict[str, tuple[str, str]] = {}
+RAW: dict[str, str] = {}          # tool name -> the server's own tool name ("write_file")
 
 
 class MCPError(Exception):
@@ -835,6 +836,7 @@ def make_tools(registry: MCPRegistry, server: dict) -> list[Tool]:
             continue
         seen.add(tname)
         LABELS[tname] = (service, t.get("title") or t["name"])
+        RAW[tname] = t["name"]
 
         def run(ctx: ToolContext, args: dict, _real=t["name"], _sid=sid, _service=service) -> str:
             try:
@@ -867,6 +869,61 @@ def plain_error(service: str, e: MCPError) -> str:
 
 def service_of(tool_name: str) -> tuple[str, str] | None:
     return LABELS.get(tool_name)
+
+
+# v0.9.9: what a service tool does, as plain words for the approval card ("L'agent veut écrire un fichier dans
+# Mes fichiers"), from the English words servers use in tool names. Keys only: the pages translate them (mcpv.*,
+# mcpo.*). Unknown words -> no verb / no object, and the card falls back to "wants to use <service>".
+VERBS = {"read": "read", "get": "read", "view": "read", "show": "read", "fetch": "read", "open": "read", "load": "read",
+         "write": "write", "save": "write", "put": "write", "upload": "write", "list": "list", "browse": "list",
+         "create": "create", "add": "create", "new": "create", "make": "create", "insert": "create", "mkdir": "create",
+         "delete": "delete", "remove": "delete", "trash": "delete", "rm": "delete", "erase": "delete",
+         "search": "search", "find": "search", "query": "search", "lookup": "search",
+         "edit": "edit", "update": "edit", "modify": "edit", "change": "edit", "patch": "edit", "set": "edit",
+         "replace": "edit", "move": "move", "rename": "move", "mv": "move", "copy": "copy", "duplicate": "copy",
+         "send": "send", "post": "send", "reply": "send", "publish": "send", "push": "send", "comment": "send",
+         "run": "run", "execute": "run", "exec": "run", "start": "run", "merge": "merge", "close": "close",
+         "download": "download"}
+OBJECTS = {"file": "file", "files": "file", "directory": "folder", "directories": "folder", "folder": "folder",
+           "folders": "folder", "dir": "folder", "tree": "folder", "issue": "issue", "issues": "issue",
+           "repository": "repo", "repositories": "repo", "repo": "repo", "repos": "repo", "branch": "branch",
+           "branches": "branch", "comment": "comment", "comments": "comment", "event": "event", "events": "event",
+           "calendar": "event", "email": "email", "emails": "email", "mail": "email", "message": "message",
+           "messages": "message", "note": "note", "notes": "note", "page": "page", "pages": "page",
+           "pull": "pr", "pr": "pr", "prs": "pr", "commit": "commit", "commits": "commit", "task": "task",
+           "tasks": "task", "todo": "task", "document": "doc", "documents": "doc", "doc": "doc", "docs": "doc",
+           "table": "table", "tables": "table", "record": "record", "records": "record", "row": "record",
+           "rows": "record", "contact": "contact", "contacts": "contact", "image": "image", "images": "image",
+           "photo": "image", "photos": "image", "info": "info", "information": "info", "metadata": "info",
+           "code": "code"}
+_WORD_RE = re.compile(r"[A-Z]?[a-z]+|[A-Z]+(?![a-z])|\d+")
+
+
+def action_keys(*texts: str | None) -> tuple[str, str, bool]:
+    """("write_file") -> ("write", "file", False); ("List directory") -> ("list", "folder", True)."""
+    words = [w.lower() for x in texts if x for w in _WORD_RE.findall(str(x))]
+    i = next((n for n, w in enumerate(words) if w in VERBS), -1)
+    verb = VERBS[words[i]] if i >= 0 else ""
+    found = [w for w in words[i + 1:] if w in OBJECTS] or [w for n, w in enumerate(words) if w in OBJECTS and n != i]
+    main = [w for w in found if OBJECTS[w] not in ("info", "code")] or found
+    obj_word = main[-1] if main else ""
+    obj = OBJECTS.get(obj_word, "")
+    if not verb and obj:
+        verb = "read"                       # "directory_tree", "file_info": looking at something
+    plural = bool(obj) and (verb in ("list", "search") or "multiple" in words or "all" in words
+                            or (obj_word.endswith("s") and OBJECTS.get(obj_word[:-1]) == obj)
+                            or obj_word in ("directories", "repositories", "tree"))
+    return verb, obj, plural
+
+
+def describe(tool_name: str) -> dict:
+    """A tool of a connected service -> {"service", "action", "verb", "obj", "plural"} (empty for other tools)."""
+    lab = LABELS.get(tool_name) if str(tool_name).startswith("mcp_") else None
+    if not lab:
+        return {}
+    raw = RAW.get(tool_name, "")
+    verb, obj, plural = action_keys(raw, lab[1])
+    return {"service": lab[0], "action": lab[1], "verb": verb, "obj": obj, "plural": plural}
 
 
 # French request words -> the English words servers use in tool names (cheap relevance, no model call)

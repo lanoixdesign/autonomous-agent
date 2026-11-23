@@ -276,13 +276,14 @@ CHAT_PAGE = r"""<!doctype html>
 </style></head><body data-page="chat" class="fullh simple notoken">
 /*SIDEBAR*/
 <main>
- <div id="top"><button id="menu" class="snmenu" data-i18n-title="nav.menu" data-i18n-aria="nav.menu" aria-controls="sidenav" aria-expanded="false">/*MENU_IC*/</button><a id="demobadge" href="/settings#keys" hidden data-i18n="chat.demoBadge" data-i18n-title="chat.demoTitle"></a><span id="title"></span><span id="status"></span><span id="mode"></span>
+ <div id="top"><button id="menu" class="snmenu" data-i18n-title="nav.menu" data-i18n-aria="nav.menu" aria-controls="sidenav" aria-expanded="false">/*MENU_IC*/</button><span id="title"></span><span id="status"></span><span id="mode"></span>
   <label id="idcbox"><input type="checkbox" id="idc"><span data-i18n="idc.label"></span></label>
   <button id="cancel" class="tbtn" style="display:none" data-i18n="chat.stop"></button>
   <button id="expmd" class="tbtn" style="display:none" data-i18n-title="chat.expmd.title">⇩ MD</button>
   <button id="expjson" class="tbtn" style="display:none" data-i18n-title="chat.expjson.title">⇩ JSON</button>
   <button id="stopall" class="tbtn" style="display:none" data-i18n="btn.stopall" data-i18n-title="title.stopall"></button>
   <button id="compose" class="ibtn" data-i18n-title="chat.compose"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 20h9"/><path d="M16.5 3.5a2.1 2.1 0 0 1 3 3L7 19l-4 1 1-4Z"/></svg></button></div>
+ <div id="keybanner" hidden role="note"><span data-i18n="chat.keyBanner"></span><a href="/welcome#key" data-i18n="chat.keyBannerBtn"></a></div>
  <div id="folderline" hidden><span data-i18n="conv.folderLine"></span><code id="folderpath"></code><button id="foldercopy" type="button" class="tbtn" data-i18n="conv.copy" data-i18n-title="conv.copyTitle"></button><span id="foldermsg" aria-live="polite"></span></div>
  <div id="ratebar" hidden><div class="rnote" id="ratenote" aria-live="polite"></div><span id="rates" style="display:contents"></span></div>
  <div id="idcpanel" hidden></div>
@@ -291,14 +292,14 @@ CHAT_PAGE = r"""<!doctype html>
  <div id="thinking" role="status"><i class="dot"></i><span id="thinktext"></span></div>
  <div id="err"></div>
  <div id="chips"></div>
- <div id="composer"><button id="attach" class="ibtn" data-i18n-title="chat.addFile.title"><span aria-hidden="true">📎</span><span class="lbl" data-i18n="chat.addFile"></span></button>
+ <div id="composer"><button id="attach" class="ibtn" data-i18n-title="chat.addFile.title" data-i18n-aria="chat.attach"><span aria-hidden="true">📎</span><span class="lbl" data-i18n="chat.addFile"></span></button>
   <input id="files" type="file" multiple hidden>
   <textarea id="input" data-i18n-placeholder="chat.input.placeholder"></textarea>
   <button id="send" data-i18n="chat.send"></button></div>
  <div id="drop" data-i18n="chat.drop"></div>
 </main>
 <div id="popups"></div>
-<div id="convmenu" role="menu" hidden><button type="button" role="menuitem" id="cmpin"></button><button type="button" role="menuitem" id="cmfolder" data-i18n="conv.folder"></button><button type="button" role="menuitem" id="cmdel" class="del" data-i18n="conv.delete"></button></div>
+<div id="convmenu" role="menu" hidden><button type="button" role="menuitem" id="cmpin"></button><button type="button" role="menuitem" id="cmfolder" data-i18n="conv.folder"></button><button type="button" role="menuitem" id="cmexport" data-i18n="conv.export"></button><button type="button" role="menuitem" id="cmdel" class="del" data-i18n="conv.delete"></button></div>
 <div id="delbox" hidden><div id="delcard" role="alertdialog" aria-modal="true" aria-labelledby="delt" aria-describedby="deld"><h3 id="delt" data-i18n="del.title"></h3><p id="deld"></p>
  <label><input type="checkbox" id="delfolder"><span data-i18n="del.folder"></span></label><p id="delkeep" class="fhelp"></p><p id="delerr" role="alert"></p>
  <div class="ta"><button id="delcancel" type="button" data-i18n="del.cancel"></button><button id="delok" type="button" class="danger" data-i18n="del.confirm"></button></div></div></div>
@@ -347,7 +348,7 @@ function add(c, evs){
   const fresh=evs.filter(e=>e.seq>=c.since); if(!fresh.length) return;
   const log=$("log"), atEnd = log.scrollTop+log.clientHeight >= log.scrollHeight-40, first=!c.events.length;
   c.events.push(...fresh); c.since=fresh[fresh.length-1].seq+1;
-  if(first) render(); else fresh.forEach(e=>place(log,e));
+  if(first) render(); else { fresh.forEach(e=>place(log,e)); dockPopups(); }
   if(atEnd) log.scrollTop=log.scrollHeight;
   if(fresh.some(e=>e.kind==="idc"||e.kind==="idc_toggle")) idcUI();
   if(fresh.some(e=>e.kind==="approval")) popups().then(thinking).catch(()=>{});
@@ -372,8 +373,9 @@ $("scrim").onclick=()=>nav(false);
 let APP={}, TRACE_TECH=false, DEMO=false, appSeen=false;
 async function appStatus(){ try{ APP=await api("GET","/app/status"); }catch(e){ return; }
   if(APP.first_run && APP.editable){ location.replace("/welcome"); return; }
-  $("demobadge").hidden=APP.mode!=="demo";
+  $("keybanner").hidden=APP.mode!=="demo";     // v0.9.9: one kind banner while no key is set
   document.body.classList.toggle("simple",(APP.ui_mode||"simple")!=="expert");
+  document.documentElement.dataset.ui=APP.ui_mode==="expert"?"expert":"simple";
   const tech=APP.trace==="technical", demo=APP.mode==="demo", changed=tech!==TRACE_TECH || demo!==DEMO;
   TRACE_TECH=tech; DEMO=demo; document.body.classList.toggle("tracetech",tech); if(changed){ gsig=""; render(); drawSwarm(); }
   if(!appSeen){ appSeen=true; let done=null; try{ done=localStorage.getItem("tourDone"); }catch(e){}
@@ -386,16 +388,15 @@ function depth(id){ return id ? id.split(".").length-1 : 0; }
 function short(v,n){ const s = typeof v==="string" ? v : JSON.stringify(v); return s && s.length>n ? s.slice(0,n)+"…" : (s||""); }
 function badge(s){ return el("span","badge "+s,tr("status",s)); }
 function render(){
-  const log=$("log"); log.replaceChildren();
+  const log=$("log"), pop=$("popups"); if(log.contains(pop)) document.body.append(pop); log.replaceChildren();
   if(!cur){ log.append(home()); return; }
   ROLES={}; tcur=null; for(const e of cache[cur].events) place(log,e);
-  log.scrollTop = log.scrollHeight; drawResults();
+  dockPopups(); log.scrollTop = log.scrollHeight; drawResults();
 }
 // ---- empty chat: example tasks, help, tour
 const EXAMPLES=[["summarize","📄",1],["email","✉️",0],["notes","🗂️",0],["research","🔎",0],["plan","🗓️",0],["translate","🌍",0]];
 function home(){ const h=el("div"); h.id="home";
   h.append(el("h2",null,t("home.title")), el("p","sub",t("home.sub")));
-  if(DEMO){ const d=el("div","demonote"), a=el("a",null,t("home.demoLink")); a.href="/settings#keys"; d.append(el("span",null,t("home.demo")), a); h.append(d); }
   const g=el("div","exgrid");
   EXAMPLES.forEach(([k,ic,file])=>{ const b=el("button","ex"); b.type="button"; b.dataset.ex=k;
     b.append(el("i","ei",ic), el("b",null,tr("ex",k+".t")), el("span",null,tr("ex",k+".d"))); b.onclick=()=>useExample(k,file); g.append(b); });
@@ -407,6 +408,10 @@ function useExample(k,file){ const i=$("input"); i.value=tr("ex",k+".p"); i.focu
 // ---- collapsible work trace: tool calls, sub-agents, approvals of one turn go in one block (closed by default);
 // the user's message, the final answer and the end-of-turn line stay outside. Approval cards (#popups) never hide.
 let tcur=null;
+function SIMPLE(){ return document.documentElement.dataset.ui!=="expert"; }
+// v0.9.9: in Simple mode the approval cards sit in the conversation, right after the latest step
+function dockPopups(){ const p=$("popups"), log=$("log"); if(!cur){ if(p.parentNode!==document.body) document.body.append(p); return; }
+  if(SIMPLE()){ if(log.lastChild!==p) log.append(p); } else if(p.parentNode!==document.body) document.body.append(p); }
 let traceOpen=(()=>{ try{ return localStorage.getItem("traceOpen")==="1"; }catch(e){ return false; } })();
 function traceKind(e){
   if(e.kind==="user") return "turn";
@@ -437,7 +442,7 @@ function traceSet(box){ const head=box.querySelector(".trhead"); head.setAttribu
   head.querySelector(".chev").textContent=traceOpen?"▾":"▸"; box.querySelector(".trbody").hidden=!traceOpen; }
 function traceHead(box){ const st=box._st, h=box.querySelector(".trhead");
   box.classList.toggle("running",!st.ended);
-  h.querySelector(".trtitle").textContent=TRACE_TECH ? t(st.ended?"trace.titleDone":"trace.title") : t(st.ended?"trace.titleDoneSimple":"trace.titleSimple");
+  h.querySelector(".trtitle").textContent=SIMPLE() ? t("trace.seeDetail") : TRACE_TECH ? t(st.ended?"trace.titleDone":"trace.title") : t(st.ended?"trace.titleDoneSimple":"trace.titleSimple");
   h.querySelector(".trsum").textContent=traceSummary(st);
   const n=st.ended?0:st.pending.size; h.querySelector(".trpend").textContent=n?t(n===1?"trace.pending1":"trace.pending",{n}):""; }
 function place(log,e){
@@ -548,7 +553,9 @@ function drawConvs(force){
   const row=x=>{ const d=el("div","conv"+(x.id===cur?" sel":"")); d.dataset.id=x.id;
     const b=el("button","cmain"); b.type="button"; b.dataset.focus="m"+x.id; if(x.id===cur) b.setAttribute("aria-current","true");
     const tt=el("span","t"); if(x.pinned){ tt.insertAdjacentHTML("afterbegin",PIN_IC); tt.append(el("span","sr",t("conv.isPinned")+" ")); }
-    tt.append(document.createTextNode(x.task)); b.append(tt);
+    tt.append(document.createTextNode(x.task));
+    if(BUSY.includes(x.status)){ const dot=el("i","busy"); dot.title=t("chat.thinking"); dot.setAttribute("aria-label",t("chat.thinking")); tt.append(dot); }
+    b.append(tt);
     const sm=el("small",null,t("chat.turns",{n:x.turns})+" "); sm.append(badge(x.status)); b.append(sm);
     b.onclick=()=>{ nav(false); pick(x.id); };
     const m=el("button","cmore","⋯"); m.type="button"; m.dataset.focus="o"+x.id; m.setAttribute("aria-haspopup","menu");
@@ -566,7 +573,7 @@ function closeMenu(focusBack){ const m=$("convmenu"); if(m.hidden) return; m.hid
 function openMenu(id,btn){
   if(menuFor===id){ closeMenu(true); return; } closeMenu(false);
   const x=tasks.find(v=>v.id===id); if(!x) return; menuFor=id; menuBtn=btn;
-  const m=$("convmenu"); $("cmpin").textContent=t(x.pinned?"conv.unpin":"conv.pin"); $("cmfolder").textContent=t("conv.folder"); $("cmdel").textContent=t("conv.delete");
+  const m=$("convmenu"); $("cmpin").textContent=t(x.pinned?"conv.unpin":"conv.pin"); $("cmfolder").textContent=t("conv.folder"); $("cmexport").textContent=t("conv.export"); $("cmdel").textContent=t("conv.delete");
   m.setAttribute("aria-label",t("conv.menu",{name:short(x.task,60)}));
   m.hidden=false; btn.setAttribute("aria-expanded","true"); placeMenu(); $("cmpin").focus({preventScroll:true}); }
 function placeMenu(){ const m=$("convmenu"); if(m.hidden || !menuBtn) return;
@@ -600,6 +607,7 @@ $("cmpin").onclick=async()=>{ const id=menuFor, x=tasks.find(v=>v.id===id); clos
 $("cmfolder").onclick=async()=>{ const id=menuFor, x=tasks.find(v=>v.id===id); closeMenu(true); if(!x) return;
   try{ const r=await convPost(id,"folder",{}); toast(t(r.opened?"conv.opened":"conv.notOpened",{path:r.path})); if(id===cur) folderLine(); }
   catch(e){ toast(e.body && e.body.code==="local_only" ? t("conv.openLocal",{path:x.folder}) : e.message); } };
+$("cmexport").onclick=async()=>{ const id=menuFor; closeMenu(true); if(!id) return; if(id!==cur) pick(id); download("md"); };
 $("cmdel").onclick=()=>{ const id=menuFor; closeMenu(false); askDelete(id); };
 async function askDelete(id){
   const x=tasks.find(v=>v.id===id); if(!x) return; delFor=id;
@@ -647,12 +655,15 @@ async function popups(){
     const answer=async (d,remember)=>{ if(answering.has(a.id)) return; answering.add(a.id); ok.disabled=no.disabled=true;
       try{ await api("POST","/approvals/"+a.id,remember?{decision:d,remember}:{decision:d}); c.remove(); }catch(e){ fail(e); ok.disabled=no.disabled=false; }
       answering.delete(a.id); };
-    ok.onclick=()=>answer("approve"); no.onclick=()=>answer("deny");
+    let keep=null;
+    ok.onclick=()=>answer("approve", keep && keep.checked ? "conversation" : undefined); no.onclick=()=>answer("deny");
     b.append(ok,no); c.append(b);
-    if(a.rememberable){ const m=el("div","remember"), rc=el("button",null,t("card.alwaysHere")), rs=el("button",null,t("card.alwaysApp"));
+    if(a.rememberable && SIMPLE()){ const m=el("div","remember"), l=el("label"); keep=el("input"); keep.type="checkbox";
+      l.append(keep, el("span",null,t("card.rememberHere"))); m.append(l); c.append(m); }
+    else if(a.rememberable){ const m=el("div","remember"), rc=el("button",null,t("card.alwaysHere")), rs=el("button",null,t("card.alwaysApp"));
       rc.onclick=()=>answer("approve","conversation"); rs.onclick=()=>answer("approve","session"); m.append(rc,rs); c.append(m); }
     else c.append(el("div","never",t("card.safety")));
-    box.append(c); });
+    box.append(c); if(SIMPLE()){ dockPopups(); const lg=$("log"); lg.scrollTop=lg.scrollHeight; } });
   document.body.classList.toggle("has-popups", box.children.length>0);
 }
 // ---- attachments: chips before sending, sent base64 in the JSON body
@@ -784,9 +795,11 @@ $("fpick").onchange=async e=>{ const list=[...e.target.files]; e.target.value=""
     const r=await api("POST","/files",{files}); $("fmsg").textContent=t("files.added",{n:r.saved.length}); loadFiles(); }
   catch(err){ $("fmsg").textContent=errMsg(err); } };
 // ---- guided tour (4 steps): Esc or Skip closes it; remembered on this device
-const TOUR=[["1","#input"],["2","#attach"],["3","#filesbtn"],["4","#sidenav nav.tabs"]];
+const TOUR_ALL=[["1","#input"],["2","#attach"],["3","#filesbtn"],["4","#sidenav nav.tabs"]];
+let TOUR=TOUR_ALL;
 let tstep=-1;
-function tour(i){ document.querySelectorAll(".tour-hl").forEach(x=>x.classList.remove("tour-hl"));
+function tour(i){ if(i===0) TOUR=TOUR_ALL.filter(([k,sel])=>{ const x=document.querySelector(sel); return x && getComputedStyle(x).display!=="none"; });
+  document.querySelectorAll(".tour-hl").forEach(x=>x.classList.remove("tour-hl"));
   if(i<0 || i>=TOUR.length){ $("tour").hidden=true; tstep=-1; try{ localStorage.setItem("tourDone","1"); }catch(e){} return; }
   tstep=i; $("tour").hidden=false; const [k,sel]=TOUR[i];
   const target=(narrow.matches && i>=2) ? $("menu") : document.querySelector(sel);

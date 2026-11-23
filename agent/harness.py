@@ -91,7 +91,7 @@ from . import __version__, devmode, export, i18n, schedule, uploads, mcp
 from .idc import IDC, IDCConfig
 from .keys import role_task
 from . import sandbox as sandbox_mod
-from .theme import CALM_CSS, THEME_HEAD
+from .theme import CALM_CSS, SIMPLE_CSS, THEME_HEAD
 
 LOCAL_HOSTS = ("127.0.0.1", "localhost", "::1")
 _I18N_DATA = json.dumps(i18n.ui_strings(), ensure_ascii=False).replace("</", "<\\/")
@@ -102,7 +102,8 @@ def _lang_arg(data: dict) -> str | None:
     return v if isinstance(v, str) and v[:2].lower() in i18n.LANGS else None
 
 
-def render_page(page: str, lang: str | None = None, default_lang: str | None = None, theme: str | None = None) -> bytes:
+def render_page(page: str, lang: str | None = None, default_lang: str | None = None, theme: str | None = None,
+                ui: str | None = None) -> bytes:
     """Insert the EN/FR dictionaries; `?lang=` also sets <html lang> (the page then remembers it).
     `default_lang` (Settings page choice) is used by a browser that has no saved choice yet."""
     out = page.replace("/*I18N_DATA*/{}", _I18N_DATA)
@@ -110,11 +111,13 @@ def render_page(page: str, lang: str | None = None, default_lang: str | None = N
         out = out.replace("const I18N_DEFAULT = null;", f'const I18N_DEFAULT = "{default_lang}";', 1)
     # day / night theme: applied in <head> before the first paint (no flash); `theme` = Settings choice
     th = THEME_HEAD.replace('"__THEME_DEFAULT__"', json.dumps(theme if theme in ("auto", "light", "dark") else "auto"))
+    # v0.9.9: Simple mode (the default) hides the technical items before the first paint; Advanced shows them all
+    th += '<script>document.documentElement.setAttribute("data-ui","%s");</script>' % ("expert" if ui == "expert" else "simple")
     out = out.replace('<meta charset="utf-8">', '<meta charset="utf-8">\n' + pwa.HEAD + "\n" + th, 1)
     out = out.replace("width=device-width, initial-scale=1", "width=device-width, initial-scale=1, viewport-fit=cover", 1)
     out = out.replace("</script></body></html>", pwa.REGISTER_JS + "\n</script></body></html>", 1)
     # v0.9.1: the calm layer goes last in <head>, so it wins over each page's own colours and effects
-    out = out.replace("</head>", "<style>" + CALM_CSS + "</style></head>", 1)
+    out = out.replace("</head>", "<style>" + CALM_CSS + SIMPLE_CSS + "</style></head>", 1)
     if lang:
         out = out.replace('<html lang="en">', f'<html lang="{i18n.normalize(lang)}">', 1)
     return out.encode("utf-8")
@@ -144,8 +147,7 @@ def _now() -> str:
 # ---------------------------------------------------------------------------- approvals
 def _service(tool: str) -> dict:
     """v0.9.8: a tool of a connected service -> {"service": "GitHub", "action": "List issues"} for the card."""
-    lab = mcp.service_of(tool) if str(tool).startswith("mcp_") else None
-    return {"service": lab[0], "action": lab[1]} if lab else {}
+    return mcp.describe(tool)          # v0.9.9: + verb / obj keys for a plain sentence
 
 
 class Approval:
@@ -1879,7 +1881,8 @@ def make_handler(h: Harness, token: str | None, local_only: bool, auth: "remote.
                     lang = (q.get("lang") or [None])[0]
                     default = h.control.cfg.get("lang") if h.control is not None else None
                     theme = h.control.theme() if h.control is not None else None
-                    self._send(200, body=render_page(page, lang, default, theme), ctype="text/html; charset=utf-8")
+                    ui = h.control.ui_mode() if h.control is not None else "simple"
+                    self._send(200, body=render_page(page, lang, default, theme, ui), ctype="text/html; charset=utf-8")
                 else:
                     self._send(403, {"error": "bad Host header"})
                 return

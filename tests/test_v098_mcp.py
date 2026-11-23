@@ -397,7 +397,7 @@ def test_page_strings_exist_in_both_languages():
     missing = [k for k in keys if k not in i18n.EN or k not in i18n.FR]
     assert not missing, missing
     assert all(not k.endswith(".") for k in keys)
-    for k in ("human.mcp", "simple.mcp"):
+    for k in ("human.mcpDo", "simple.mcpDo", "human.mcpUse", "simple.mcpUse"):
         assert "{service}" in i18n.EN[k] and "{service}" in i18n.FR[k]
     assert "vous" not in " ".join(v for k, v in i18n.FR.items() if k.startswith("mcp."))
 

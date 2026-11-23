@@ -798,6 +798,11 @@ EN.update(EN_V098)
 FR.update(FR_V098)
 FR.update(FR_TU)          # v0.8.2: one form in French, "tu", everywhere
 
+from .i18n_v099 import EN_V099, FR_V099  # noqa: E402
+
+EN.update(EN_V099)        # v0.9.9: after the "tu" layer, so its shorter words win
+FR.update(FR_V099)
+
 STRINGS = {"en": EN, "fr": FR}
 PLACEHOLDER_RE = re.compile(r"\{(\w+)[^}]*\}")
 

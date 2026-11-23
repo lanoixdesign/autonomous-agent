@@ -539,7 +539,10 @@ class Agent:
             mode = "allow" if approved else "deny"
             why += "; user approved" if approved else "; user refused (or no terminal)"
         self.on_event("tool", {"name": name, "category": tool.category, "args": redact(args), "decision": mode})
-        svc = {"service": tool.service, "action": tool.title} if getattr(tool, "service", None) else {}
+        svc = {}
+        if getattr(tool, "service", None):
+            from .mcp import describe
+            svc = describe(name) or {"service": tool.service, "action": tool.title}
         if svc:
             self.mcp_used.add(name)
         if mode != "allow":

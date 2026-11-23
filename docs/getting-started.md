@@ -108,8 +108,9 @@ continue** → ③ done, open the chat.
 |---|---|---|
 | ![Approval card](images/v6-mobile-approval-light-fr.png) | ![My files](images/v6-files-light-en.png) | ![Display settings](images/v6-mobile-settings-light-fr.png) |
 
-**Everything else is in ⚙ Settings** (the destinations **Chat | Dashboard | Dev | Settings | Connect | Help** are in the
-left sidebar of every page, and in the ☰ drawer on a phone):
+**Everything else is in ⚙ Settings** (the destinations **Chat | Services | Settings | Help** are in the
+left sidebar of every page, and in the ☰ drawer on a phone; **Dashboard**, **Dev** and **My files** appear in
+Advanced mode, see [Simple and Advanced mode](simple-mode.md)):
 - **API keys & models**: add, edit, delete and test keys, per use (text, code, images, speech,
   transcription, embeddings), with limits (requests / tokens / cost per day or month) and a failover
   order (↑ ↓: when a key hits a limit or fails, the next one takes over). Keys are shown **masked**
@@ -256,8 +257,9 @@ une vraie IA : choisis un service (**Groq** est recommandé et gratuit), suis le
 |---|---|---|
 | ![Carte de validation](images/v6-mobile-approval-light-fr.png) | ![Mes fichiers](images/v6-files-light-fr.png) | ![Réglages d'affichage](images/v6-mobile-settings-light-fr.png) |
 
-**Tout le reste est dans ⚙ Réglages** (les destinations **Chat | Tableau de bord | Dév | Réglages | Connexion | Aide**
-sont dans la barre latérale gauche de chaque page, et dans le tiroir ☰ sur téléphone) :
+**Tout le reste est dans ⚙ Réglages** (les destinations **Chat | Services | Réglages | Aide**
+sont dans la barre latérale gauche de chaque page, et dans le tiroir ☰ sur téléphone ; **Tableau de bord**, **Dév**
+et **Mes fichiers** apparaissent en mode avancé, voir [Mode simple et mode avancé](simple-mode.md#francais)) :
 - **Clés d'API et modèles** : ajouter, modifier, supprimer et tester des clés, par usage (texte, code,
   images, voix, transcription, embeddings), avec des limites (requêtes / jetons / coût par jour ou par
   mois) et un ordre de relais (↑ ↓ : quand une clé atteint une limite ou échoue, la suivante prend le

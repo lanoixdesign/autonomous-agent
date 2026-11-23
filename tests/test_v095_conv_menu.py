@@ -313,7 +313,7 @@ def test_words_exist_in_both_languages_and_use_tu():
 
 def test_chat_page_has_an_accessible_menu_and_dialog():
     html = render_page(CHAT_PAGE, "fr", "fr", "dark").decode()
-    assert 'id="convmenu" role="menu"' in html and html.count('role="menuitem"') == 3
+    assert 'id="convmenu" role="menu"' in html and html.count('role="menuitem"') == 4
     assert 'role="alertdialog" aria-modal="true" aria-labelledby="delt" aria-describedby="deld"' in html
     assert re.search(r'<input type="checkbox" id="delfolder">', html)          # unchecked by default
     assert 'id="toast" role="status" aria-live="polite"' in html

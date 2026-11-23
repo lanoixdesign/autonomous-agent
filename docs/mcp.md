@@ -11,7 +11,7 @@ tools — your files, GitHub, and many more services — and it always asks you 
 
 ### Connect a service (1 minute)
 
-1. Open the **Connect** tab, section **Connected services**.
+1. Open **Services** in the sidebar.
 2. Click a button:
    - **📁 My files** — choose a folder (for example `~/Documents`). The assistant can read and organise the
      files of that folder only. Needs [Node.js](https://nodejs.org/) (free); the app tells you if it is missing.
@@ -68,7 +68,7 @@ modifier quoi que ce soit.
 
 ### Connecter un service (1 minute)
 
-1. Ouvre l'onglet **Connexion**, partie **Services connectés**.
+1. Ouvre **Services** dans la barre latérale.
 2. Clique sur un bouton :
    - **📁 Mes fichiers** — choisis un dossier (par exemple `~/Documents`). L'assistant peut lire et ranger
      les fichiers de ce dossier seulement. Il faut [Node.js](https://nodejs.org/fr) (gratuit) ; l'application

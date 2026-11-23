@@ -96,7 +96,10 @@ function agentShort(id){ if(!id || id==="root") return t("who.short.root"); if(/
 // What an agent wants to do / did, as one sentence. kind: "human" (approval card) or "simple" (trace line).
 function plain(kind, tool, g, agent, category, svc){
   g=g||{}; const who=agentWho(agent), p=cutS(g.path||"",60);
-  if(svc && svc.service) return t(kind+".mcp",{who,service:cutS(svc.service,40),action:cutS(svc.action||tool,60)});   // v0.9.8: connected service
+  if(svc && svc.service){ const service=cutS(svc.service,40);   // v0.9.8/v0.9.9: a connected service, in plain words
+    if(!svc.verb) return t(kind+".mcpUse",{who,service});
+    const obj=svc.obj ? tr("mcpo",svc.obj+(svc.plural?".pl":"")) : t("mcpo.some");
+    return t(kind+".mcpDo",{who,service,obj,verb:tr("mcpv",svc.verb),past:tr("mcpp",svc.verb)}); }
   if(kind==="human"){
     if(tool==="spawn_agents"){ const r=rolesOf(g), n=Array.isArray(g.tasks)?g.tasks.length:1;
       return r.length ? t("human.spawnMany",{who,n,names:r.join(", ")}) : t("human.spawnManyNoNames",{who,n}); }
@@ -170,7 +173,7 @@ ICONS = {
     "dev": _ic('<path d="M8.5 8 4.5 12l4 4M15.5 8l4 4-4 4"/>'),
     "settings": _ic('<path d="M4 7h9M17 7h3M4 12h3M11 12h9M4 17h11M19 17h1"/><circle cx="15" cy="7" r="2"/>'
                     '<circle cx="9" cy="12" r="2"/><circle cx="17" cy="17" r="2"/>'),
-    "connect": _ic('<rect x="7" y="3" width="10" height="18" rx="2"/><path d="M11 18h2"/>'),
+    "connect": _ic('<path d="M9 2v6M15 2v6"/><path d="M6 8h12v4a6 6 0 0 1-12 0Z"/><path d="M12 18v4"/>'),
     "help": _ic('<circle cx="12" cy="12" r="8.5"/><path d="M9.6 9.6a2.5 2.5 0 1 1 3.4 2.3c-.6.3-1 .8-1 1.5v.4M12 16.8v.1"/>'),
     "theme": _ic('<circle cx="12" cy="12" r="8"/><path d="M12 4a8 8 0 0 1 0 16z" fill="currentColor" stroke="none"/>'),
     "mode": _ic('<path d="M4 7h16M4 12h10M4 17h6"/>'),
@@ -187,7 +190,7 @@ def _navlink(href: str, key: str) -> str:
 
 
 NAV_HTML = ('<nav class="tabs" data-i18n-aria="nav.label">' + _navlink("/", "chat") + _navlink("/dashboard", "dashboard")
-            + _navlink("/dev", "dev") + _navlink("/settings", "settings") + _navlink("/connect", "connect") + '</nav>')
+            + _navlink("/dev", "dev") + _navlink("/connect", "connect") + _navlink("/settings", "settings") + '</nav>')
 
 # Button that opens the sidebar drawer on a phone (hidden on a computer).
 MENU_BTN = ('<button type="button" class="snmenu" data-sn-open aria-controls="sidenav" aria-expanded="false" '
@@ -295,6 +298,7 @@ NAV_JS = r"""
   try{ const k = sessionStorage.getItem("harnessToken"); if(k) h.Authorization = "Bearer " + k; }catch(e){} return h; }
  function drawMode(){ if(md) md.setAttribute("aria-pressed", String(ST.ui_mode === "expert")); }
  fetch("/app/status").then(r => r.json()).then(s => { ST = s || {}; if(!ST.available) return;
+  R.dataset.ui = ST.ui_mode === "expert" ? "expert" : "simple";   // v0.9.9: Simple hides the technical items
   if(md){ md.hidden = !ST.editable; drawMode(); } if(q) q.hidden = !ST.editable; }).catch(() => {});
  if(md) md.addEventListener("click", async () => { const v = ST.ui_mode === "expert" ? "simple" : "expert";
   try{ const r = await fetch("/app/settings", {method: "POST", headers: hdr(), body: JSON.stringify({ui_mode: v})});
@@ -435,3 +439,46 @@ CALM_CSS = r"""
  /* ---- phones */
  @media (max-width:760px){ body{font-size:15px} .bubble{max-width:90%!important} }
 """
+
+
+# v0.9.9 "really simple": Simple mode (the default, <html data-ui="simple"> set by render_page) shows only what a
+# beginner needs. Nothing is removed: Advanced mode (Settings → Display) shows every item again.
+_S = "html[data-ui=simple] "
+SIMPLE_CSS = (
+    # sidebar: Chat, Services, Settings, Help, Quit (+ the conversations); theme, language and mode live in Settings
+    ",".join(_S + x for x in (
+        ".sidenav a[data-nav=dashboard]", ".sidenav a[data-nav=dev]", "#filesbtn", ".sn-foot [data-theme-btn]",
+        "#snmode", ".sn-lang", ".sn-opts details.adv", "#quota", ".conv small",
+        # chat: no repeated title, no badges, no technical switches, no folder line
+        "#title", "#status", "#mode", "#idcbox", "#expmd", "#expjson", "body[data-page=chat] #stopall", "#folderline", "#ratebar",
+        "#idcpanel", "#swarm", ".trhead .trsum", ".trhead .trpend", ".trhead .live", "#popups .card .ctop",
+        # Services: the three buttons and the service cards only
+        "#signed", "#pairing", "#apis", "#how", "#mcp details.adv", "#mcp h2 .tip",
+        # Settings: one key button, no restart (the banner offers it when needed)
+        "body[data-page=settings] #bulkb", "body[data-page=settings] #jobsb", "body[data-page=settings] #restart2",
+    )) + "{display:none!important}\n"
+    + _S + "body[data-page=chat] #top{border-bottom:0!important;justify-content:flex-end;min-height:52px}\n"
+    "@media (min-width:761px){" + _S + "#compose{display:none!important}"
+    # nothing left in the top bar while the agent is idle: no empty strip
+    + _S + 'body[data-page=chat] #top:has(#cancel[style*="none"]){display:none!important}}\n'
+    # the approval card sits in the conversation, centred under the request, not floating on the right
+    + _S + "#log #popups{position:static;width:auto;max-width:520px;max-height:none;overflow:visible;margin:10px auto 6px;padding:0}\n"
+    + _S + "body.has-popups #log{padding-right:16px!important}" + _S + "body.has-popups #swarm{margin-right:0!important}\n"
+    + _S + "#log #popups .card{box-shadow:none!important;border:1px solid var(--line2)!important}\n"
+    + _S + ".trace{border:0!important;background:transparent!important}"
+    + _S + ".trhead{font-size:13px;color:var(--muted)!important;padding:4px 2px!important}\n"
+    + _S + ".trhead .trtitle{font-weight:500!important}\n"
+)
+# both modes: the conversation list's discreet "working" dot, the paperclip-only attach button, the key banner
+SIMPLE_CSS += (
+    " .conv .busy{display:inline-block;width:7px;height:7px;border-radius:50%;background:var(--accent-text);"
+    "margin-left:7px;vertical-align:1px;opacity:.75}\n"
+    " #attach .lbl{display:none!important} #attach{width:46px!important;padding:0!important;justify-content:center}\n"
+    " #keybanner{display:flex;align-items:center;gap:12px;flex-wrap:wrap;margin:8px 16px 0;padding:10px 14px;"
+    "border:1px solid var(--line2);border-radius:12px;background:var(--panel);color:var(--text);font-size:14px}\n"
+    " #keybanner[hidden]{display:none} #keybanner span{flex:1;min-width:200px}\n"
+    " #keybanner a{padding:6px 14px;border-radius:10px;background:var(--accent);color:var(--on-accent);"
+    "text-decoration:none;font-weight:500;white-space:nowrap}\n"
+    " .card .remember label{display:flex;gap:8px;align-items:center;justify-content:center;font-size:13px;"
+    "color:var(--muted);cursor:pointer;margin-top:10px} .card .remember input{width:16px;height:16px;margin:0}\n"
+)
