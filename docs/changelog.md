@@ -8,6 +8,12 @@
 
 Every release with its files and notes: [GitHub Releases](https://github.com/lanoixdesign/autonomous-agent/releases). Latest notes: [packaging/RELEASE_NOTES.md](../packaging/RELEASE_NOTES.md).
 
+#### A cleaner approval card (new in 0.9.10)
+
+✅ The card shows only the sentence (“The agent wants to write a file in My files”), **Allow** / **Refuse** and
+the small “Don't ask me again” box. One folded **Details** link holds the plain explanation, then the tool and its
+arguments. Same card for every tool, in Simple and Advanced mode.
+
 #### Really simple (new in 0.9.9)
 
 🧸 **Simple mode by default**: a shorter sidebar (Chat, Services, Settings, Help), a quiet top bar with one **Stop**
@@ -76,6 +82,12 @@ Same features, quieter screens. Neutral backgrounds (off-white by day, soft dark
 ## Français
 
 Chaque version avec ses fichiers et ses notes : [GitHub Releases](https://github.com/lanoixdesign/autonomous-agent/releases). Dernières notes : [packaging/RELEASE_NOTES.md](../packaging/RELEASE_NOTES.md).
+
+#### Une carte de validation plus nette (nouveau en 0.9.10)
+
+✅ La carte ne montre que la phrase (« L'agent veut écrire un fichier dans Mes fichiers »), **Autoriser** /
+**Refuser** et la petite case « Ne plus me demander ». Un seul lien replié **Détails** contient l'explication en
+mots simples, puis l'outil et ses arguments. Même carte pour tous les outils, en mode simple comme avancé.
 
 #### Vraiment simple (nouveau en 0.9.9)
 

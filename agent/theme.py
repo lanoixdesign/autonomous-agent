@@ -479,6 +479,10 @@ SIMPLE_CSS += (
     " #keybanner[hidden]{display:none} #keybanner span{flex:1;min-width:200px}\n"
     " #keybanner a{padding:6px 14px;border-radius:10px;background:var(--accent);color:var(--on-accent);"
     "text-decoration:none;font-weight:500;white-space:nowrap}\n"
+    " .card .cdet{margin:12px 0 0;text-align:left} .card .cdet summary{text-align:center;font-size:13px}\n"
+    " .card .cwhy p{margin:8px 0 4px;font-size:13px;color:var(--text);text-align:left;max-width:none}\n"
+    " .card .cdet .linkbtn{background:none!important;border:0!important;padding:4px 0;margin-top:6px;font-size:12.5px;"
+    "color:var(--accent-text)!important;cursor:pointer;text-decoration:underline}\n"
     " .card .remember label{display:flex;gap:8px;align-items:center;justify-content:center;font-size:13px;"
     "color:var(--muted);cursor:pointer;margin-top:10px} .card .remember input{width:16px;height:16px;margin:0}\n"
 )
