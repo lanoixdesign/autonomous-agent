@@ -132,6 +132,28 @@ CHAT_PAGE = r"""<!doctype html>
  /* live swarm graph */
  #swarm{flex-shrink:0;margin:10px 16px 0;border:1px solid rgba(var(--accent-rgb),0.132);border-radius:18px;background:var(--card2);}
  #swarm[hidden]{display:none}
+
+ /* v0.9.16: agent grid (tiles fill as the work advances) */
+ .swgrid{display:grid;grid-template-columns:repeat(auto-fill,minmax(52px,1fr));gap:10px;padding:6px 4px 14px;justify-items:center}
+ .atile{position:relative;width:52px;height:52px;padding:0;border:1px solid rgba(var(--accent-rgb),0.28);border-radius:10px;background:var(--card);overflow:hidden;cursor:pointer;appearance:none;font:inherit;color:inherit}
+ .atile .fill{position:absolute;left:0;right:0;bottom:0;height:calc(var(--p,0)*100%);background:rgba(var(--accent-rgb),0.42);transition:height .35s ease}
+ .atile.done .fill{background:rgba(var(--accent-rgb),0.62)}
+ .atile.error{border-color:rgba(var(--bad-rgb,180,70,70),0.7)}
+ .atile.error .fill{background:rgba(var(--bad-rgb,180,70,70),0.28)}
+ .atile.pulse .fill{height:45%;animation:atilepulse 1.6s ease-in-out infinite}
+ .atile .mark{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;opacity:0}
+ .atile.done .mark{opacity:1} .atile .mark svg{width:18px;height:18px}
+ .atile .who{position:absolute;left:0;right:0;bottom:3px;font-size:9px;line-height:1;text-align:center;color:var(--muted);pointer-events:none;padding:0 2px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+ @keyframes atilepulse{0%,100%{opacity:.45}50%{opacity:.85}}
+ @media (prefers-reduced-motion:reduce){ .atile.pulse .fill{animation:none} .atile{animation:none} }
+ .atile.in{animation:atilein .35s ease}
+ @keyframes atilein{from{opacity:0;transform:scale(.86)}to{opacity:1;transform:none}}
+ #agpanel{position:fixed;top:0;right:0;bottom:0;width:min(380px,100%);background:var(--card);border-left:1px solid var(--line,rgba(0,0,0,.08));z-index:40;padding:16px 18px 24px;overflow:auto}
+ #agpanel[hidden]{display:none} #agpanel h2{font-size:16px;margin:0 20px 6px 0} #agpanel .agtask{color:var(--muted);font-size:13px;margin:0 0 14px}
+ #agpanel ol{list-style:none;margin:0;padding:0} #agpanel li{display:grid;grid-template-columns:auto 1fr auto;gap:8px;padding:8px 0;border-top:1px solid var(--line,rgba(0,0,0,.06));font-size:13px}
+ #agpanel .when{color:var(--muted);font-variant-numeric:tabular-nums;font-size:12px} #agpanel .st{color:var(--muted)}
+ #agpanel .st.ok{color:var(--accent)} #agpanel .st.error{color:var(--bad,#a44)}
+ #agx{position:absolute;top:10px;right:10px}
  .swhead{display:flex;align-items:center;gap:10px;padding:8px 12px;cursor:pointer;border:0;background:none;color:var(--soft);width:100%;font:600 13px var(--font);text-align:left;border-radius:18px}
  .swhead .chev{transition:transform .2s;color:var(--blue)} #swarm.closed .chev{transform:rotate(-90deg)}
  .swhead .sum{color:var(--muted);font-weight:500}
@@ -288,6 +310,7 @@ CHAT_PAGE = r"""<!doctype html>
  <div id="ratebar" hidden><div class="rnote" id="ratenote" aria-live="polite"></div><span id="rates" style="display:contents"></span></div>
  <div id="idcpanel" hidden></div>
  <section id="swarm" hidden aria-live="polite"></section>
+ <aside id="agpanel" hidden role="dialog" aria-modal="true" aria-labelledby="agpt"></aside>
  <div id="log"></div>
  <div id="thinking" role="status"><i class="dot"></i><span id="thinktext"></span></div>
  <div id="err"></div>
@@ -833,6 +856,39 @@ function agUpdate(c,a){ const busy=BUSY.includes(a.status);
   c.classList.toggle("earlier",!!a.earlier);
   const k=c.querySelector(".agkey"); k.textContent=keyLine(a); k.classList.toggle("shared",!!a.key && !a.key_match && (a.key_task||"general")!=="general");
   k.title=a.key_mask?a.key+" · "+a.key_mask:""; }
+
+function tile(a){ const b=el("button","atile"); b.type="button"; b.setAttribute("role","listitem"); b.dataset.id=a.id;
+  b.append(el("span","fill"), (()=>{ const m=el("span","mark"); m.innerHTML=CHECK; return m; })(), el("span","who"));
+  b.onclick=()=>openAgent(a.id); tileUpdate(b,a); return b; }
+function tileUpdate(b,a){ const err=a.status && !BUSY.includes(a.status) && !["done","revise"].includes(a.status);
+  const pct=a.indeterminate?null:Math.round((a.progress||0)*100);
+  b.style.setProperty("--p", a.indeterminate?0.45:(a.progress||0));
+  b.classList.toggle("done", a.status==="done"||a.status==="revise");
+  b.classList.toggle("error", !!err); b.classList.toggle("pulse", !!a.indeterminate && BUSY.includes(a.status||"running"));
+  const who=a.id==="root"?t("who.short.root"):(a.role||agentShort(a.id));
+  b.querySelector(".who").textContent=who;
+  b.title=who+" — "+(a.task||tr("status",a.status||"queued"))+(pct!=null?" ("+pct+"%)":"");
+  b.setAttribute("aria-label", b.title); }
+function openAgent(id){ const g=graph, a=(g&&g.agents||[]).find(x=>x.id===id); if(!a) return;
+  const p=$("agpanel"); p.hidden=false; p.replaceChildren();
+  const x=el("button","grey","×"); x.id="agx"; x.type="button"; x.setAttribute("aria-label",t("grid.close")); x.onclick=closeAgent;
+  const h=el("h2"); h.id="agpt"; h.textContent=a.id==="root"?t("who.short.root"):(a.role||agentShort(a.id));
+  p.append(x,h, el("p","agtask",a.task||tr("status",a.status||"")));
+  const ol=el("ol"); const hist=a.history||[];
+  if(!hist.length) ol.append(el("li",null,t("grid.empty")));
+  hist.forEach(e=>{ const li=el("li"); const when=el("span","when", e.ts?new Date((e.ts>1e12?e.ts:e.ts*1000)).toLocaleTimeString(LANG,{hour:"2-digit",minute:"2-digit"}):"");
+    let act=e.action||e.kind||"";
+    if(e.kind==="progress") act=t("grid.step",{n:e.steps||0,max:e.max_steps||"?"});
+    else if(e.kind==="audit") act=e.action||e.kind;
+    else act=tr("grid.act", e.kind||"other");
+    if(e.text) act+=" — "+e.text;
+    const st=el("span","st", e.status?tr("status",e.status): (e.ok===true?t("grid.ok"):e.ok===false?t("grid.err"):""));
+    if(e.ok===true||e.status==="ok") st.classList.add("ok"); if(e.ok===false||e.status==="error") st.classList.add("error");
+    li.append(when, el("span",null,act), st); ol.append(li); });
+  p.append(el("h3",null,t("grid.history")), ol); }
+function closeAgent(){ $("agpanel").hidden=true; $("agpanel").replaceChildren(); }
+document.addEventListener("keydown",e=>{ if(e.key==="Escape" && !$("agpanel").hidden) closeAgent(); });
+
 function drawSwarm(){
   const box=$("swarm"), g=graph;
   if(!g || !g.children || g.task!==cur){ box.hidden=true; box.replaceChildren(); gsig=""; return; }
@@ -845,22 +901,19 @@ function drawSwarm(){
     const head=el("button","swhead"); head.type="button"; head.title=t("swarm.toggle"); head.setAttribute("aria-expanded",String(swOpen));
     head.append(el("span","chev","▾"), el("span",null,t("swarm.title")), el("span","sum"));
     head.onclick=()=>{ swOpen=!swOpen; try{ localStorage.setItem("swarmOpen",swOpen?"1":"0"); }catch(e){} box.classList.toggle("closed",!swOpen); head.setAttribute("aria-expanded",String(swOpen)); lines(); };
-    const body=el("div","swbody"), svg=svgEl("svg",{class:"swlines","aria-hidden":"true"});
-    const left=el("div","swcol left"), right=el("div","swcol right"), center=el("div","swcenter");
-    const hub=el("div","hub"), inner=el("div","inner"), core=el("div","core"); core.innerHTML=CHECK; inner.append(core); hub.append(inner);
-    const doc=el("a","doc"); doc.href="#"; doc.innerHTML=DOC; const chk=el("span","chk"); chk.innerHTML=CHECK; doc.append(chk);
-    doc.title=t("swarm.answer"); doc.onclick=ev=>{ ev.preventDefault(); showAnswer(); };
-    const lab=el("div","hublabel"); lab.append(el("span",null,TRACE_TECH?"root":t("who.short.root")), el("small"));
-    center.append(hub, doc, lab);
-    kids.forEach((a,i)=>{ (narrow.matches || i%2===0 ? left : right).append(agCard(a)); });
-    body.append(svg, left, center, right);
+    const body=el("div","swbody"), grid=el("div","swgrid"); grid.setAttribute("role","list");
     const foot=el("div","swfoot"); box.append(head, body, foot);
+    body.append(grid);
+    [root, ...kids].forEach(a=>grid.append(tile(a)));
     box.classList.toggle("closed",!swOpen);
     if(merged && gmerged[key]===undefined) gmerged[key]="shown";   // opened after the fact: no animation
   }
   box.querySelector(".swhead .sum").textContent=t("swarm.summary",{n:kids.length,running});
-  box.querySelector(".hublabel small").textContent=t("swarm.root")+" · "+tr("status",root.status||g.status)+(root.key?" · 🔑 "+root.key:"");
-  kids.forEach(a=>{ const c=box.querySelector('.ag[data-id="'+CSS.escape(a.id)+'"]'); if(c) agUpdate(c,a); });
+  const all=[root, ...kids];
+  const grid=box.querySelector(".swgrid");
+  all.forEach(a=>{ let c=grid.querySelector('.atile[data-id="'+CSS.escape(a.id)+'"]');
+    if(!c){ c=tile(a); c.classList.add("in"); grid.append(c); } else tileUpdate(c,a); });
+  [...grid.querySelectorAll(".atile")].forEach(c=>{ if(!all.some(a=>a.id===c.dataset.id)) c.remove(); });
   foot(g, kids);
   if(merged && gmerged[key]!=="shown"){            // first time we see the swarm finish: merge animation
     gmerged[key]="shown"; lines(); offsets(); box.classList.add("merging");

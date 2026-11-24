@@ -138,6 +138,58 @@ def _pool_fields(a: dict, names: dict) -> dict:
 
 
 MAX_EARLIER = 24                        # helpers of earlier turns kept in the swarm graph
+
+
+BUSY_STATUS = ("queued", "running", "cancelling")
+_HIST_KINDS = ("user", "status", "audit", "progress", "message", "approval", "stop", "retry", "critic", "keys", "idc")
+
+
+def tile_progress(steps: int, max_steps: int | None, status: str | None) -> tuple[float, bool]:
+    """(fill 0..1, indeterminate?). Done or failed: full. Known budget: steps / max. Else a pulse in the UI."""
+    done = status not in (None, *BUSY_STATUS)
+    if done:
+        return 1.0, False
+    if max_steps:
+        return min(1.0, (steps or 0) / max_steps), False
+    return 0.0, True
+
+
+def history_of(events: list[dict], agent_id: str, limit: int = 40) -> list[dict]:
+    """Compact history of one agent, for the grid panel (time, action, status)."""
+    out: list[dict] = []
+    for e in events:
+        kind = e.get("kind")
+        if kind not in _HIST_KINDS:
+            continue
+        aid = e.get("agent")
+        if agent_id == "root":
+            if aid not in (None, "", "root"):
+                continue
+        elif aid != agent_id:
+            continue
+        item: dict = {"ts": e.get("ts"), "kind": kind, "status": e.get("status") or e.get("reason")}
+        if kind == "audit":
+            item["action"] = e.get("tool") or e.get("event") or "audit"
+            item["ok"] = e.get("ok")
+            item["status"] = "ok" if e.get("ok") is True else ("error" if e.get("ok") is False else item["status"])
+        elif kind == "progress":
+            item["action"] = "progress"
+            item["steps"], item["max_steps"] = e.get("steps"), e.get("max_steps")
+        elif kind == "message":
+            item["action"] = "message"
+            item["text"] = (e.get("content") or "")[:200]
+        elif kind == "approval":
+            item["action"] = e.get("tool") or "approval"
+        elif kind == "user":
+            item["action"] = "user"
+            item["text"] = (e.get("text") or "")[:200]
+        elif kind == "stop":
+            item["action"] = "stop"
+        else:
+            item["action"] = kind
+        out.append(item)
+    return out[-limit:]
+
 NEVER_REMEMBER = ("send", "spend")      # these are asked every single time, whatever the rules say
 RULE_SCOPES = ("conversation", "session")
 
@@ -418,6 +470,14 @@ class Task:
                 u = self.agent_usage.setdefault(entry["agent"], {"parent": entry.get("parent"), **_zero()})
                 _add(u, entry)
 
+    def history(self, agent_id: str, events: list[dict] | None = None) -> list[dict]:
+        """Plain task history of one agent, from events already stored (current turn, last 40)."""
+        if events is None:
+            with self._lock:
+                start = max((i for i, e in enumerate(self.events) if e.get("kind") == "user"), default=0)
+                events = self.events[start:]
+        return history_of(events, agent_id)
+
     def on_progress(self, agent: str, steps: Any, max_steps: Any, key: dict | None = None) -> None:
         """One model step done by `agent` (live progress for the swarm graph). `key`: the pool key that
         served it (name and MASKED value only, never the secret) and the task type it was picked for."""
@@ -441,17 +501,18 @@ class Task:
         with self._lock:
             agents = [dict(a) for a in self.agents.values()]
             start = max((i for i, e in enumerate(self.events) if e.get("kind") == "user"), default=0)
-            evs = [e for e in self.events[start:] if e.get("kind") == "audit"]
+            evs = self.events[start:]
+            audits = [e for e in evs if e.get("kind") == "audit"]
             status, turn = self.status, self.turns
         out = []
         for a in agents:
             st, mx = a.get("steps") or 0, a.get("max_steps") or 0
-            done = a.get("status") not in (None, "queued", "running", "cancelling")
-            prog = 1.0 if done else (min(1.0, st / mx) if mx else 0.0)
+            prog, indet = tile_progress(st, mx or None, a.get("status"))
             out.append({"id": a["id"], "parent": a.get("parent"), "depth": a.get("depth") or 0,
                         "task": ((a.get("task") or "").split("\n\n")[0] if a.get("handoff") else (a.get("task") or ""))[:300],
                         "status": a.get("status"), "steps": st,
-                        "max_steps": mx or None, "progress": round(prog, 3),
+                        "max_steps": mx or None, "progress": round(prog, 3), "indeterminate": indet,
+                        "history": history_of(evs, a["id"]),
                         "isolated": bool(a.get("isolated")), "answer": (a.get("answer") or "")[:500] or None,
                         "role": a.get("role") or role_task(a.get("task") if a["id"] != "root" else ""),
                         "key": a.get("key"), "key_mask": a.get("key_mask"), "key_task": a.get("key_task"),
@@ -461,9 +522,9 @@ class Task:
                         "score": a.get("score")})
         merges = [{"agent": e.get("agent"), "children": e.get("children") or [],
                    "applied": e.get("applied") or [], "conflicts": e.get("conflicts") or [],
-                   "skipped": e.get("skipped")} for e in evs if e.get("event") == "merge"]
+                   "skipped": e.get("skipped")} for e in audits if e.get("event") == "merge"]
         files: list[str] = []
-        for e in evs:
+        for e in audits:
             if e.get("tool") in ("write_file", "edit_file") and e.get("ok") and isinstance(e.get("args"), dict):
                 p = e["args"].get("path")
                 if p and p not in files:

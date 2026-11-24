@@ -815,6 +815,10 @@ from .i18n_v0915 import EN_V0915, FR_V0915  # noqa: E402
 
 EN.update(EN_V0915)       # v0.9.15: Gemini (Google AI Studio)
 FR.update(FR_V0915)
+from .i18n_v0916 import EN_V0916, FR_V0916  # noqa: E402
+
+EN.update(EN_V0916)       # v0.9.16: agent grid
+FR.update(FR_V0916)
 
 STRINGS = {"en": EN, "fr": FR}
 PLACEHOLDER_RE = re.compile(r"\{(\w+)[^}]*\}")

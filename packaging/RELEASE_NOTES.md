@@ -1,3 +1,8 @@
+**New in 0.9.16 / Nouveautés de la 0.9.16 — a grid of assistants / une grille d'assistants**
+
+- **Each assistant is a small square** in a grid that grows as new ones start. The square **fills from the bottom** as its work advances; a check when it is done, a muted red border if it failed. / **Chaque assistant est un petit carré** dans une grille qui s'agrandit à mesure qu'ils arrivent. Le carré **se remplit par le bas** au fur et à mesure ; une coche quand c'est terminé, un bord rouge doux en cas d'échec.
+- **Hover** (or tap) to see its role and current task in plain words; **click** to open the history of what it has done. / **Survole** (ou appuie) pour voir son rôle et sa tâche en mots simples ; **clique** pour ouvrir l'historique de ce qu'il a fait.
+
 **New in 0.9.15 / Nouveautés de la 0.9.15 — Gemini (free key / clé gratuite)**
 
 - **A third welcome choice**: **Free Gemini key (recommended for code and images)**. Get it at [Google AI Studio](https://aistudio.google.com/apikey) (Google account, no card). Default model: **gemini-3.8-flash** (free tier). / **Un troisième choix à l'accueil** : **Clé Gemini gratuite (recommandée pour le code et les images)**. À créer sur [Google AI Studio](https://aistudio.google.com/apikey) (compte Google, sans carte). Modèle par défaut : **gemini-3.8-flash** (offre gratuite).
