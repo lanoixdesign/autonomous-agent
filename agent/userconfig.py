@@ -18,6 +18,7 @@ from __future__ import annotations
 
 import json
 import os
+import sys
 import re
 import secrets as _secrets
 import threading
@@ -115,11 +116,43 @@ def write_private(path: Path, data: Any) -> None:
         pass
 
 
-def _read(path: Path, default: Any) -> Any:
+def _read(path: Path, default: Any, backup: bool = False) -> Any:
     try:
-        return json.loads(path.read_text(encoding="utf-8"))
-    except (OSError, ValueError):
+        text = path.read_text(encoding="utf-8")
+    except FileNotFoundError:
         return default
+    except (OSError, ValueError):
+        text = None
+    try:
+        if text is not None:
+            return json.loads(text)
+    except ValueError:
+        pass
+    if backup and path.exists():
+        # v0.9.13: an unreadable file is kept aside (name.broken-<date>), never silently overwritten
+        import time as _time
+        dest = path.with_name(f"{path.name}.broken-{_time.strftime('%Y%m%d-%H%M%S')}")
+        try:
+            os.replace(path, dest)
+            print(f"warning: {path.name} could not be read; kept as {dest.name}, defaults used", file=sys.stderr)
+        except OSError:
+            pass
+    return default
+
+
+def _clean_settings(raw: dict) -> dict:
+    """v0.9.13: settings saved by another version: a value of the wrong type falls back to the default."""
+    out = {}
+    for k, v in raw.items():
+        d = DEFAULTS.get(k)
+        if k in DEFAULTS and d is not None and v is not None and not (
+                isinstance(v, type(d)) or (isinstance(d, (int, float)) and isinstance(v, (int, float))
+                                           and not isinstance(v, bool))):
+            continue
+        if k in ("lang", "workspace", "currency") and v is not None and not isinstance(v, str):
+            continue
+        out[k] = v
+    return out
 
 
 def mask(secret: str | None) -> str:
@@ -164,9 +197,9 @@ class SecretStore:
 
     def _file(self) -> dict[str, str]:
         if self._cache is None:
-            data = _read(self.path, {})
-            self._cache = {k: v for k, v in (data.get("secrets") or {}).items() if isinstance(v, str)} \
-                if isinstance(data, dict) else {}
+            data = _read(self.path, {}, backup=True)
+            sec = data.get("secrets") if isinstance(data, dict) else None
+            self._cache = {k: v for k, v in sec.items() if isinstance(v, str)} if isinstance(sec, dict) else {}
         return self._cache
 
     def get(self, sid: str) -> str | None:
@@ -219,11 +252,11 @@ class UserConfig:
         self.settings_path = self.dir / SETTINGS_FILE
         self.providers_path = self.dir / PROVIDERS_FILE
         self._lock = threading.RLock()
-        raw = _read(self.settings_path, {})
-        raw = raw if isinstance(raw, dict) else {}
+        raw = _read(self.settings_path, {}, backup=True)
+        raw = _clean_settings(raw) if isinstance(raw, dict) else {}
         self.data: dict[str, Any] = {**json.loads(json.dumps(DEFAULTS)), **raw}
-        self.data["remote"] = {**DEFAULTS["remote"], **(raw.get("remote") or {})}
-        prov = _read(self.providers_path, {})
+        self.data["remote"] = {**DEFAULTS["remote"], **(raw.get("remote") if isinstance(raw.get("remote"), dict) else {})}
+        prov = _read(self.providers_path, {}, backup=True)
         self.providers: list[dict] = [p for p in (prov.get("providers") or []) if isinstance(p, dict)] \
             if isinstance(prov, dict) else []
 

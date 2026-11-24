@@ -42,6 +42,7 @@ API (JSON):
   GET  /app/pool              live key pool: per key (masked) the agents using it, in-flight requests, usage
   POST /app/setup             first-run wizard {"lang", "demo", "done"};  POST /app/remote/token (new token)
   POST /app/restart, /app/quit   stop the server cleanly (restart: the launcher starts it again)
+  POST /app/takeover           v0.9.13: a newer copy asks this one to quit (local + stop token)
       /app/* changes: only from this computer, unless AGENT_REMOTE_SETTINGS=1 (then sign-in + X-CSRF-Token)
   GET  /manifest.webmanifest, /sw.js, /icon-*.png   installable web app (PWA); the service worker caches
                               the page shell only, never API answers or approvals
@@ -643,7 +644,12 @@ class Harness:
         if self.store is None:
             return
         for rec in self.store.all("tasks"):
-            t = Task.restore(rec, self.store.events(rec["id"]), self.store)
+            try:       # v0.9.13: one conversation saved by an older version must not stop the app starting
+                t = Task.restore(rec, self.store.events(rec["id"]), self.store)
+            except Exception as e:  # noqa: BLE001
+                print(f"warning: conversation {str(rec.get('id') if isinstance(rec, dict) else '?')[:40]} "
+                      f"could not be restored ({type(e).__name__}: {e}); skipped", file=sys.stderr)
+                continue
             self._tasks[t.id] = t
         for r in self.store.all("rules"):
             if r.get("scope") == "session":     # session rules end with the process that created them
@@ -1597,6 +1603,24 @@ def make_handler(h: Harness, token: str | None, local_only: bool, auth: "remote.
                 return self._send(500, {"error": f"folder error: {e.strerror or e}", "code": "os"})
             return self._send(404, {"error": "not found"})
 
+        def _takeover(self) -> None:
+            """This computer only, with the stop token from data/instance.json (set by the launcher)."""
+            import hmac as _hmac
+            import os as _os
+            from .instance import TOKEN_ENV, TOKEN_HEADER
+            try:
+                self.rfile.read(min(int(self.headers.get("Content-Length") or 0), 4096))
+            except (ValueError, OSError):
+                pass
+            want = _os.environ.get(TOKEN_ENV) or ""
+            got = str(self.headers.get(TOKEN_HEADER) or "")
+            if not (want and self._direct_local() and _hmac.compare_digest(got, want)):
+                return self._send(403, {"error": "not allowed", "code": "takeover"})
+            c = h.control
+            if c is None or not c.request_stop(False):
+                return self._send(409, {"error": "quit is not available in this mode", "code": "no_restart"})
+            return self._send(202, {"ok": True})
+
         def _app_post(self, path: str, data: dict) -> None:
             import hmac as _hmac
             c = h.control
@@ -1990,6 +2014,8 @@ def make_handler(h: Harness, token: str | None, local_only: bool, auth: "remote.
                 if self._auth_routes(path, data):
                     return
                 return self._send(404, {"error": "not found"})
+            if path == "/app/takeover":     # v0.9.13: a newer copy of the app asks this one to quit
+                return self._takeover()
             if not self._guard(post=True):
                 return
             data = self._body()
