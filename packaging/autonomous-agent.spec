@@ -11,6 +11,9 @@ from PyInstaller.utils.hooks import collect_submodules
 
 ROOT = os.path.abspath(os.path.join(SPECPATH, ".."))
 NAME = "AutonomousAgent"
+# v0.9.12: the app logo (drawn by packaging/make_icons.py) instead of the default Python icon.
+ICNS = os.path.join(ROOT, "assets", "icon.icns")
+ICO = os.path.join(ROOT, "assets", "icon.ico")
 
 datas = [
     (os.path.join(ROOT, "skills"), "skills"),                       # bundled skills (agent/cli.py REPO_SKILLS)
@@ -39,10 +42,10 @@ if sys.platform == "darwin":
     exe = EXE(pyz, a.scripts, [], exclude_binaries=True, name=NAME, console=True,
               argv_emulation=False, target_arch=None, codesign_identity=None)
     coll = COLLECT(exe, a.binaries, a.datas, name=NAME)
-    app = BUNDLE(coll, name=f"{NAME}.app", bundle_identifier="io.github.lanoixdesign.autonomous-agent",
+    app = BUNDLE(coll, name=f"{NAME}.app", icon=ICNS, bundle_identifier="io.github.lanoixdesign.autonomous-agent",
                  info_plist={"CFBundleShortVersionString": os.environ.get("APP_VERSION", "0.9.5"),
                              "CFBundleDisplayName": "Autonomous Agent", "LSMinimumSystemVersion": "11.0",
                              "NSHighResolutionCapable": True})
 else:
     exe = EXE(pyz, a.scripts, a.binaries, a.datas, [], name=NAME, console=sys.platform != "win32", upx=False,
-              runtime_tmpdir=None)
+              runtime_tmpdir=None, icon=ICO if sys.platform == "win32" else None)
