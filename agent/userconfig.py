@@ -52,6 +52,9 @@ PRESETS: dict[str, dict[str, Any]] = {
                    "prefix": "sk-or-", "keys_url": "https://openrouter.ai/keys"},
     "ollama": {"base_url": "http://localhost:11434/v1", "model": "qwen2.5:7b", "key": False, "prefix": "",
                "keys_url": "https://ollama.com/download"},
+    "gemini": {"base_url": "https://generativelanguage.googleapis.com/v1beta/openai/",
+               "model": "gemini-3.8-flash", "key": True, "prefix": "AIza",
+               "keys_url": "https://aistudio.google.com/apikey"},
     "custom": {"base_url": "", "model": "", "key": True, "prefix": "", "keys_url": ""},
 }
 
@@ -66,7 +69,7 @@ DEFAULTS: dict[str, Any] = {
 MAX_PARALLEL = 8
 MAX_BULK = 50                      # lines in one bulk paste
 PROVIDER_LABELS = {"groq": "Groq", "openai": "OpenAI", "openrouter": "OpenRouter", "ollama": "Ollama",
-                   "custom": "Custom"}
+                   "gemini": "Gemini", "custom": "Custom"}
 # Model strength, for the proposed task assignments (plain heuristics, the user can change everything)
 FAST_WORDS = ("mini", "nano", "instant", "flash", "haiku", "small", "lite", "1b", "3b", "7b", "8b", "9b",
               "gemma", "free")
@@ -90,7 +93,7 @@ class SettingsError(ValueError):
 
 
 # Recognisable key prefixes, most specific first (the wizard also does this in the browser).
-KEY_PREFIXES = (("sk-or-", "openrouter"), ("gsk_", "groq"), ("sk-ant-", None), ("sk-", "openai"))
+KEY_PREFIXES = (("sk-or-", "openrouter"), ("gsk_", "groq"), ("AIza", "gemini"), ("sk-ant-", None), ("sk-", "openai"))
 
 
 def detect_provider(secret: str | None) -> str | None:
@@ -762,6 +765,9 @@ class AppControl:
     def key_class(provider: str | None, model: str | None) -> tuple[int, bool]:
         """(strength 0 fast/free, 1 fast paid, 2 strong; vision?) from the provider and the model name."""
         m = (model or "").lower()
+        # v0.9.15: Gemini Flash (free tier) is strong enough for agents, code and images (understanding).
+        if (provider or "") == "gemini" or m.startswith("gemini"):
+            return (0 if "lite" in m else 2), True
         free = provider in ("groq", "ollama") or ":free" in m
         vision = (not free) and any(w in m for w in VISION_WORDS)
         if free:

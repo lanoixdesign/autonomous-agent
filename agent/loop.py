@@ -230,7 +230,7 @@ class Agent:
         return schemas + [idc_mod.tool_schema()] if self.idc is not None else schemas
 
     # ------------------------------------------------------------------
-    def run(self, task: str) -> RunResult:
+    def run(self, task: str | list) -> RunResult:
         """Run one user turn. Can be called repeatedly (chat mode keeps history)."""
         try:
             return self._run(task)
@@ -247,10 +247,12 @@ class Agent:
             self.lang = lang
             self.refresh_system()
 
-    def _run(self, task: str) -> RunResult:
-        self.turn_text = task
+    def _run(self, task: str | list) -> RunResult:
+        from .uploads import plain_text
+        plain = plain_text(task)
+        self.turn_text = plain
         if self.depth == 0:
-            self._set_lang(task)
+            self._set_lang(plain)
         self.messages.append({"role": "user", "content": task})
         st = RunState()
         self.state = st
@@ -260,7 +262,7 @@ class Agent:
         reviews = 0
         ctrl = self.idc
         if ctrl is not None and self.depth == 0:
-            ctrl.start_turn(task)      # sub-agents get their slice (and evidence) from the parent instead
+            ctrl.start_turn(plain)      # sub-agents get their slice (and evidence) from the parent instead
         b = self.budget
         while True:
             reason = None

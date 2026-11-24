@@ -1,3 +1,10 @@
+**New in 0.9.15 / Nouveautés de la 0.9.15 — Gemini (free key / clé gratuite)**
+
+- **A third welcome choice**: **Free Gemini key (recommended for code and images)**. Get it at [Google AI Studio](https://aistudio.google.com/apikey) (Google account, no card). Default model: **gemini-3.8-flash** (free tier). / **Un troisième choix à l'accueil** : **Clé Gemini gratuite (recommandée pour le code et les images)**. À créer sur [Google AI Studio](https://aistudio.google.com/apikey) (compte Google, sans carte). Modèle par défaut : **gemini-3.8-flash** (offre gratuite).
+- **Use Gemini for everything** is on by default (multi-step tasks, code, pictures you attach). Groq and Ollama stay available in Settings. / **Utiliser Gemini pour tout** est coché par défaut (tâches en plusieurs étapes, code, images jointes). Groq et Ollama restent disponibles dans Réglages.
+- The free key can **look at pictures**; **creating** a new image needs a paid Google plan, so the app does not offer it. / La clé gratuite peut **regarder tes photos** ; **créer** une nouvelle image demande un forfait Google payant, donc l'appli ne le propose pas.
+- If Gemini is busy (too many requests), the app waits and tries again, then shows a plain message. The key is never printed or logged. / Si Gemini est occupé (trop de demandes), l'appli attend et réessaie, puis affiche un message simple. La clé n'est jamais affichée ni enregistrée dans les journaux.
+
 **New in 0.9.14 / Nouveautés de la 0.9.14 — the app in its own window / l'appli dans sa propre fenêtre**
 
 - **Its own window** titled AutonomousAgent (about 1100×750, resizable) instead of a browser tab. Closing the window stops the app. / **Sa propre fenêtre** « AutonomousAgent » (environ 1100×750, redimensionnable) au lieu d'un onglet du navigateur. Fermer la fenêtre arrête l'appli.

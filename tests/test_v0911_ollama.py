@@ -111,7 +111,7 @@ def test_ollama_not_started_says_so():
 
 
 def test_welcome_offers_two_simple_choices():
-    assert 'simple ? ["groq","ollama"] : WPROVS' in WELCOME_PAGE
+    assert 'simple ? ["gemini","groq","ollama"] : WPROVS' in WELCOME_PAGE
     assert 'id="olcheck"' in WELCOME_PAGE and 'data-i18n="ol.check"' in WELCOME_PAGE and 'id="olmodel"' in WELCOME_PAGE
     assert '"/app/ollama/check"' in WELCOME_PAGE and 'provider:"ollama"' in WELCOME_PAGE
     assert i18n.FR["wiz.choice.groq"] == "Clé Groq gratuite"
