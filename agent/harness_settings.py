@@ -480,7 +480,9 @@ WELCOME_PAGE = r"""<!doctype html>
    <details class="guide" id="guide" open><summary id="guidet"></summary><ol id="guidel"></ol>
     <a id="getkey" class="btn primary" target="_blank" rel="noopener noreferrer"></a></details>
    <div id="keybox"><label class="f" for="key" data-i18n="set.f.key"></label><input id="key" type="password" autocomplete="new-password" spellcheck="false" data-i18n-placeholder="set.f.keyPh">
-   <div id="detect" class="note" aria-live="polite"></div></div>
+   <div id="detect" class="note" aria-live="polite"></div>
+    <label id="gemallbox" hidden class="olhelp"><input type="checkbox" id="gemall" checked> <span data-i18n="gem.useAll"></span></label>
+    <p id="gemimg" hidden class="muted olhelp" data-i18n="gem.imagesNote"></p></div>
    <div id="olbox" hidden><label class="f" for="oladdr" data-i18n="ol.address"></label>
     <div class="olrow"><input id="oladdr" type="url" spellcheck="false" autocomplete="off" data-i18n-placeholder="ol.addressPh"><button id="olcheck" type="button" class="primary" data-i18n="ol.check"></button></div>
     <p class="muted olhelp" data-i18n="ol.addressHelp"></p>
@@ -503,7 +505,7 @@ WELCOME_PAGE = r"""<!doctype html>
 /*TIP_JS*/
 /*COMMON_JS*/
 /*KEYS_JS*/
-const WPROVS=["groq","openai","openrouter","ollama"], BADGE={groq:["rec","wiz.rec"],openai:["paid","wiz.paid"],openrouter:["","wiz.some"],ollama:["","wiz.local"]};
+const WPROVS=["gemini","groq","openai","openrouter","ollama"], BADGE={gemini:["rec","wiz.rec"],groq:["","wiz.free"],openai:["paid","wiz.paid"],openrouter:["","wiz.some"],ollama:["","wiz.local"]};
 let doneOl=null;
 let PRESETS={}, PREFIXES=[], step=1, doneKey=null, doneBulk=null, wbulk=null, wprop=null;
 function show(n){ step=n; $("s2b").hidden=n!=="2b"; const k=n==="2b"?2:n;
@@ -516,18 +518,19 @@ function buildWBulk(){ wbulk=makeBulk($("wbulk"),{prefixes:()=>PREFIXES,pname:pn
     doneKey=null; doneBulk={n:r.saved,p:r.parallel||r.saved}; wprop=r.proposal||[];
     setTimeout(()=>{ if(wprop.length>1){ jobsStep(); } else { $("donemsg").textContent=doneText(); show(3); } }, 1200); }}); }
 function jobsStep(){ makeJobs($("wjobs"),wprop,()=>{ $("donemsg").textContent=doneText(); show(3); },true); show("2b"); }
-function prov(){ const i=document.querySelector('input[name="prov"]:checked'); return i?i.value:"groq"; }
+function prov(){ const i=document.querySelector('input[name="prov"]:checked'); return i?i.value:(SIMPLEUI()?"gemini":"groq"); }
 function SIMPLEUI(){ return document.documentElement.dataset.ui!=="expert"; }
 function drawProvs(){ const box=$("provs"), cur=prov(), simple=SIMPLEUI(); box.replaceChildren();
-  (simple ? ["groq","ollama"] : WPROVS).forEach(k=>{ if(simple){ const l=el("label"), i=el("input"), d=el("span"); i.type="radio"; i.name="prov"; i.value=k; i.checked=k===cur; i.onchange=()=>provChanged(true);
-      d.append(el("b",null,tr("wiz.choice",k)), el("span","badge "+(k==="groq"?"rec":""),tr("wiz.choiceB",k)), el("small",null,tr("wiz.choiceD",k))); l.append(i,d); box.append(l); return; } const l=el("label"), i=el("input"), d=el("span"); i.type="radio"; i.name="prov"; i.value=k; i.checked=k===cur; i.onchange=()=>provChanged(true);
+  (simple ? ["gemini","groq","ollama"] : WPROVS).forEach(k=>{ if(simple){ const l=el("label"), i=el("input"), d=el("span"); i.type="radio"; i.name="prov"; i.value=k; i.checked=k===cur; i.onchange=()=>provChanged(true);
+      d.append(el("b",null,tr("wiz.choice",k)), el("span","badge "+(k==="gemini"?"rec":""),tr("wiz.choiceB",k)), el("small",null,tr("wiz.choiceD",k))); l.append(i,d); box.append(l); return; } const l=el("label"), i=el("input"), d=el("span"); i.type="radio"; i.name="prov"; i.value=k; i.checked=k===cur; i.onchange=()=>provChanged(true);
     d.append(el("b",null,pname(k)), el("span","badge "+BADGE[k][0],t(BADGE[k][1])), el("small",null,tr("wiz.d",k))); l.append(i, d); box.append(l); }); provChanged(false); }
 function pname(k){ return tr("prov",k).split(" (")[0]; }
 function provChanged(user){ const k=prov(), p=PRESETS[k]||{}; const g=$("getkey");
   g.href=p.keys_url||"#"; g.textContent=k==="ollama"?t("ol.download"):t("wiz.openSite",{name:pname(k)}); g.hidden=!p.keys_url;
-  $("guidet").textContent=t(k==="groq"?"wiz.guide":k==="ollama"?"ol.guide":"wiz.guidePaid");
-  const isOl=k==="ollama"; $("olbox").hidden=!isOl; $("testb").style.display=isOl?"none":""; $("wbulkd").style.display=isOl?"none":""; if(isOl && !OL.tried) olCheck(); const ol=$("guidel"); ol.replaceChildren();
-  [1,2,3,4].forEach(n=>ol.append(el("li",null,tr(k==="ollama"?"ol.g":"wiz.g",k==="ollama"?String(n):k+"."+n))));
+  $("guidet").textContent=t(k==="groq"?"wiz.guide":k==="ollama"?"ol.guide":k==="gemini"?"gem.guide":"wiz.guidePaid");
+  const isOl=k==="ollama", isGem=k==="gemini"; $("olbox").hidden=!isOl; $("gemallbox").hidden=!isGem; $("gemimg").hidden=!isGem;
+  $("testb").style.display=isOl?"none":""; $("wbulkd").style.display=isOl?"none":""; if(isOl && !OL.tried) olCheck(); const ol=$("guidel"); ol.replaceChildren();
+  [1,2,3,4].forEach(n=>ol.append(el("li",null,tr(k==="ollama"?"ol.g":k==="gemini"?"gem.g":"wiz.g",k==="ollama"||k==="gemini"?String(n):k+"."+n))));
   $("keybox").hidden=!p.key; if(!p.key) $("key").value=""; $("test").textContent=""; if(user) $("detect").textContent=""; }
 // recognise the service from the pasted key, and select it for the user
 function detectProv(v){ v=String(v||"").trim(); for(const [pre,pv] of PREFIXES) if(v.startsWith(pre)) return pv; return undefined; }
@@ -572,7 +575,8 @@ $("save2").onclick=async()=>{ const k=prov(), p=PRESETS[k]||{}, key=$("key").val
   if(k==="ollama") return olSave();
   if(p.key && !key){ const line=$("test"); line.className="testline bad"; line.textContent=t("test.missing"); $("key").focus(); return; }
   const name=pname(k);
-  try{ await api("POST","/app/providers",{provider:k,name,categories:["text","code"],...(key?{key}:{})}); await api("POST","/app/setup",{demo:false,done:true,lang:LANG}); }
+  const cats=(k==="gemini" && $("gemall").checked) ? ["text","code","image"] : ["text","code"];
+  try{ await api("POST","/app/providers",{provider:k,name,categories:cats,...(key?{key}:{})}); await api("POST","/app/setup",{demo:false,done:true,lang:LANG}); }
   catch(e){ return fail(e); }
   $("key").value=""; doneKey=name; doneBulk=null; $("donemsg").textContent=doneText(); show(3); };
 $("demo").onclick=async()=>{ try{ await api("POST","/app/setup",{demo:true,done:true,lang:LANG}); }catch(e){ return fail(e); } doneKey=null; doneBulk=null; $("donemsg").textContent=doneText(); show(3); };

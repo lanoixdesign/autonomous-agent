@@ -39,7 +39,8 @@ from pathlib import Path
 
 from . import i18n
 
-KEY_VARS = (("groq", "GROQ_API_KEY"), ("openai", "OPENAI_API_KEY"), ("openrouter", "OPENROUTER_API_KEY"))
+KEY_VARS = (("groq", "GROQ_API_KEY"), ("gemini", "GEMINI_API_KEY"), ("openai", "OPENAI_API_KEY"),
+            ("openrouter", "OPENROUTER_API_KEY"))
 PREFERRED_PORT = 8765
 
 ENV_TEMPLATE = """# autonomous-agent — API keys / clés d'API
@@ -54,6 +55,8 @@ ENV_TEMPLATE = """# autonomous-agent — API keys / clés d'API
 # OPENAI_API_KEY=
 # AGENT_PROVIDER=openrouter
 # OPENROUTER_API_KEY=
+# AGENT_PROVIDER=gemini
+# GEMINI_API_KEY=
 # Local model, no key / modèle local, sans clé : AGENT_PROVIDER=ollama
 
 # Optional model / modèle facultatif

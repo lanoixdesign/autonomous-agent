@@ -811,6 +811,10 @@ from .i18n_v0913 import EN_V0913, FR_V0913  # noqa: E402
 
 EN.update(EN_V0913)       # v0.9.13: new version while an old one runs, start error page
 FR.update(FR_V0913)
+from .i18n_v0915 import EN_V0915, FR_V0915  # noqa: E402
+
+EN.update(EN_V0915)       # v0.9.15: Gemini (Google AI Studio)
+FR.update(FR_V0915)
 
 STRINGS = {"en": EN, "fr": FR}
 PLACEHOLDER_RE = re.compile(r"\{(\w+)[^}]*\}")

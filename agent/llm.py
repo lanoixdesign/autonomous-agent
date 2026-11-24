@@ -21,6 +21,8 @@ PROVIDERS: dict[str, dict[str, Any]] = {
     "openai": {"base_url": "https://api.openai.com/v1", "key_env": "OPENAI_API_KEY", "model": "gpt-4o-mini"},
     "openrouter": {"base_url": "https://openrouter.ai/api/v1", "key_env": "OPENROUTER_API_KEY", "model": "openai/gpt-4o-mini"},
     "ollama": {"base_url": "http://localhost:11434/v1", "key_env": None, "model": "qwen2.5:7b"},
+    "gemini": {"base_url": "https://generativelanguage.googleapis.com/v1beta/openai/",
+              "key_env": "GEMINI_API_KEY", "model": "gemini-3.8-flash"},
     "custom": {"base_url": None, "key_env": "AGENT_API_KEY", "model": None},
 }
 

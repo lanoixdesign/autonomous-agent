@@ -838,13 +838,14 @@ class Harness:
             for s in saved:
                 audit.record(event="upload", agent="root", depth=0, path=s["path"], bytes=s["bytes"], sha256=s["sha256"])
         agent_text = uploads.describe(text, saved or [])
-        threading.Thread(target=self._run, args=(task, agent_text), name=f"task-{task.id}", daemon=True).start()
+        content = uploads.llm_content(agent_text, saved or [])
+        threading.Thread(target=self._run, args=(task, content), name=f"task-{task.id}", daemon=True).start()
 
     def running(self) -> int:
         with self._lock:
             return sum(1 for t in self._tasks.values() if t.status == "running")
 
-    def _run(self, task: Task, text: str) -> None:
+    def _run(self, task: Task, text: str | list) -> None:
         def on_event(kind: str, data: dict) -> None:
             if kind == "assistant":
                 task.add_event("message", agent=data.get("agent", "root"), content=data.get("content"),

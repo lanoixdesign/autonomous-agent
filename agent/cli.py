@@ -360,7 +360,7 @@ def common(p: argparse.ArgumentParser) -> None:
     p.add_argument("--workspace", "-w", default=".", help="directory the agent may work in (default: .)")
     p.add_argument("--permissions", "-p", default=None, help="permissions.yaml/.json (default: ./permissions.yaml if present, else safe defaults)")
     p.add_argument("--model", "-m", default=None, help="model name (default: AGENT_MODEL or provider default)")
-    p.add_argument("--provider", default=None, help="groq|openai|openrouter|ollama|custom|mock (default: AGENT_PROVIDER or mock)")
+    p.add_argument("--provider", default=None, help="groq|gemini|openai|openrouter|ollama|custom|mock (default: AGENT_PROVIDER or mock)")
     p.add_argument("--state-dir", default=None, help="memory + audit directory (default: <workspace>/.agent)")
     p.add_argument("--max-steps", type=int, default=12)
     p.add_argument("--max-tool-calls", type=int, default=24)

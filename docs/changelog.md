@@ -8,6 +8,13 @@
 
 Every release with its files and notes: [GitHub Releases](https://github.com/lanoixdesign/autonomous-agent/releases). Latest notes: [packaging/RELEASE_NOTES.md](../packaging/RELEASE_NOTES.md).
 
+#### Gemini, a free key for code and images (new in 0.9.15)
+
+✨ The welcome screen offers a third choice: **Free Gemini key (recommended for code and images)**. A free key from
+[Google AI Studio](https://aistudio.google.com/apikey). Default model: **gemini-3.8-flash** (free tier), used for
+multi-step tasks, code, and looking at pictures you attach. Creating a new image is not offered: it needs a paid
+Google plan. See [Gemini](gemini.md).
+
 #### The app in its own window (new in 0.9.14)
 
 🪟 The desktop app opens in its own **AutonomousAgent** window instead of a browser tab (WKWebView on Mac, Edge
@@ -108,6 +115,13 @@ Same features, quieter screens. Neutral backgrounds (off-white by day, soft dark
 ## Français
 
 Chaque version avec ses fichiers et ses notes : [GitHub Releases](https://github.com/lanoixdesign/autonomous-agent/releases). Dernières notes : [packaging/RELEASE_NOTES.md](../packaging/RELEASE_NOTES.md).
+
+#### Gemini, une clé gratuite pour le code et les images (nouveau en 0.9.15)
+
+✨ L'écran de bienvenue propose un troisième choix : **Clé Gemini gratuite (recommandée pour le code et les images)**.
+Une clé gratuite depuis [Google AI Studio](https://aistudio.google.com/apikey). Modèle par défaut : **gemini-3.8-flash**
+(offre gratuite), pour les tâches en plusieurs étapes, le code, et regarder tes images jointes. Créer une nouvelle
+image n'est pas proposé : cela demande un forfait Google payant. Voir [Gemini](gemini.md#francais).
 
 #### L'appli dans sa propre fenêtre (nouveau en 0.9.14)
 
