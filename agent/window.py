@@ -70,4 +70,13 @@ def describe() -> str:
     wv, why = load()
     if wv is None:
         return "window: " + why
-    return f"window: pywebview {getattr(wv, '__version__', '?')} available ({sys.platform})"
+    msg = f"window: pywebview available ({sys.platform})"
+    if os.environ.get("AGENT_SMOKE") == "1":      # CI smoke test: the platform backend is bundled too
+        mod = {"darwin": "webview.platforms.cocoa", "win32": "webview.platforms.winforms"}.get(sys.platform)
+        if mod:
+            try:
+                __import__(mod)
+                msg += f"; backend {mod.rsplit('.', 1)[1]} ok"
+            except Exception as e:  # noqa: BLE001
+                msg += f"; backend {mod.rsplit('.', 1)[1]} FAILED ({type(e).__name__}: {e})"
+    return msg
