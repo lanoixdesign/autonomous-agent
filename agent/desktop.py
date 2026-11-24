@@ -17,9 +17,10 @@
 - No terminal needed: the browser opens on the chat (first launch: a welcome wizard to pick the language and
   paste an API key, or try demo mode). Everything is configured in the page (Settings); the ⏻ Quit button stops
   the server cleanly, ↻ Restart applies the settings that need it.
-- Windows: no console window (windowed build); messages go to data/app.log. macOS: the .app runs in the
-  background (AGENT_TERMINAL=1 reopens it in Terminal to see the logs). Double-clicking again while it runs
-  just opens the browser on the running agent.
+- Messages always go to data/app.log in the desktop builds (Mac: ~/AutonomousAgent/data/app.log, Windows:
+  %USERPROFILE%\\AutonomousAgent\\data\\app.log). Any start error also opens a plain page (data/start-error.html).
+- v0.9.13: double-clicking while the SAME version runs opens the browser on it; an OLDER (or other) version still
+  running is asked to quit and this one takes over (agent/instance.py); a busy port -> another free port.
 """
 from __future__ import annotations
 
@@ -157,6 +158,8 @@ def free_port(host: str = "127.0.0.1") -> int:
         return int(forced)
     for port in (PREFERRED_PORT, 0):
         with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
+            if os.name == "posix":      # v0.9.13: a port just freed by the old copy (TIME_WAIT) is usable
+                s.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
             try:
                 s.bind((host, port))
             except OSError:
@@ -215,35 +218,172 @@ def ensure_streams(log_path: Path) -> Path | None:
 
 
 def running_instance(port: int = PREFERRED_PORT, timeout: float = 1.5) -> str | None:
-    """URL of an autonomous-agent already listening on this port (double-click while it runs), else None."""
+    """URL of an autonomous-agent already listening on this port, else None (kept for compatibility)."""
     if os.environ.get("AGENT_PORT"):
         return None
-    url = f"http://127.0.0.1:{port}/"
-    try:
-        with urllib.request.urlopen(url + "auth/status", timeout=timeout) as r:
-            server = r.headers.get("Server") or ""
-            data = r.read(4096)
-    except (urllib.error.URLError, OSError, ValueError):
+    from . import instance
+    info = instance.probe(port, timeout)
+    return info["url"] if info else None
+
+
+# ------------------------------------------------------------------ v0.9.13: log file + start error page
+LOG_MAX = 2_000_000
+_SECRET_RE = None
+
+
+class _Tee:
+    """Writes to the log file and, when there is one, to the console too."""
+
+    def __init__(self, f, other):
+        self.f, self.other = f, other
+
+    def write(self, s):
+        try:
+            self.f.write(s)
+        except (OSError, ValueError):
+            pass
+        if self.other is not None:
+            try:
+                self.other.write(s)
+            except (OSError, ValueError):
+                pass
+        return len(s)
+
+    def flush(self):
+        for x in (self.f, self.other):
+            try:
+                if x is not None:
+                    x.flush()
+            except (OSError, ValueError):
+                pass
+
+    def isatty(self):
+        return bool(self.other is not None and getattr(self.other, "isatty", lambda: False)())
+
+
+def log_path(home: Path) -> Path:
+    return home / "data" / "app.log"
+
+
+def setup_log(home: Path) -> Path | None:
+    """Every message goes to data/app.log in the desktop builds (Finder / Explorer give no console), and when
+    there is no console at all. Rotated at 2 MB (app.log.1)."""
+    if not (getattr(sys, "frozen", False) or sys.stdout is None or sys.stderr is None
+            or os.environ.get("AGENT_LOG_FILE") == "1"):
         return None
-    if "autonomous-agent" in server and b'"authenticated"' in data:
-        return url
-    return None
+    p = log_path(home)
+    try:
+        p.parent.mkdir(parents=True, exist_ok=True)
+        if p.exists() and p.stat().st_size > LOG_MAX:
+            os.replace(p, p.with_name("app.log.1"))
+        f = open(p, "a", encoding="utf-8", buffering=1)   # noqa: SIM115 - lives as long as the process
+    except OSError:
+        return None
+    sys.stdout = _Tee(f, sys.stdout)
+    sys.stderr = _Tee(f, sys.stderr)
+    return p
+
+
+def _redact(text: str) -> str:
+    import re
+    return re.sub(r"(gsk_|sk-|sk_|xai-|AIza|ghp_|github_pat_)[A-Za-z0-9_\-]{6,}", r"\1••••", text)
+
+
+def error_page(home: Path, lang: str, detail: str) -> Path | None:
+    """A plain page explaining what to do, opened in the browser (nothing on screen otherwise)."""
+    import html
+    from . import __version__
+    L = lambda key, **kw: html.escape(i18n.t(lang, key, **kw))   # noqa: E731
+    log = log_path(home)
+    tail = ""
+    try:
+        tail = "\n".join(log.read_text(encoding="utf-8", errors="replace").splitlines()[-40:])
+    except OSError:
+        pass
+    body = _redact((detail or "").strip() + ("\n\n--- app.log ---\n" + tail if tail else ""))
+    page = f"""<!doctype html><html lang="{lang}"><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1"><title>{L("desktop.err.title")}</title>
+<style>body{{font:16px/1.55 -apple-system,Segoe UI,Roboto,sans-serif;background:#f6f6f4;color:#23262b;margin:0}}
+main{{max-width:640px;margin:48px auto;background:#fff;border:1px solid #e3e3e0;border-radius:14px;padding:28px 32px}}
+h1{{font-size:22px;margin:0 0 10px}} li{{margin:6px 0}} code{{background:#f0f0ee;padding:1px 5px;border-radius:5px;
+word-break:break-all}} details{{margin-top:18px;color:#5b616b}} pre{{white-space:pre-wrap;font-size:12px;
+background:#f6f6f4;padding:12px;border-radius:8px;max-height:320px;overflow:auto}}
+@media (prefers-color-scheme:dark){{body{{background:#1d1f23;color:#e6e7ea}} main{{background:#25282d;
+border-color:#34373d}} code,pre{{background:#1d1f23}} details{{color:#a4a9b2}}}}</style></head><body><main>
+<h1>{L("desktop.err.title")}</h1><p>{L("desktop.err.lead", version=__version__, home=str(home))}</p>
+<h2 style="font-size:16px">{L("desktop.err.todo")}</h2><ol><li>{L("desktop.err.s1")}</li>
+<li>{L("desktop.err.s2")}</li><li>{L("desktop.err.s3")}</li><li>{L("desktop.err.s4", log=str(log))}</li></ol>
+<details><summary>{L("desktop.err.detail")}</summary><pre>{html.escape(body)}</pre></details></main></body></html>"""
+    try:
+        out = home / "data" / "start-error.html"
+        out.parent.mkdir(parents=True, exist_ok=True)
+        out.write_text(page, encoding="utf-8")
+    except OSError:
+        return None
+    if os.environ.get("AGENT_NO_BROWSER") != "1":
+        try:
+            webbrowser.open(out.as_uri())
+        except Exception:  # noqa: BLE001
+            pass
+    return out
 
 
 def main(argv: list[str] | None = None) -> int:
     if reopen_in_terminal():
         return 0
+    home = home_dir()
+    logged = setup_log(home)
+    lang = "en"
+    try:
+        lang = system_lang()
+    except Exception:  # noqa: BLE001
+        pass
+    try:
+        return _main(home, logged, argv)
+    except (KeyboardInterrupt, SystemExit):
+        raise
+    except BaseException:  # noqa: BLE001 - any start error: logged + a page, never a silent exit
+        import traceback
+        detail = traceback.format_exc()
+        print(detail, file=sys.stderr)
+        error_page(home, os.environ.get("AGENT_LANG") or lang, detail)
+        return 1
+
+
+def _take_over(paths: dict[str, Path], L) -> tuple[str | None, bool]:
+    """(URL to open instead of starting, False) when the same version runs; else (None, port_still_taken)."""
+    from . import __version__, instance
+    log = lambda m: print(m, file=sys.stderr)   # noqa: E731
+    if os.environ.get("AGENT_PORT"):
+        return None, False
+    info = instance.find(paths["data"], [PREFERRED_PORT], log)
+    if info is None:
+        return None, False
+    if info.get("version") == __version__ and not info.get("stopping"):
+        return info["url"], False
+    print(L("desktop.replacing", old=info.get("version") or "?", new=__version__), file=sys.stderr)
+    if instance.stop(info, log):
+        print(L("desktop.replaced", old=info.get("version") or "?"), file=sys.stderr)
+        return None, False
+    return None, True
+
+
+def _main(home: Path, logged: Path | None, argv: list[str] | None) -> int:
+    from . import __version__, instance
     from .cli import load_dotenv, main as cli_main
     from .userconfig import UserConfig
 
-    home = home_dir()
-    logged = ensure_streams(home / "data" / "app.log")
+    print(f"\n=== {time.strftime('%Y-%m-%d %H:%M:%S')} autonomous-agent {__version__} "
+          f"({sys.platform}, python {sys.version.split()[0]}) {sys.executable}", file=sys.stderr)
     from .tlsca import ensure_ca
-    ensure_ca(home / "data")         # v0.9.4: HTTPS certificates (the embedded macOS Python has none)
+    try:
+        ensure_ca(home / "data")     # v0.9.4: HTTPS certificates (the embedded macOS Python has none)
+    except Exception as e:  # noqa: BLE001 - HTTPS to the AI may fail later, but the app must open
+        print(f"warning: certificates: {e}", file=sys.stderr)
     paths = prepare_home(home)
     load_dotenv(paths["env"])
     cfg = UserConfig(paths["data"])
-    if cfg.get("lang") and not os.environ.get("AGENT_LANG"):
+    if isinstance(cfg.get("lang"), str) and not os.environ.get("AGENT_LANG"):
         os.environ["AGENT_LANG"] = cfg.get("lang")          # chosen in the page (Settings / welcome wizard)
     explicit_lang = bool(os.environ.get("AGENT_LANG")) and not cfg.get("lang")
     lang = system_lang()
@@ -252,11 +392,13 @@ def main(argv: list[str] | None = None) -> int:
     backend, mode = pick_provider(paths)
     if logged:
         print(L("desktop.logs", path=logged), file=sys.stderr)
-    already = running_instance()
-    if already:
-        print(L("desktop.already", url=already), file=sys.stderr)
+    if "/AppTranslocation/" in str(sys.executable):
+        print(L("desktop.translocated"), file=sys.stderr)
+    same, taken = _take_over(paths, L)
+    if same:
+        print(L("desktop.sameVersion", version=__version__, url=same), file=sys.stderr)
         if os.environ.get("AGENT_NO_BROWSER") != "1":
-            webbrowser.open(already)
+            webbrowser.open(same)
         return 0
     if mode == "demo" and (cfg.providers or cfg.get("demo")):
         mode = "settings"            # keys (or demo mode) chosen in the Settings page
@@ -264,7 +406,10 @@ def main(argv: list[str] | None = None) -> int:
         port = free_port()
     except OSError as e:
         print(L("desktop.error", error=e), file=sys.stderr)
+        error_page(home, lang, L("desktop.error", error=e))
         return _pause(2, L)
+    if taken or (port != PREFERRED_PORT and not os.environ.get("AGENT_PORT")):
+        print(L("desktop.otherPort", port=port), file=sys.stderr)
     url = f"http://127.0.0.1:{port}/"
     if explicit_lang:          # otherwise the page follows the browser language (and its saved EN|FR choice)
         url += f"?lang={lang}"
@@ -278,9 +423,17 @@ def main(argv: list[str] | None = None) -> int:
         print(L("desktop.token"), file=sys.stderr)
     print(L("desktop.url", url=url), file=sys.stderr)
     print(L("desktop.stop"), file=sys.stderr)
+    token = instance.new_token()
+    os.environ[instance.TOKEN_ENV] = token
+    instance.write(paths["data"], port, __version__, token)
     threading.Thread(target=open_when_ready, args=(url,), daemon=True).start()
-    code = cli_main(build_argv(paths, port, backend) + list(argv or []))
+    try:
+        code = cli_main(build_argv(paths, port, backend) + list(argv or []))
+    finally:
+        instance.remove(paths["data"], only_pid=os.getpid())
     if code:
+        print(L("desktop.error", error=f"exit code {code}"), file=sys.stderr)
+        error_page(home, lang, L("desktop.error", error=f"exit code {code}"))
         return _pause(code, L)
     return code
 

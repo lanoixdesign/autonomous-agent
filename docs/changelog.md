@@ -8,6 +8,14 @@
 
 Every release with its files and notes: [GitHub Releases](https://github.com/lanoixdesign/autonomous-agent/releases). Latest notes: [packaging/RELEASE_NOTES.md](../packaging/RELEASE_NOTES.md).
 
+#### A new version always starts (new in 0.9.13)
+
+🔁 Opening a new version while an old one still runs in the background now closes the old one and starts the new
+one (before, the browser silently reopened the OLD version). Same version: it just opens. Port taken by another
+program: another port is used. Damaged or old settings and history files are kept aside (`*.broken-<date>`)
+instead of stopping the start, and any start error opens a plain page with what to do and the log file
+(`AutonomousAgent/data/app.log`, now written on Mac too). See [Updating to a new version](getting-started.md#updating-to-a-new-version).
+
 #### A real app icon (new in 0.9.12)
 
 The Mac app and the Windows program show the app's logo (a ring around a rounded square, on the app's muted blue)
@@ -93,6 +101,15 @@ Same features, quieter screens. Neutral backgrounds (off-white by day, soft dark
 ## Français
 
 Chaque version avec ses fichiers et ses notes : [GitHub Releases](https://github.com/lanoixdesign/autonomous-agent/releases). Dernières notes : [packaging/RELEASE_NOTES.md](../packaging/RELEASE_NOTES.md).
+
+#### Une nouvelle version se lance toujours (nouveau en 0.9.13)
+
+🔁 Ouvrir une nouvelle version pendant que l'ancienne tourne encore en arrière-plan ferme maintenant l'ancienne et
+lance la nouvelle (avant, le navigateur rouvrait sans rien dire l'ANCIENNE version). Même version : elle s'ouvre,
+tout simplement. Port pris par un autre programme : un autre port est utilisé. Les fichiers de réglages ou
+d'historique abîmés ou anciens sont mis de côté (`*.broken-<date>`) au lieu de bloquer le démarrage, et toute
+erreur de démarrage ouvre une page simple avec quoi faire et le fichier de suivi (`AutonomousAgent/data/app.log`,
+maintenant écrit aussi sur Mac). Voir [Passer à une nouvelle version](getting-started.md#passer-à-une-nouvelle-version).
 
 #### Une vraie icône pour l'appli (nouveau en 0.9.12)
 

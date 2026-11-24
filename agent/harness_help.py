@@ -56,6 +56,7 @@ HELP_PAGE = r"""<!doctype html>
  <details><summary data-i18n="help.q3"></summary><p data-i18n="help.a3"></p></details>
  <details><summary data-i18n="help.q4"></summary><p data-i18n="help.a4"></p></details>
  <details><summary data-i18n="help.q5"></summary><p data-i18n="help.a5"></p></details>
+ <details><summary data-i18n="help.q6"></summary><p data-i18n="help.a6"></p></details>
  <h2 data-i18n="help.display"></h2>
  <label class="switch"><input type="checkbox" id="big"><span data-i18n="help.big"></span></label>
  <p class="muted"><span data-i18n="help.mode"></span> <a href="/settings#general" data-i18n="nav.settings"></a></p>

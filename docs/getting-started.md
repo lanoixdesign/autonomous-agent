@@ -37,6 +37,20 @@ no install, no commands, no file to edit. Download the file for your computer fr
    (password or Touch ID).
 4. The app opens in your browser and runs in the background (no window to keep open).
 
+#### Updating to a new version
+
+From 0.9.13 on, the new version closes the old one by itself (the old copy keeps running in the background
+after you close the browser tab). If a new version does not start:
+1. In the old version's page, click **⏻ Quit** (or restart the computer).
+2. **Mac:** delete the old `AutonomousAgent.app` (and any `AutonomousAgent 2.app`, `AutonomousAgent 3.app`… in
+   Downloads), put the new one in **Applications**, then **right-click → Open** once more: for macOS every new
+   download is a new unsigned app (macOS 15: System Settings → Privacy & Security → **Open Anyway**).
+   Do not open it from Downloads or from inside the zip (macOS then runs a temporary copy).
+3. **Windows:** run the new `.exe` (SmartScreen: **More info → Run anyway**).
+4. If it still fails, a page explains what to do. The log file to send is
+   **Mac:** `~/AutonomousAgent/data/app.log` (Finder → Go → Go to Folder…), **Windows:**
+   `%USERPROFILE%\AutonomousAgent\data\app.log` (paste it in the File Explorer address bar).
+
 <details>
 <summary><b>Advanced (optional): remove the quarantine flag on macOS</b></summary>
 
@@ -183,6 +197,21 @@ correspondant à ton ordinateur sur la
    Confidentialité et sécurité**, descends jusqu'à la partie Sécurité et clique sur **Ouvrir quand même**
    à côté de « AutonomousAgent », puis confirme (mot de passe ou Touch ID).
 4. L'application s'ouvre dans ton navigateur et tourne en arrière-plan (aucune fenêtre à garder ouverte).
+
+#### Passer à une nouvelle version
+
+Depuis la 0.9.13, la nouvelle version ferme l'ancienne toute seule (l'ancienne copie continue de tourner en
+arrière-plan quand tu fermes l'onglet du navigateur). Si une nouvelle version ne se lance pas :
+1. Dans la page de l'ancienne version, clique sur **⏻ Quitter** (ou redémarre l'ordinateur).
+2. **Mac :** supprime l'ancien `AutonomousAgent.app` (et les `AutonomousAgent 2.app`, `AutonomousAgent 3.app`…
+   dans Téléchargements), mets le nouveau dans **Applications**, puis **clic droit → Ouvrir** encore une fois :
+   pour macOS, chaque nouveau téléchargement est une nouvelle appli non signée (macOS 15 : Réglages Système →
+   Confidentialité et sécurité → **Ouvrir quand même**). Ne l'ouvre pas depuis Téléchargements ni depuis le zip
+   (macOS lance alors une copie temporaire).
+3. **Windows :** lance le nouveau `.exe` (SmartScreen : **Informations complémentaires → Exécuter quand même**).
+4. Si ça échoue encore, une page explique quoi faire. Le fichier de suivi à envoyer est
+   **Mac :** `~/AutonomousAgent/data/app.log` (Finder → Aller → Aller au dossier…), **Windows :**
+   `%USERPROFILE%\AutonomousAgent\data\app.log` (colle-le dans la barre d'adresse de l'Explorateur de fichiers).
 
 <details>
 <summary><b>Avancé (facultatif) : retirer l'attribut de quarantaine sur macOS</b></summary>
