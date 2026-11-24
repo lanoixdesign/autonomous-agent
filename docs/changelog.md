@@ -8,6 +8,12 @@
 
 Every release with its files and notes: [GitHub Releases](https://github.com/lanoixdesign/autonomous-agent/releases). Latest notes: [packaging/RELEASE_NOTES.md](../packaging/RELEASE_NOTES.md).
 
+#### My own AI with Ollama (new in 0.9.11)
+
+🦙 The welcome screen offers two choices: **Free Groq key** or **My AI on my computer (Ollama)**. The Ollama choice
+checks the address (**Check**), lists your installed models, recommends qwen2.5:7b, and warns you when a model
+cannot use tools. No key is needed. See [My own AI with Ollama](ollama.md), including Shadow PC and Tailscale.
+
 #### A cleaner approval card (new in 0.9.10)
 
 ✅ The card shows only the sentence (“The agent wants to write a file in My files”), **Allow** / **Refuse** and
@@ -82,6 +88,13 @@ Same features, quieter screens. Neutral backgrounds (off-white by day, soft dark
 ## Français
 
 Chaque version avec ses fichiers et ses notes : [GitHub Releases](https://github.com/lanoixdesign/autonomous-agent/releases). Dernières notes : [packaging/RELEASE_NOTES.md](../packaging/RELEASE_NOTES.md).
+
+#### Ma propre IA avec Ollama (nouveau en 0.9.11)
+
+🦙 L'écran de bienvenue propose deux choix : **Clé Groq gratuite** ou **Mon IA sur mon ordinateur (Ollama)**. Le
+choix Ollama vérifie l'adresse (**Vérifier**), liste tes modèles installés, conseille qwen2.5:7b, et te prévient si
+un modèle ne sait pas utiliser d'outils. Aucune clé n'est nécessaire. Voir [Ma propre IA avec Ollama](ollama.md#francais),
+y compris PC Shadow et Tailscale.
 
 #### Une carte de validation plus nette (nouveau en 0.9.10)
 
