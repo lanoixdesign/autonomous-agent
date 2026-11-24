@@ -8,6 +8,11 @@
 
 Every release with its files and notes: [GitHub Releases](https://github.com/lanoixdesign/autonomous-agent/releases). Latest notes: [packaging/RELEASE_NOTES.md](../packaging/RELEASE_NOTES.md).
 
+#### A real app icon (new in 0.9.12)
+
+The Mac app and the Windows program show the app's logo (a ring around a rounded square, on the app's muted blue)
+instead of the default Python icon, and so do the browser tab and the download page.
+
 #### My own AI with Ollama (new in 0.9.11)
 
 🦙 The welcome screen offers two choices: **Free Groq key** or **My AI on my computer (Ollama)**. The Ollama choice
@@ -88,6 +93,11 @@ Same features, quieter screens. Neutral backgrounds (off-white by day, soft dark
 ## Français
 
 Chaque version avec ses fichiers et ses notes : [GitHub Releases](https://github.com/lanoixdesign/autonomous-agent/releases). Dernières notes : [packaging/RELEASE_NOTES.md](../packaging/RELEASE_NOTES.md).
+
+#### Une vraie icône pour l'appli (nouveau en 0.9.12)
+
+L'appli Mac et le programme Windows affichent le logo de l'appli (un cercle autour d'un carré arrondi, sur le bleu
+doux de l'appli) au lieu de l'icône Python par défaut, tout comme l'onglet du navigateur et la page de téléchargement.
 
 #### Ma propre IA avec Ollama (nouveau en 0.9.11)
 

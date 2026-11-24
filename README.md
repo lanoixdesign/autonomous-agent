@@ -1,3 +1,5 @@
+<p align="center"><img src="assets/icon.png" alt="" width="96" height="96"></p>
+
 # autonomous-agent
 
 **⬇ [Download page / Page de téléchargement](https://lanoixdesign.github.io/autonomous-agent/)** — Mac & Windows, free / gratuit

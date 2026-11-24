@@ -1,3 +1,8 @@
+**New in 0.9.12 / Nouveautés de la 0.9.12 — a real app icon / une vraie icône**
+
+- **The app's own logo** (a ring around a rounded square, on the app's muted blue) replaces the default Python icon: in the Dock and Finder on Mac, on the Windows program, in the browser tab and on the download page. / **Le logo de l'appli** (un cercle autour d'un carré arrondi, sur le bleu doux de l'appli) remplace l'icône Python par défaut : dans le Dock et le Finder sur Mac, sur le programme Windows, dans l'onglet du navigateur et sur la page de téléchargement.
+- Tip (Mac): if the old icon still shows, delete the old copy of the app, then open the new one. / Astuce (Mac) : si l'ancienne icône s'affiche encore, supprime l'ancienne copie de l'appli, puis ouvre la nouvelle.
+
 **New in 0.9.11 / Nouveautés de la 0.9.11 — my own AI with Ollama / ma propre IA avec Ollama**
 
 - **Two clear choices at the welcome screen**: **Free Groq key** or **My AI on my computer (Ollama)**. / **Deux choix clairs dans l'écran de bienvenue** : **Clé Groq gratuite** ou **Mon IA sur mon ordinateur (Ollama)**.

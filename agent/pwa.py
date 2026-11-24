@@ -1,16 +1,12 @@
-"""Installable web app (PWA) bits for the harness pages: manifest, icons (PNG drawn here, no files), a
+"""Installable web app (PWA) bits for the harness pages: manifest, icons (the app logo, agent/icon_data.py), a
 service worker that caches ONLY the page shell (never API answers, approvals or events)."""
 from __future__ import annotations
 
+import base64
 import functools
 import json
-import math
-import struct
-import zlib
 
 THEME = "#1D1F23"
-ACCENT = (29, 31, 35)        # icon background (soft dark grey)
-NEON = (163, 184, 222)      # icon nodes and links (muted accent)
 
 # Paths the service worker may cache (network first, cache as offline fallback). Nothing else.
 SHELL = ["/", "/dashboard", "/connect", "/manifest.webmanifest", "/icon-192.png", "/icon-512.png",
@@ -19,6 +15,7 @@ SHELL = ["/", "/dashboard", "/connect", "/manifest.webmanifest", "/icon-192.png"
 HEAD = """<meta name="theme-color" content="#1D1F23">
 <link rel="manifest" href="/manifest.webmanifest">
 <link rel="icon" href="/icon.svg" type="image/svg+xml">
+<link rel="icon" href="/favicon.png" sizes="32x32" type="image/png">
 <link rel="apple-touch-icon" href="/apple-touch-icon.png">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="mobile-web-app-capable" content="yes">
@@ -53,50 +50,17 @@ def manifest() -> bytes:
                   {"src": "/icon.svg", "sizes": "any", "type": "image/svg+xml"}]}, ensure_ascii=False).encode()
 
 
-# Icon: three connected agents (white) on the accent colour, inside the maskable safe zone.
-_NODES = [(0.5, 0.33), (0.32, 0.64), (0.68, 0.64)]
-_EDGES = [(0, 1), (0, 2), (1, 2)]
+# Icon: the app logo (a ring around a rounded square), drawn by packaging/make_icons.py -> agent/icon_data.py.
+from . import icon_data as _icons
 
-ICON_SVG = ('<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100"><rect width="100" height="100" rx="22" '
-            'fill="rgb(29,31,35)"/><g stroke="#A3B8DE" stroke-width="5" stroke-linecap="round">'
-            + "".join(f'<line x1="{_NODES[a][0]*100:g}" y1="{_NODES[a][1]*100:g}" x2="{_NODES[b][0]*100:g}" '
-                      f'y2="{_NODES[b][1]*100:g}"/>' for a, b in _EDGES)
-            + '</g>' + "".join(f'<circle cx="{x*100:g}" cy="{y*100:g}" r="9" fill="#A3B8DE"/>' for x, y in _NODES)
-            + '</svg>').encode()
+ICON_SVG = _icons.SVG
+_PNG = {32: _icons.PNG_32, 180: _icons.PNG_180, 192: _icons.PNG_192, 512: _icons.PNG_512}
 
 
-def _seg_dist(px: float, py: float, a: tuple, b: tuple) -> float:
-    ax, ay = a
-    bx, by = b
-    dx, dy = bx - ax, by - ay
-    t = max(0.0, min(1.0, ((px - ax) * dx + (py - ay) * dy) / (dx * dx + dy * dy)))
-    return math.hypot(px - (ax + t * dx), py - (ay + t * dy))
-
-
-@functools.lru_cache(maxsize=4)
+@functools.lru_cache(maxsize=8)
 def icon_png(size: int) -> bytes:
-    """Full-bleed square (maskable), anti-aliased by 2x2 supersampling."""
-    r_node, half_line = 0.09, 0.025
-    rows = []
-    for y in range(size):
-        row = bytearray([0])
-        for x in range(size):
-            cover = 0
-            for sy in (0.25, 0.75):
-                for sx in (0.25, 0.75):
-                    px, py = (x + sx) / size, (y + sy) / size
-                    if (any(math.hypot(px - nx, py - ny) <= r_node for nx, ny in _NODES) or
-                            any(_seg_dist(px, py, _NODES[a], _NODES[b]) <= half_line for a, b in _EDGES)):
-                        cover += 1
-            f = cover / 4
-            row += bytes(int(c + (n - c) * f) for c, n in zip(ACCENT, NEON))
-        rows.append(bytes(row))
-    raw = zlib.compress(b"".join(rows), 9)
-
-    def chunk(kind: bytes, data: bytes) -> bytes:
-        return struct.pack(">I", len(data)) + kind + data + struct.pack(">I", zlib.crc32(kind + data) & 0xFFFFFFFF)
-    return (b"\x89PNG\r\n\x1a\n" + chunk(b"IHDR", struct.pack(">IIBBBBB", size, size, 8, 2, 0, 0, 0))
-            + chunk(b"IDAT", raw) + chunk(b"IEND", b""))
+    """The logo as PNG bytes (sizes 32, 180, 192 and 512 are stored)."""
+    return base64.b64decode(_PNG[size])
 
 
 def asset(path: str) -> tuple[str, bytes, str] | None:
@@ -107,7 +71,7 @@ def asset(path: str) -> tuple[str, bytes, str] | None:
         return "text/javascript; charset=utf-8", SW_JS.encode(), "no-cache"
     if path == "/icon.svg":
         return "image/svg+xml", ICON_SVG, "max-age=86400"
-    sizes = {"/icon-192.png": 192, "/icon-512.png": 512, "/apple-touch-icon.png": 180}
+    sizes = {"/favicon.png": 32, "/favicon.ico": 32, "/icon-192.png": 192, "/icon-512.png": 512, "/apple-touch-icon.png": 180}
     if path in sizes:
         return "image/png", icon_png(sizes[path]), "max-age=86400"
     return None

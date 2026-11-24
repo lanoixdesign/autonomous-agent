@@ -34,7 +34,7 @@ def test_repo_root_keeps_only_the_essentials():
     root -= {"__pycache__", "dist", "build", "out"}
     root = {n for n in root if not n.endswith(".egg-info")}
     assert root <= {"README.md", "LICENSE", "pyproject.toml", "permissions.yaml", "agent", "skills", "tests",
-                    "packaging", "docs"}, root
+                    "packaging", "docs", "assets"}, root
     for f in ("SECURITY.md", "examples/.env.example", "examples/providers.example.yaml", "changelog.md",
               "architecture.md", "permissions.md", "swarm.md", "tools.md", "development.md"):
         assert (REPO / "docs" / f).is_file(), f
