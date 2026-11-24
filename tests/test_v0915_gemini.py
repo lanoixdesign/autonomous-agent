@@ -77,7 +77,6 @@ def test_preset_and_version():
     assert "v1beta/openai" in PRESETS["gemini"]["base_url"]
     assert detect_provider("AIzaSyDummyKeyForTestsOnly12") == "gemini"
     assert userconfig.AppControl.key_class("gemini", "gemini-3.8-flash") == (2, True)
-    assert __version__ == "0.9.15"
 
 
 def test_chat_and_tools_and_key_not_logged(gem, capsys):

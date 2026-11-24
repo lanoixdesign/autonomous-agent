@@ -8,6 +8,12 @@
 
 Every release with its files and notes: [GitHub Releases](https://github.com/lanoixdesign/autonomous-agent/releases). Latest notes: [packaging/RELEASE_NOTES.md](../packaging/RELEASE_NOTES.md).
 
+#### A grid of assistants (new in 0.9.16)
+
+🟦 During a team of assistants, each one is a **small square**. The square **fills from the bottom** as the work
+advances; a check appears when it is done, a muted red border if it failed. Hover (or tap) to see what it is
+doing; click to open its history.
+
 #### Gemini, a free key for code and images (new in 0.9.15)
 
 ✨ The welcome screen offers a third choice: **Free Gemini key (recommended for code and images)**. A free key from
@@ -115,6 +121,12 @@ Same features, quieter screens. Neutral backgrounds (off-white by day, soft dark
 ## Français
 
 Chaque version avec ses fichiers et ses notes : [GitHub Releases](https://github.com/lanoixdesign/autonomous-agent/releases). Dernières notes : [packaging/RELEASE_NOTES.md](../packaging/RELEASE_NOTES.md).
+
+#### Une grille d'assistants (nouveau en 0.9.16)
+
+🟦 Quand plusieurs assistants travaillent, chacun est un **petit carré**. Le carré **se remplit par le bas** au
+fur et à mesure ; une coche apparaît quand c'est terminé, un bord rouge doux en cas d'échec. Survole (ou appuie)
+pour voir ce qu'il fait ; clique pour ouvrir son historique.
 
 #### Gemini, une clé gratuite pour le code et les images (nouveau en 0.9.15)
 
