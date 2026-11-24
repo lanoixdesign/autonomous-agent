@@ -49,7 +49,7 @@ PRESETS: dict[str, dict[str, Any]] = {
                "prefix": "sk-", "keys_url": "https://platform.openai.com/api-keys"},
     "openrouter": {"base_url": "https://openrouter.ai/api/v1", "model": "openai/gpt-4o-mini", "key": True,
                    "prefix": "sk-or-", "keys_url": "https://openrouter.ai/keys"},
-    "ollama": {"base_url": "http://localhost:11434/v1", "model": "llama3.1", "key": False, "prefix": "",
+    "ollama": {"base_url": "http://localhost:11434/v1", "model": "qwen2.5:7b", "key": False, "prefix": "",
                "keys_url": "https://ollama.com/download"},
     "custom": {"base_url": "", "model": "", "key": True, "prefix": "", "keys_url": ""},
 }

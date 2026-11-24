@@ -803,6 +803,11 @@ from .i18n_v099 import EN_V099, FR_V099  # noqa: E402
 EN.update(EN_V099)        # v0.9.9: after the "tu" layer, so its shorter words win
 FR.update(FR_V099)
 
+from .i18n_v0911 import EN_V0911, FR_V0911  # noqa: E402
+
+EN.update(EN_V0911)       # v0.9.11: my AI on my computer (Ollama)
+FR.update(FR_V0911)
+
 STRINGS = {"en": EN, "fr": FR}
 PLACEHOLDER_RE = re.compile(r"\{(\w+)[^}]*\}")
 

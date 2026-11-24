@@ -35,6 +35,7 @@ No Python, no install, no command line. All versions: [Releases](https://github.
 
 - [Getting started](docs/getting-started.md): first launch, settings, where your files and keys go
 - [Simple and Advanced mode](docs/simple-mode.md): what a beginner sees, and where everything else is
+- [My own AI with Ollama](docs/ollama.md): no key, your own model (e.g. on a Shadow PC)
 - [API keys and limits](docs/keys.md): several keys, backup keys, free-tier limits
 - [Permissions and sandbox](docs/permissions.md): what the assistant may do, and how to change it
 - [Swarm and IDC mode](docs/swarm.md): helpers working in parallel
@@ -76,6 +77,7 @@ Pas de Python, rien à installer, aucune ligne de commande. Toutes les versions 
 ### En savoir plus
 
 - [Mode simple et mode avancé](docs/simple-mode.md#francais) : ce que voit un débutant, et où est tout le reste
+- [Ma propre IA avec Ollama](docs/ollama.md#francais) : sans clé, ton propre modèle (par exemple sur un PC Shadow)
 - [Bien démarrer](docs/getting-started.md#francais) : premier lancement, réglages, où vont tes fichiers et tes clés
 - [Clés d'API et limites](docs/keys.md#francais) : plusieurs clés, clés de secours, limites de l'offre gratuite
 - [Permissions et bac à sable](docs/permissions.md#francais) : ce que l'assistant a le droit de faire, et comment le changer

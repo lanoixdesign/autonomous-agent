@@ -442,6 +442,8 @@ WELCOME_PAGE = r"""<!doctype html>
  .stepn{color:var(--muted);font-size:12px;text-transform:uppercase;letter-spacing:.06em}
  .big2{display:grid;grid-template-columns:1fr 1fr;gap:12px;margin:18px 0 6px} .big2 button{padding:18px;font-size:17px;border-radius:16px}
  .big2 button.on{background:var(--accent);border-color:transparent;color:#fff}
+ #olbox{text-align:left;margin-top:6px} .olrow{display:flex;gap:8px} .olrow input{flex:1;min-width:0} .olhelp{font-size:12.5px;margin:6px 0 0}
+ #olbox select{width:100%} #oltools{font-size:12.5px;margin-top:6px}
  .provs{display:grid;grid-template-columns:1fr 1fr;gap:10px;margin:14px 0;text-align:left}
  .provs label{display:flex;gap:10px;align-items:flex-start;padding:12px 14px;border:1px solid var(--line2);border-radius:14px;cursor:pointer;background:var(--sunk)}
  .provs input{margin-top:4px!important} .provs b{display:block;color:var(--strong);font-size:15px} .provs small{display:block;color:var(--soft);font-size:12.5px;line-height:1.4}
@@ -479,6 +481,12 @@ WELCOME_PAGE = r"""<!doctype html>
     <a id="getkey" class="btn primary" target="_blank" rel="noopener noreferrer"></a></details>
    <div id="keybox"><label class="f" for="key" data-i18n="set.f.key"></label><input id="key" type="password" autocomplete="new-password" spellcheck="false" data-i18n-placeholder="set.f.keyPh">
    <div id="detect" class="note" aria-live="polite"></div></div>
+   <div id="olbox" hidden><label class="f" for="oladdr" data-i18n="ol.address"></label>
+    <div class="olrow"><input id="oladdr" type="url" spellcheck="false" autocomplete="off" data-i18n-placeholder="ol.addressPh"><button id="olcheck" type="button" class="primary" data-i18n="ol.check"></button></div>
+    <p class="muted olhelp" data-i18n="ol.addressHelp"></p>
+    <div id="olres" class="testline" role="status" aria-live="polite"></div>
+    <div id="olmodels" hidden><label class="f" for="olmodel" data-i18n="ol.model"></label><select id="olmodel"></select><div id="oltools" class="note" aria-live="polite"></div></div>
+    <div id="olmanual" hidden><label class="f" for="olname" data-i18n="ol.modelManual"></label><input id="olname" type="text" spellcheck="false" autocomplete="off" data-i18n-placeholder="ol.modelPh"></div></div>
    <div id="test" class="testline" aria-live="polite"></div></div>
   <div class="acts"><button id="back2" class="grey" data-i18n="wiz.back"></button><button id="testb" data-i18n="set.f.test"></button><button id="save2" class="primary" data-i18n="wiz.save"></button></div>
   <details class="guide" id="wbulkd"><summary data-i18n="wiz.bulkOpen"></summary><h3 data-i18n="bulk.title"></h3><div id="wbulk"></div></details>
@@ -496,11 +504,12 @@ WELCOME_PAGE = r"""<!doctype html>
 /*COMMON_JS*/
 /*KEYS_JS*/
 const WPROVS=["groq","openai","openrouter","ollama"], BADGE={groq:["rec","wiz.rec"],openai:["paid","wiz.paid"],openrouter:["","wiz.some"],ollama:["","wiz.local"]};
+let doneOl=null;
 let PRESETS={}, PREFIXES=[], step=1, doneKey=null, doneBulk=null, wbulk=null, wprop=null;
 function show(n){ step=n; $("s2b").hidden=n!=="2b"; const k=n==="2b"?2:n;
   [1,2,3].forEach(i=>{ $("s"+i).hidden=i!==n; $("d"+i).className=i<=k?"on":""; $("n"+i).textContent=t("wiz.step",{n:i}); }); $("n2b").textContent=t("wiz.step",{n:2});
   const f=$("s"+n).querySelector("h1"); if(f){ f.tabIndex=-1; f.focus(); } }
-function doneText(){ return doneBulk ? t("wiz.doneKeys",{n:doneBulk.n,p:doneBulk.p}) : (doneKey?t("wiz.doneKey",{name:doneKey}):t("wiz.doneDemo")); }
+function doneText(){ if(doneOl) return t("ol.done",{model:doneOl}); return doneBulk ? t("wiz.doneKeys",{n:doneBulk.n,p:doneBulk.p}) : (doneKey?t("wiz.doneKey",{name:doneKey}):t("wiz.doneDemo")); }
 function buildWBulk(){ wbulk=makeBulk($("wbulk"),{prefixes:()=>PREFIXES,pname:pname,onSaved:async r=>{
     if(!r.saved) return;
     try{ await api("POST","/app/setup",{demo:false,done:true,lang:LANG}); }catch(e){ return fail(e); }
@@ -508,14 +517,17 @@ function buildWBulk(){ wbulk=makeBulk($("wbulk"),{prefixes:()=>PREFIXES,pname:pn
     setTimeout(()=>{ if(wprop.length>1){ jobsStep(); } else { $("donemsg").textContent=doneText(); show(3); } }, 1200); }}); }
 function jobsStep(){ makeJobs($("wjobs"),wprop,()=>{ $("donemsg").textContent=doneText(); show(3); },true); show("2b"); }
 function prov(){ const i=document.querySelector('input[name="prov"]:checked'); return i?i.value:"groq"; }
-function drawProvs(){ const box=$("provs"), cur=prov(); box.replaceChildren();
-  WPROVS.forEach(k=>{ const l=el("label"), i=el("input"), d=el("span"); i.type="radio"; i.name="prov"; i.value=k; i.checked=k===cur; i.onchange=()=>provChanged(true);
+function SIMPLEUI(){ return document.documentElement.dataset.ui!=="expert"; }
+function drawProvs(){ const box=$("provs"), cur=prov(), simple=SIMPLEUI(); box.replaceChildren();
+  (simple ? ["groq","ollama"] : WPROVS).forEach(k=>{ if(simple){ const l=el("label"), i=el("input"), d=el("span"); i.type="radio"; i.name="prov"; i.value=k; i.checked=k===cur; i.onchange=()=>provChanged(true);
+      d.append(el("b",null,tr("wiz.choice",k)), el("span","badge "+(k==="groq"?"rec":""),tr("wiz.choiceB",k)), el("small",null,tr("wiz.choiceD",k))); l.append(i,d); box.append(l); return; } const l=el("label"), i=el("input"), d=el("span"); i.type="radio"; i.name="prov"; i.value=k; i.checked=k===cur; i.onchange=()=>provChanged(true);
     d.append(el("b",null,pname(k)), el("span","badge "+BADGE[k][0],t(BADGE[k][1])), el("small",null,tr("wiz.d",k))); l.append(i, d); box.append(l); }); provChanged(false); }
 function pname(k){ return tr("prov",k).split(" (")[0]; }
 function provChanged(user){ const k=prov(), p=PRESETS[k]||{}; const g=$("getkey");
-  g.href=p.keys_url||"#"; g.textContent=t("wiz.openSite",{name:pname(k)}); g.hidden=!p.keys_url;
-  $("guidet").textContent=t(k==="groq"?"wiz.guide":"wiz.guidePaid"); const ol=$("guidel"); ol.replaceChildren();
-  [1,2,3,4].forEach(n=>ol.append(el("li",null,tr("wiz.g",k+"."+n))));
+  g.href=p.keys_url||"#"; g.textContent=k==="ollama"?t("ol.download"):t("wiz.openSite",{name:pname(k)}); g.hidden=!p.keys_url;
+  $("guidet").textContent=t(k==="groq"?"wiz.guide":k==="ollama"?"ol.guide":"wiz.guidePaid");
+  const isOl=k==="ollama"; $("olbox").hidden=!isOl; $("testb").style.display=isOl?"none":""; $("wbulkd").style.display=isOl?"none":""; if(isOl && !OL.tried) olCheck(); const ol=$("guidel"); ol.replaceChildren();
+  [1,2,3,4].forEach(n=>ol.append(el("li",null,tr(k==="ollama"?"ol.g":"wiz.g",k==="ollama"?String(n):k+"."+n))));
   $("keybox").hidden=!p.key; if(!p.key) $("key").value=""; $("test").textContent=""; if(user) $("detect").textContent=""; }
 // recognise the service from the pasted key, and select it for the user
 function detectProv(v){ v=String(v||"").trim(); for(const [pre,pv] of PREFIXES) if(v.startsWith(pre)) return pv; return undefined; }
@@ -524,6 +536,30 @@ function onKey(){ const v=$("key").value.trim(), d=$("detect"); if(v.length<4){ 
   if(k && WPROVS.includes(k)){ if(k!==prov()){ const r=document.querySelector('input[name="prov"][value="'+k+'"]'); if(r){ r.checked=true; provChanged(false); } }
     d.className="note ok"; d.textContent=t("wiz.detected",{name:pname(k)}); }
   else { d.className="note bad"; d.textContent=t("wiz.unknownKey"); } }
+// ---- v0.9.11: "my AI on my computer" (Ollama): check the address, list the models, warn without tools
+const OL={tried:false,res:null};
+function olAddr(){ return $("oladdr").value.trim() || "http://localhost:11434"; }
+function olTools(){ const m=(OL.res&&OL.res.models||[]).find(x=>x.name===$("olmodel").value), n=$("oltools");
+  n.className="note"+(m&&m.tools===false?" bad":""); n.textContent=m&&m.tools===false?t("ol.noTools",{model:m.name,rec:OL.res.recommended}):""; }
+async function olCheck(){ OL.tried=true; const line=$("olres"); line.className="testline"; line.textContent=t("ol.checking");
+  let r; try{ r=await api("POST","/app/ollama/check",{address:olAddr()}); }catch(e){ line.className="testline bad"; line.textContent=errText(e); return; }
+  OL.res=r; $("oladdr").value=r.address||olAddr();
+  const ok=r.code==="ok"; line.className="testline "+(ok?"ok":"bad");
+  line.textContent=ok ? t("ol.ok",{n:r.models.length}) + (r.has_recommended?"":" "+t("ol.tipPull",{rec:r.recommended})) : tr("ol.code",r.code||"unreachable",{address:r.address||olAddr(),rec:r.recommended});
+  const sel=$("olmodel"); sel.replaceChildren();
+  (r.models||[]).forEach(m=>{ const o=el("option",null,m.name+(m.tools===false?" · "+t("ol.noToolsShort"):"")); o.value=m.name; sel.append(o); });
+  const best=(r.models||[]).find(m=>m.name===r.recommended||m.name===r.recommended+":latest") || (r.models||[]).find(m=>m.tools!==false) || (r.models||[])[0];
+  if(best) sel.value=best.name;
+  $("olmodels").hidden=!ok; $("olmanual").hidden=ok; olTools(); }
+$("olcheck").onclick=olCheck; $("olmodel").onchange=olTools;
+$("oladdr").addEventListener("keydown",e=>{ if(e.key==="Enter"){ e.preventDefault(); olCheck(); } });
+async function olSave(){ const line=$("olres"), r=OL.res||{};
+  const model=(r.code==="ok" ? $("olmodel").value : $("olname").value.trim());
+  if(!model){ line.className="testline bad"; line.textContent=t("ol.checkFirst"); $("olcheck").focus(); return; }
+  try{ await api("POST","/app/providers",{provider:"ollama",name:"Ollama",categories:["text","code"],base_url:(r.base_url||olAddr().replace(/\/+$/,"")+"/v1"),model});
+    await api("POST","/app/setup",{demo:false,done:true,lang:LANG}); }
+  catch(e){ return fail(e); }
+  doneKey=null; doneBulk=null; doneOl=model; $("donemsg").textContent=doneText(); show(3); }
 $("key").addEventListener("input",onKey); $("key").addEventListener("paste",()=>setTimeout(onKey,0));
 function pickBtns(){ document.querySelectorAll("[data-pick]").forEach(b=>{ b.classList.toggle("on",b.dataset.pick===LANG); b.setAttribute("aria-pressed",String(b.dataset.pick===LANG)); }); }
 document.querySelectorAll("[data-pick]").forEach(b=>b.onclick=()=>{ setLang(b.dataset.pick); pickBtns(); });
@@ -533,6 +569,7 @@ $("testb").onclick=async()=>{ const line=$("test"); line.className="testline"; l
   try{ const r=await api("POST","/app/providers/test",{provider:prov(),key:$("key").value.trim()}); line.className="testline "+(r.ok?"ok":"bad"); line.textContent=tr("test",r.code,{http:r.http_status||"?",prov:r.detected?pname(r.detected):""}); }
   catch(e){ fail(e); line.textContent=""; } };
 $("save2").onclick=async()=>{ const k=prov(), p=PRESETS[k]||{}, key=$("key").value.trim();
+  if(k==="ollama") return olSave();
   if(p.key && !key){ const line=$("test"); line.className="testline bad"; line.textContent=t("test.missing"); $("key").focus(); return; }
   const name=pname(k);
   try{ await api("POST","/app/providers",{provider:k,name,categories:["text","code"],...(key?{key}:{})}); await api("POST","/app/setup",{demo:false,done:true,lang:LANG}); }

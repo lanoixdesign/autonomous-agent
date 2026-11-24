@@ -20,7 +20,7 @@ PROVIDERS: dict[str, dict[str, Any]] = {
     "groq": {"base_url": "https://api.groq.com/openai/v1", "key_env": "GROQ_API_KEY", "model": "openai/gpt-oss-20b"},
     "openai": {"base_url": "https://api.openai.com/v1", "key_env": "OPENAI_API_KEY", "model": "gpt-4o-mini"},
     "openrouter": {"base_url": "https://openrouter.ai/api/v1", "key_env": "OPENROUTER_API_KEY", "model": "openai/gpt-4o-mini"},
-    "ollama": {"base_url": "http://localhost:11434/v1", "key_env": None, "model": "llama3.1"},
+    "ollama": {"base_url": "http://localhost:11434/v1", "key_env": None, "model": "qwen2.5:7b"},
     "custom": {"base_url": None, "key_env": "AGENT_API_KEY", "model": None},
 }
 
@@ -56,7 +56,7 @@ _AGAIN = re.compile(r"try again in\s+((?:\d+(?:\.\d+)?(?:ms|h|m|s))+)", re.I)
 # v0.9.4: what really went wrong, so the app never shows "rate limit, retrying in 30 s" for something
 # that waiting cannot fix. Codes: tls, network, too_large, daily_limit, rate_limit, key_invalid,
 # model_unavailable, tool_use_failed, server.
-FINAL_CODES = ("tls", "too_large", "daily_limit", "key_invalid", "model_unavailable")
+FINAL_CODES = ("tls", "too_large", "daily_limit", "key_invalid", "model_unavailable", "no_tools")
 _TOO_LARGE = re.compile(r"request too large|reduce your message size|context_length_exceeded|"
                         r"maximum context length|prompt is too long|too many tokens", re.I)
 _DAILY = re.compile(r"per day|\((?:TPD|RPD|ASPD)\)|daily", re.I)
@@ -66,7 +66,12 @@ _LIMIT = re.compile(r"Limit\s+(\d+)", re.I)
 _REQUESTED = re.compile(r"Requested\s+(\d+)", re.I)
 
 
+_NO_TOOLS = re.compile(r"does not support tools", re.I)     # Ollama, with a model that has no tool calling
+
+
 def classify_http(status: int, detail: str) -> str | None:
+    if status in (400, 500) and _NO_TOOLS.search(detail):
+        return "no_tools"
     if status == 400 and TOOL_FAIL.search(detail):
         return "tool_use_failed"
     if status == 413 or (status in (400, 429) and _TOO_LARGE.search(detail)):
@@ -105,8 +110,12 @@ def friendly(e: BaseException, lang: str | None = None, key_mask: str | None = N
     km = key_mask or getattr(e, "key_mask", None) or "?"
     if code == "tls":
         return i18n.t(lang, "err.tls")
+    if code == "network" and ":11434" in str(e):              # v0.9.11: Ollama is not started (or not there)
+        return i18n.t(lang, "err.ollamaDown", host=getattr(e, "host", None) or "localhost")
     if code == "network":
         return i18n.t(lang, "err.network", host=getattr(e, "host", None) or "?")
+    if code == "no_tools":
+        return i18n.t(lang, "err.noTools", model=getattr(e, "model", None) or "?")
     if code == "too_large":
         return i18n.t(lang, "err.tooLarge", limit=token_limit(e) or "?")
     if code == "daily_limit":

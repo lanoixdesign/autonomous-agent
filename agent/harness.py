@@ -35,6 +35,7 @@ API (JSON):
   GET  /app/providers         API keys entered in the UI, MASKED, with usage;  POST /app/providers (add)
   POST /app/providers/{id}    edit ("key" empty/absent = keep);  POST /app/providers/{id}/delete | /test
   POST /app/providers/test    test a key typed in the form (not saved);  POST /app/providers/order {"ids"}
+  POST /app/ollama/check      {"address"}: is Ollama answering there, its installed models and their tool support
   POST /app/providers/bulk    {"text"}: many keys, one per line ("label: key"), tested at once, good ones saved
   POST /app/providers/propose proposed task types per key;  POST /app/providers/tasks {"assign": {id: [..]}}
   GET  /keys/rate             tokens / requests left per minute, per key (masked; provider headers or estimate)
@@ -1616,6 +1617,9 @@ def make_handler(h: Harness, token: str | None, local_only: bool, auth: "remote.
                     return self._send(201, c.save_provider(data))
                 if path == "/app/providers/test":
                     return self._send(200, c.test_provider(data=data))
+                if path == "/app/ollama/check":       # v0.9.11: is Ollama there, which models, tool support
+                    from . import ollama
+                    return self._send(200, ollama.check(data.get("address") if isinstance(data.get("address"), str) else None))
                 if path == "/app/providers/order":
                     return self._send(200, {"providers": c.reorder(data.get("ids"))})
                 if path == "/app/providers/bulk":     # many keys at once: parse, test all, save the good ones
