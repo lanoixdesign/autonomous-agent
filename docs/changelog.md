@@ -8,6 +8,13 @@
 
 Every release with its files and notes: [GitHub Releases](https://github.com/lanoixdesign/autonomous-agent/releases). Latest notes: [packaging/RELEASE_NOTES.md](../packaging/RELEASE_NOTES.md).
 
+#### The app in its own window (new in 0.9.14)
+
+🪟 The desktop app opens in its own **AutonomousAgent** window instead of a browser tab (WKWebView on Mac, Edge
+WebView2 on Windows). Closing the window stops the app. Links to other sites still open in your browser. If the
+window cannot open, the browser opens as before; `--browser` (or `AGENT_BROWSER=1`) forces the browser.
+Phone access is unchanged.
+
 #### A new version always starts (new in 0.9.13)
 
 🔁 Opening a new version while an old one still runs in the background now closes the old one and starts the new
@@ -101,6 +108,13 @@ Same features, quieter screens. Neutral backgrounds (off-white by day, soft dark
 ## Français
 
 Chaque version avec ses fichiers et ses notes : [GitHub Releases](https://github.com/lanoixdesign/autonomous-agent/releases). Dernières notes : [packaging/RELEASE_NOTES.md](../packaging/RELEASE_NOTES.md).
+
+#### L'appli dans sa propre fenêtre (nouveau en 0.9.14)
+
+🪟 L'appli de bureau s'ouvre dans sa propre fenêtre **AutonomousAgent** au lieu d'un onglet du navigateur (WKWebView
+sur Mac, Edge WebView2 sur Windows). Fermer la fenêtre arrête l'appli. Les liens vers d'autres sites s'ouvrent
+toujours dans ton navigateur. Si la fenêtre ne peut pas s'ouvrir, le navigateur s'ouvre comme avant ; `--browser`
+(ou `AGENT_BROWSER=1`) force le navigateur. L'accès depuis le téléphone ne change pas.
 
 #### Une nouvelle version se lance toujours (nouveau en 0.9.13)
 

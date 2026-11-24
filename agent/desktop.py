@@ -173,7 +173,7 @@ def build_argv(paths: dict[str, Path], port: int, backend: list[str]) -> list[st
             "--state-dir", str(paths["data"]), "--permissions", str(paths["permissions"]), *backend]
 
 
-def open_when_ready(url: str, timeout: float = 30.0) -> None:
+def open_when_ready(url: str, timeout: float = 30.0, browser: bool = True) -> bool:
     """Wait for /health to answer (any HTTP status), then open the chat in the default browser."""
     end = time.monotonic() + timeout
     while time.monotonic() < end:
@@ -184,9 +184,10 @@ def open_when_ready(url: str, timeout: float = 30.0) -> None:
         except (urllib.error.URLError, OSError):
             time.sleep(0.3)
             continue
-        if os.environ.get("AGENT_NO_BROWSER") != "1":
+        if browser and os.environ.get("AGENT_NO_BROWSER") != "1":
             webbrowser.open(url)
-        return
+        return True
+    return False
 
 
 def reopen_in_terminal() -> bool:
@@ -369,8 +370,9 @@ def _take_over(paths: dict[str, Path], L) -> tuple[str | None, bool]:
 
 
 def _main(home: Path, logged: Path | None, argv: list[str] | None) -> int:
-    from . import __version__, instance
+    from . import __version__, instance, window
     from .cli import load_dotenv, main as cli_main
+    use_window, argv = window.wanted(list(argv or []))
     from .userconfig import UserConfig
 
     print(f"\n=== {time.strftime('%Y-%m-%d %H:%M:%S')} autonomous-agent {__version__} "
@@ -394,10 +396,18 @@ def _main(home: Path, logged: Path | None, argv: list[str] | None) -> int:
         print(L("desktop.logs", path=logged), file=sys.stderr)
     if "/AppTranslocation/" in str(sys.executable):
         print(L("desktop.translocated"), file=sys.stderr)
+    wv = None
+    if use_window:
+        wv, why = window.load()
+        print(window.describe() if wv is not None else "window: " + why, file=sys.stderr)
+    elif getattr(sys, "frozen", False):
+        print(window.describe() + " (not used: browser mode)", file=sys.stderr)   # checked by packaging/smoke.sh
     same, taken = _take_over(paths, L)
     if same:
         print(L("desktop.sameVersion", version=__version__, url=same), file=sys.stderr)
-        if os.environ.get("AGENT_NO_BROWSER") != "1":
+        # a window on the running copy (closing it leaves that copy running), else a browser tab
+        if not (wv is not None and window.run(wv, same, on_closed=lambda: None, log=_log)) \
+                and os.environ.get("AGENT_NO_BROWSER") != "1":
             webbrowser.open(same)
         return 0
     if mode == "demo" and (cfg.providers or cfg.get("demo")):
@@ -426,9 +436,12 @@ def _main(home: Path, logged: Path | None, argv: list[str] | None) -> int:
     token = instance.new_token()
     os.environ[instance.TOKEN_ENV] = token
     instance.write(paths["data"], port, __version__, token)
-    threading.Thread(target=open_when_ready, args=(url,), daemon=True).start()
     try:
-        code = cli_main(build_argv(paths, port, backend) + list(argv or []))
+        if wv is not None:
+            code = _serve_in_window(wv, url, port, token, lambda: cli_main(build_argv(paths, port, backend) + argv))
+        else:
+            threading.Thread(target=open_when_ready, args=(url,), daemon=True).start()
+            code = cli_main(build_argv(paths, port, backend) + argv)
     finally:
         instance.remove(paths["data"], only_pid=os.getpid())
     if code:
@@ -436,6 +449,46 @@ def _main(home: Path, logged: Path | None, argv: list[str] | None) -> int:
         error_page(home, lang, L("desktop.error", error=f"exit code {code}"))
         return _pause(code, L)
     return code
+
+
+def _log(m: str) -> None:
+    print(m, file=sys.stderr)
+
+
+def _serve_in_window(wv, url: str, port: int, token: str, serve) -> int:
+    """v0.9.14: server in a thread, the window on the main thread (required on macOS). Closing the window stops
+    the server; the server stopping (⏻ Quit) closes the window. Window impossible: the browser, as before."""
+    from . import instance, window
+    result: dict = {}
+
+    def target():
+        try:
+            result["code"] = serve()
+        except BaseException as e:  # noqa: BLE001 - reported by the caller like a normal start error
+            result["error"] = e
+    t = threading.Thread(target=target, name="server", daemon=True)
+    t.start()
+    ready = open_when_ready(url, browser=False)
+
+    def stop_server():
+        _log("window: closed by the user, stopping the app")
+        try:
+            instance._post(f"http://127.0.0.1:{port}/app/takeover", {instance.TOKEN_HEADER: token}, 5)
+        except OSError:
+            pass
+
+    def watch(close):
+        t.join()
+        close()
+    if not (ready and t.is_alive() and window.run(wv, url, on_closed=stop_server, watch=watch, log=_log)):
+        if ready and t.is_alive() and os.environ.get("AGENT_NO_BROWSER") != "1":
+            webbrowser.open(url)
+        t.join()
+    else:
+        t.join(timeout=20)
+    if "error" in result:
+        raise result["error"]
+    return result.get("code", 0)
 
 
 def _pause(code: int, L) -> int:

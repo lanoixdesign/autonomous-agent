@@ -1,3 +1,9 @@
+**New in 0.9.14 / Nouveautés de la 0.9.14 — the app in its own window / l'appli dans sa propre fenêtre**
+
+- **Its own window** titled AutonomousAgent (about 1100×750, resizable) instead of a browser tab. Closing the window stops the app. / **Sa propre fenêtre** « AutonomousAgent » (environ 1100×750, redimensionnable) au lieu d'un onglet du navigateur. Fermer la fenêtre arrête l'appli.
+- Links to other sites (Groq console, help) open in your usual browser; attachments and exports still work. / Les liens vers d'autres sites (console Groq, aide) s'ouvrent dans ton navigateur habituel ; les pièces jointes et les exports marchent toujours.
+- If the window cannot open (e.g. Windows without Edge WebView2), the browser opens as before. `--browser` or `AGENT_BROWSER=1` forces the browser; phone access is unchanged. / Si la fenêtre ne peut pas s'ouvrir (par exemple Windows sans Edge WebView2), le navigateur s'ouvre comme avant. `--browser` ou `AGENT_BROWSER=1` force le navigateur ; l'accès depuis le téléphone ne change pas.
+
 **New in 0.9.13 / Nouveautés de la 0.9.13 — a new version always starts / une nouvelle version se lance toujours**
 
 - **Old version still running?** It is closed automatically and the new one starts (before, the old one silently reopened). Same version already open: it just comes back. / **L'ancienne version tourne encore ?** Elle est fermée automatiquement et la nouvelle démarre (avant, l'ancienne se rouvrait sans rien dire). Même version déjà ouverte : elle revient, tout simplement.
