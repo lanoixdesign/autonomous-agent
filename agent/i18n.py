@@ -819,6 +819,10 @@ from .i18n_v0916 import EN_V0916, FR_V0916  # noqa: E402
 
 EN.update(EN_V0916)       # v0.9.16: agent grid
 FR.update(FR_V0916)
+from .i18n_v0917 import EN_V0917, FR_V0917  # noqa: E402
+
+EN.update(EN_V0917)       # v0.9.17: friendly mascots
+FR.update(FR_V0917)
 
 STRINGS = {"en": EN, "fr": FR}
 PLACEHOLDER_RE = re.compile(r"\{(\w+)[^}]*\}")

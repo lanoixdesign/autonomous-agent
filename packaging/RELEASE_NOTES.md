@@ -1,3 +1,8 @@
+**New in 0.9.17 / Nouveautés de la 0.9.17 — friendly mascots / des mascottes amicales**
+
+- **Each assistant is a little logo with eyes**: they blink while they work, look aside while they wait, smile with a check when they are done, and look sad (muted red edge) if something failed. Hover and click still show the task and the history. / **Chaque assistant est un petit logo avec des yeux** : ils clignent des yeux pendant le travail, regardent de côté en attendant, sourient avec une coche une fois terminé, et ont l'air triste (bord rouge doux) en cas d'échec. Le survol et le clic montrent toujours la tâche et l'historique.
+- A small mascot also greets you on the welcome screen and on an empty chat. Motion pauses if you asked your system to reduce motion. / Une petite mascotte t'accueille aussi à l'écran de bienvenue et sur un chat vide. Les mouvements s'arrêtent si tu as demandé à ton système de réduire les animations.
+
 **New in 0.9.16 / Nouveautés de la 0.9.16 — a grid of assistants / une grille d'assistants**
 
 - **Each assistant is a small square** in a grid that grows as new ones start. The square **fills from the bottom** as its work advances; a check when it is done, a muted red border if it failed. / **Chaque assistant est un petit carré** dans une grille qui s'agrandit à mesure qu'ils arrivent. Le carré **se remplit par le bas** au fur et à mesure ; une coche quand c'est terminé, un bord rouge doux en cas d'échec.

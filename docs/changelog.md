@@ -8,6 +8,12 @@
 
 Every release with its files and notes: [GitHub Releases](https://github.com/lanoixdesign/autonomous-agent/releases). Latest notes: [packaging/RELEASE_NOTES.md](../packaging/RELEASE_NOTES.md).
 
+#### Friendly mascots (new in 0.9.17)
+
+😊 Each assistant in the grid is now a little character in the shape of the app's logo (a ring around a rounded
+square), with two simple eyes. They blink while they work, look aside while they wait, smile when they are done,
+and look sad if something failed. A small mascot also greets you on the welcome screen and on an empty chat.
+
 #### A grid of assistants (new in 0.9.16)
 
 🟦 During a team of assistants, each one is a **small square**. The square **fills from the bottom** as the work
@@ -121,6 +127,13 @@ Same features, quieter screens. Neutral backgrounds (off-white by day, soft dark
 ## Français
 
 Chaque version avec ses fichiers et ses notes : [GitHub Releases](https://github.com/lanoixdesign/autonomous-agent/releases). Dernières notes : [packaging/RELEASE_NOTES.md](../packaging/RELEASE_NOTES.md).
+
+#### Des mascottes amicales (nouveau en 0.9.17)
+
+😊 Chaque assistant dans la grille est maintenant un petit personnage à la forme du logo de l'appli (un cercle
+autour d'un carré arrondi), avec deux yeux simples. Ils clignent des yeux pendant le travail, regardent de côté
+en attendant, sourient quand c'est terminé, et ont l'air triste en cas d'échec. Une petite mascotte t'accueille
+aussi à l'écran de bienvenue et sur un chat vide.
 
 #### Une grille d'assistants (nouveau en 0.9.16)
 

@@ -434,8 +434,10 @@ WELCOME_PAGE = r"""<!doctype html>
 /*THEME*/
 /*COMMON_CSS*/
  main{max-width:620px;margin:0 auto;padding:28px 18px 40px}
- .logo{width:84px;height:84px;margin:6px auto 14px;border-radius:50%;border:6px solid var(--blue);display:flex;align-items:center;justify-content:center;background:var(--sunk)}
- .logo i{width:28px;height:28px;border-radius:7px;background:var(--blue2);}
+ .logo{width:84px;height:84px;margin:6px auto 10px;color:#4B6699}
+ .logo .mascot{width:84px;height:84px;display:block}
+ .logo .happy{display:block} .logo .dots{display:none}
+ .logo-hi{text-align:center;color:var(--muted);font-size:14px;margin:0 0 12px}
  .steps{display:flex;justify-content:center;gap:8px;margin-bottom:14px} .steps span{width:34px;height:5px;border-radius:3px;background:var(--chip)}
  .steps span.on{background:var(--accent);}
  .card{text-align:center} h1{font-size:24px;margin-bottom:6px} .card p{color:var(--soft)}
@@ -468,7 +470,8 @@ WELCOME_PAGE = r"""<!doctype html>
 </style></head><body data-page="welcome">
 <div class="lang">/*LANG_SWITCH*/</div>
 <main>
- <div class="logo"><i></i></div>
+ <div class="logo"><svg class="mascot" viewBox="0 0 64 64" aria-hidden="true"><rect class="body" x="1.5" y="1.5" width="61" height="61" rx="14" fill="currentColor"/><circle class="ring" cx="32" cy="31" r="20" fill="none" stroke="#F3F5FA" stroke-width="4.5"/><rect class="face" x="19" y="19" width="26" height="26" rx="7" fill="#F3F5FA"/><g class="dots"><circle class="pupil" cx="27" cy="30" r="2.3" fill="#33497A"/><circle class="pupil" cx="37" cy="30" r="2.3" fill="#33497A"/></g><g class="happy" fill="none" stroke="#33497A" stroke-width="2.1" stroke-linecap="round"><path d="M24.2 31.6c1.7-2.3 4.4-2.3 6.1 0"/><path d="M33.7 31.6c1.7-2.3 4.4-2.3 6.1 0"/></g><g class="sad" fill="none" stroke="#33497A" stroke-width="2.1" stroke-linecap="round"><path d="M24.2 32.6c1.7 2.1 4.4 2.1 6.1 0"/><path d="M33.7 32.6c1.7 2.1 4.4 2.1 6.1 0"/></g></svg></div>
+ <p class="logo-hi" data-i18n="wiz.hi"></p>
  <div class="steps" aria-hidden="true"><span id="d1"></span><span id="d2"></span><span id="d3"></span></div>
  <section id="s1" class="card"><div class="stepn" id="n1"></div><h1 data-i18n="wiz.welcome"></h1><p data-i18n="wiz.intro"></p><p data-i18n="wiz.chooseLang"></p>
   <div class="big2"><button type="button" data-pick="en" data-i18n="wiz.en"></button><button type="button" data-pick="fr" data-i18n="wiz.fr"></button></div>
