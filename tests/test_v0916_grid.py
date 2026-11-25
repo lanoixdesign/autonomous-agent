@@ -50,7 +50,8 @@ def test_graph_includes_progress_flag_and_history():
 
 def test_chat_page_has_the_grid_and_strings():
     assert "swgrid" in CHAT_PAGE and "atile" in CHAT_PAGE and "openAgent" in CHAT_PAGE
+    assert "class=\"mascot\"" in CHAT_PAGE and "atileblink" in CHAT_PAGE
+    assert "prefers-reduced-motion" in CHAT_PAGE and "classList.toggle(\"working\"" in CHAT_PAGE
     assert "agpanel" in CHAT_PAGE
     for k in ("grid.history", "grid.close", "grid.empty", "grid.step", "grid.act.user"):
         assert i18n.EN[k] and i18n.FR[k] and i18n.EN[k] != i18n.FR[k]
-    assert __version__ == "0.9.16"

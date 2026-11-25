@@ -134,20 +134,35 @@ CHAT_PAGE = r"""<!doctype html>
  #swarm[hidden]{display:none}
 
  /* v0.9.16: agent grid (tiles fill as the work advances) */
- .swgrid{display:grid;grid-template-columns:repeat(auto-fill,minmax(52px,1fr));gap:10px;padding:6px 4px 14px;justify-items:center}
- .atile{position:relative;width:52px;height:52px;padding:0;border:1px solid rgba(var(--accent-rgb),0.28);border-radius:10px;background:var(--card);overflow:hidden;cursor:pointer;appearance:none;font:inherit;color:inherit}
- .atile .fill{position:absolute;left:0;right:0;bottom:0;height:calc(var(--p,0)*100%);background:rgba(var(--accent-rgb),0.42);transition:height .35s ease}
- .atile.done .fill{background:rgba(var(--accent-rgb),0.62)}
- .atile.error{border-color:rgba(var(--bad-rgb,180,70,70),0.7)}
- .atile.error .fill{background:rgba(var(--bad-rgb,180,70,70),0.28)}
+ .swgrid{display:grid;grid-template-columns:repeat(auto-fill,minmax(56px,1fr));gap:12px;padding:8px 4px 16px;justify-items:center}
+ .atile{position:relative;width:56px;height:70px;padding:0;border:0;background:transparent;cursor:pointer;appearance:none;font:inherit;color:#4B6699;display:flex;flex-direction:column;align-items:center}
+ .atile .shell{position:relative;width:56px;height:56px;border-radius:14px;overflow:hidden;color:inherit}
+ .atile .fill{position:absolute;left:0;right:0;bottom:0;height:calc(var(--p,0)*100%);background:rgba(243,245,250,.45);transition:height .35s ease;pointer-events:none}
+ .atile.done .fill{background:rgba(243,245,250,.55)}
+ .atile.error{color:#6b4a4a}
+ .atile.error .shell{outline:2px solid rgba(var(--bad-rgb),0.7);outline-offset:-2px}
+ .atile.error .fill{background:rgba(var(--bad-rgb),0.22)}
  .atile.pulse .fill{height:45%;animation:atilepulse 1.6s ease-in-out infinite}
- .atile .mark{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;opacity:0}
- .atile.done .mark{opacity:1} .atile .mark svg{width:18px;height:18px}
- .atile .who{position:absolute;left:0;right:0;bottom:3px;font-size:9px;line-height:1;text-align:center;color:var(--muted);pointer-events:none;padding:0 2px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+ .atile .mascot{position:absolute;inset:0;width:56px;height:56px;display:block}
+ .atile .happy,.atile .sad{display:none}
+ .atile.done .dots,.atile.error .dots{display:none}
+ .atile.done .happy{display:block} .atile.error .sad{display:block}
+ .atile .pupil{transform-box:fill-box;transform-origin:center}
+ .atile.working .pupil{animation:atileblink 3.4s infinite}
+ .atile.idle .pupil{animation:atilelook 4.5s ease-in-out infinite}
+ .atile .mark{position:absolute;right:3px;bottom:3px;width:14px;height:14px;border-radius:50%;background:rgba(51,73,122,.85);display:flex;align-items:center;justify-content:center;opacity:0}
+ .atile.done .mark{opacity:1} .atile .mark svg{width:9px;height:9px}
+ .atile .who{margin-top:3px;max-width:56px;font-size:9px;line-height:1.1;text-align:center;color:var(--muted);pointer-events:none;padding:0 1px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
  @keyframes atilepulse{0%,100%{opacity:.45}50%{opacity:.85}}
- @media (prefers-reduced-motion:reduce){ .atile.pulse .fill{animation:none} .atile{animation:none} }
+ @keyframes atileblink{0%,41%,49%,100%{transform:scaleY(1)}45%{transform:scaleY(.08)}}
+ @keyframes atilelook{0%,25%{transform:translateX(0)}50%,70%{transform:translateX(2.2px)}88%,100%{transform:translateX(0)}}
+ @media (prefers-reduced-motion:reduce){ .atile.pulse .fill,.atile.working .pupil,.atile.idle .pupil,.atile.in{animation:none} }
  .atile.in{animation:atilein .35s ease}
  @keyframes atilein{from{opacity:0;transform:scale(.86)}to{opacity:1;transform:none}}
+ .logo.mascot-wrap,.home-mascot{width:84px;height:84px;margin:6px auto 10px;color:#4B6699}
+ .logo.mascot-wrap .mascot,.home-mascot .mascot{width:84px;height:84px;display:block}
+ .home-mascot{margin:0 auto 8px} .home-hi{text-align:center;color:var(--muted);font-size:14px;margin:0 0 10px}
+ .home-mascot .happy{display:block} .home-mascot .dots{display:none}
  #agpanel{position:fixed;top:0;right:0;bottom:0;width:min(380px,100%);background:var(--card);border-left:1px solid var(--line,rgba(0,0,0,.08));z-index:40;padding:16px 18px 24px;overflow:auto}
  #agpanel[hidden]{display:none} #agpanel h2{font-size:16px;margin:0 20px 6px 0} #agpanel .agtask{color:var(--muted);font-size:13px;margin:0 0 14px}
  #agpanel ol{list-style:none;margin:0;padding:0} #agpanel li{display:grid;grid-template-columns:auto 1fr auto;gap:8px;padding:8px 0;border-top:1px solid var(--line,rgba(0,0,0,.06));font-size:13px}
@@ -419,7 +434,8 @@ function render(){
 // ---- empty chat: example tasks, help, tour
 const EXAMPLES=[["summarize","📄",1],["email","✉️",0],["notes","🗂️",0],["research","🔎",0],["plan","🗓️",0],["translate","🌍",0]];
 function home(){ const h=el("div"); h.id="home";
-  h.append(el("h2",null,t("home.title")), el("p","sub",t("home.sub")));
+  const mas=el("div","home-mascot"); mas.innerHTML=MASCOT; mas.querySelector(".happy")&&(mas.classList.add("hi"));
+  h.append(mas, el("p","home-hi",t("home.hi")), el("h2",null,t("home.title")), el("p","sub",t("home.sub")));
   const g=el("div","exgrid");
   EXAMPLES.forEach(([k,ic,file])=>{ const b=el("button","ex"); b.type="button"; b.dataset.ex=k;
     b.append(el("i","ei",ic), el("b",null,tr("ex",k+".t")), el("span",null,tr("ex",k+".d"))); b.onclick=()=>useExample(k,file); g.append(b); });
@@ -857,14 +873,19 @@ function agUpdate(c,a){ const busy=BUSY.includes(a.status);
   const k=c.querySelector(".agkey"); k.textContent=keyLine(a); k.classList.toggle("shared",!!a.key && !a.key_match && (a.key_task||"general")!=="general");
   k.title=a.key_mask?a.key+" · "+a.key_mask:""; }
 
+const MASCOT=`<svg class="mascot" viewBox="0 0 64 64" aria-hidden="true"><rect class="body" x="1.5" y="1.5" width="61" height="61" rx="14" fill="currentColor"/><circle class="ring" cx="32" cy="31" r="20" fill="none" stroke="#F3F5FA" stroke-width="4.5"/><rect class="face" x="19" y="19" width="26" height="26" rx="7" fill="#F3F5FA"/><g class="dots"><circle class="pupil" cx="27" cy="30" r="2.3" fill="#33497A"/><circle class="pupil" cx="37" cy="30" r="2.3" fill="#33497A"/></g><g class="happy" fill="none" stroke="#33497A" stroke-width="2.1" stroke-linecap="round"><path d="M24.2 31.6c1.7-2.3 4.4-2.3 6.1 0"/><path d="M33.7 31.6c1.7-2.3 4.4-2.3 6.1 0"/></g><g class="sad" fill="none" stroke="#33497A" stroke-width="2.1" stroke-linecap="round"><path d="M24.2 32.6c1.7 2.1 4.4 2.1 6.1 0"/><path d="M33.7 32.6c1.7 2.1 4.4 2.1 6.1 0"/></g></svg>`;
 function tile(a){ const b=el("button","atile"); b.type="button"; b.setAttribute("role","listitem"); b.dataset.id=a.id;
-  b.append(el("span","fill"), (()=>{ const m=el("span","mark"); m.innerHTML=CHECK; return m; })(), el("span","who"));
+  const sh=el("span","shell"); sh.innerHTML=MASCOT; const m=el("span","mark"); m.innerHTML=CHECK; sh.append(el("span","fill"), m); b.append(sh, el("span","who"));
   b.onclick=()=>openAgent(a.id); tileUpdate(b,a); return b; }
 function tileUpdate(b,a){ const err=a.status && !BUSY.includes(a.status) && !["done","revise"].includes(a.status);
+  const busy=BUSY.includes(a.status||"queued"), run=(a.status||"")==="running"||(!!a.indeterminate && busy && (a.status||"")!=="queued");
   const pct=a.indeterminate?null:Math.round((a.progress||0)*100);
   b.style.setProperty("--p", a.indeterminate?0.45:(a.progress||0));
   b.classList.toggle("done", a.status==="done"||a.status==="revise");
-  b.classList.toggle("error", !!err); b.classList.toggle("pulse", !!a.indeterminate && BUSY.includes(a.status||"running"));
+  b.classList.toggle("error", !!err);
+  b.classList.toggle("working", !!run && !err && a.status!=="done" && a.status!=="revise");
+  b.classList.toggle("idle", (a.status||"queued")==="queued" || a.status==="cancelling");
+  b.classList.toggle("pulse", !!a.indeterminate && busy && !err);
   const who=a.id==="root"?t("who.short.root"):(a.role||agentShort(a.id));
   b.querySelector(".who").textContent=who;
   b.title=who+" — "+(a.task||tr("status",a.status||"queued"))+(pct!=null?" ("+pct+"%)":"");
