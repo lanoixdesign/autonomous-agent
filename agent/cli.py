@@ -267,6 +267,13 @@ def serve(args) -> int:
     control.boot = {"workspace": str(ctx.workspace), "max_tasks": h.max_tasks,
                     "remote": {"enabled": remote_mode, "tunnel": args.tunnel or "none", "public_url": args.public_url or ""}}
     h.control = control
+    # Optional Telegram bridge
+    try:
+        from . import telegram as tg
+        if tg._token():
+            tg.TelegramBridge(h).start()
+    except Exception:
+        pass
     srv = make_server(h, args.host, args.port, token, remote_mode=remote_mode, auth=auth)
     exit_code = [0]
 
