@@ -1,3 +1,11 @@
+**New in 0.9.19 / Nouveautés de la 0.9.19 — voice, visible browser and file editor / voix, navigateur visible et éditeur de fichiers**
+
+- **Voice input**: microphone button in the chat (Web Speech API) for speech-to-text, continuous mode. / **Entrée vocale** : bouton micro dans le chat (Web Speech API) pour la dictée, mode continu.
+- **Visible browser for the agent**: optional Playwright headless with live log of actions (click, fill, select, submit). Automatic fallback to HTTP. Hide button to switch to request log. / **Navigateur visible pour l’agent** : Playwright headless optionnel avec journal des actions (clic, saisie, sélection, soumission). Bascule automatique sur HTTP. Bouton pour masquer et passer au journal.
+- **Fine browser tools**: browser_click, browser_fill, browser_select, browser_submit. / **Outils de navigation fine** : browser_click, browser_fill, browser_select, browser_submit.
+- **Simple file editor**: open workspace files in the Files panel, edit, save or download. / **Éditeur de fichiers simple** : ouvrir les fichiers du workspace dans le panneau Fichiers, modifier, enregistrer ou télécharger.
+- NetGuard still blocks private networks. / NetGuard continue de bloquer les réseaux privés.
+
 **New in 0.9.18 / Nouveautés de la 0.9.18 — manage skills from the interface / gérer les compétences depuis l'interface**
 
 - **Skills section in Settings**: list loaded skills (name, description, source), create or upload a SKILL.md, confirmation before adding, delete user skills. / **Section Compétences dans les Réglages** : liste des compétences chargées (nom, description, source), créer ou importer un SKILL.md, confirmation avant ajout, supprimer les compétences utilisateur.
