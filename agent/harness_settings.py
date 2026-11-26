@@ -439,6 +439,46 @@ function drawApp(){ $("appinfo").textContent=t("set.app.version",{v:V.version})+
 $("restart1").onclick=$("restart2").onclick=restartNow; $("quit").onclick=quitNow;
 onLang=()=>{ draw(); if(ST.available && !ST.editable) $("lockbar").textContent=t("set.locked"); };
 load();
+async function refreshSkills(){
+  try{
+    const r = await api("GET","/skills");
+    const box = $("skillslist"); box.className = r.skills.length ? "" : "muted"; box.replaceChildren();
+    if(!r.skills.length){ box.textContent = t("skills.none"); return; }
+    r.skills.forEach(s => {
+      const d = el("div","row");
+      d.append(el("div",null, s.name + " — " + s.description + " (" + s.source + ")"));
+      if(s.source !== "repo"){
+        const b = el("button","lite", t("skills.delete"));
+        b.onclick = () => { if(confirm(t("skills.confirmDelete"))) api("POST","/skills/"+s.name+"/delete",{}).then(refreshSkills); };
+        d.append(b);
+      }
+      box.append(d);
+    });
+  }catch(e){}
+}
+$("skadd").onclick = async () => {
+  const name = $("skname").value.trim(), content = $("skcontent").value;
+  if(!name || !content) return;
+  if(!confirm(t("skills.confirmAdd"))) return;
+  try{ await api("POST","/skills",{name, content, source:"workspace"}); $("skname").value=$("skcontent").value=""; $("skmsg").textContent=t("skills.saved"); refreshSkills(); }
+  catch(e){ $("skmsg").textContent = e.message; }
+};
+$("skfile").onchange = async e => {
+  const f = e.target.files[0]; if(!f) return;
+  const text = await f.text();
+  const name = f.name.replace(/\.md$/i,"").toLowerCase().replace(/[^a-z0-9_\-]/g,"-");
+  $("skname").value = name; $("skcontent").value = text;
+  $("skmsg").textContent = t("skills.loaded");
+};
+refreshSkills();
+$("tgsave").onclick = async () => {
+  const token = $("tgtoken").value.trim();
+  try {
+    await api("POST", "/telegram/token", {token});
+    $("tgmsg").textContent = token ? "Saved — restart to apply" : "Cleared";
+    $("tgtoken").value = "";
+  } catch(e) { $("tgmsg").textContent = errMsg(e); }
+};
 </script></body></html>
 """
 
@@ -599,51 +639,11 @@ $("save2").onclick=async()=>{ const k=prov(), p=PRESETS[k]||{}, key=$("key").val
   catch(e){ return fail(e); }
   $("key").value=""; doneKey=name; doneBulk=null; $("donemsg").textContent=doneText(); show(3); };
 $("demo").onclick=async()=>{ try{ await api("POST","/app/setup",{demo:true,done:true,lang:LANG}); }catch(e){ return fail(e); } doneKey=null; doneBulk=null; $("donemsg").textContent=doneText(); show(3); };
-async function refreshSkills(){
-  try{
-    const r = await api("GET","/skills");
-    const box = $("skillslist"); box.className = r.skills.length ? "" : "muted"; box.replaceChildren();
-    if(!r.skills.length){ box.textContent = t("skills.none"); return; }
-    r.skills.forEach(s => {
-      const d = el("div","row");
-      d.append(el("div",null, s.name + " — " + s.description + " (" + s.source + ")"));
-      if(s.source !== "repo"){
-        const b = el("button","lite", t("skills.delete"));
-        b.onclick = () => { if(confirm(t("skills.confirmDelete"))) api("POST","/skills/"+s.name+"/delete",{}).then(refreshSkills); };
-        d.append(b);
-      }
-      box.append(d);
-    });
-  }catch(e){}
-}
-$("skadd").onclick = async () => {
-  const name = $("skname").value.trim(), content = $("skcontent").value;
-  if(!name || !content) return;
-  if(!confirm(t("skills.confirmAdd"))) return;
-  try{ await api("POST","/skills",{name, content, source:"workspace"}); $("skname").value=$("skcontent").value=""; $("skmsg").textContent=t("skills.saved"); refreshSkills(); }
-  catch(e){ $("skmsg").textContent = e.message; }
-};
-$("skfile").onchange = async e => {
-  const f = e.target.files[0]; if(!f) return;
-  const text = await f.text();
-  const name = f.name.replace(/\.md$/i,"").toLowerCase().replace(/[^a-z0-9_\-]/g,"-");
-  $("skname").value = name; $("skcontent").value = text;
-  $("skmsg").textContent = t("skills.loaded");
-};
-refreshSkills();
 onLang=()=>{ pickBtns(); drawProvs(); buildWBulk(); if(step==="2b") jobsStep(); else show(step); if(step===3) $("donemsg").textContent=doneText(); };
 (async()=>{ try{ await status(); }catch(e){ if(e.status===401){ location.href="/connect"; return; } }
   if(!ST.available || !ST.editable){ [1,2,3].forEach(i=>$("s"+i).hidden=true); $("slock").hidden=false; return; }
   try{ const v=await api("GET","/app/settings"); PRESETS=v.presets||{}; PREFIXES=v.key_prefixes||[]; }catch(e){}
   pickBtns(); drawProvs(); buildWBulk(); show(location.hash==="#key"?2:1); })();   // v0.9.9: the chat's key banner opens step 2
-$("tgsave").onclick = async () => {
-  const token = $("tgtoken").value.trim();
-  try {
-    await api("POST", "/telegram/token", {token});
-    $("tgmsg").textContent = token ? "Saved — restart to apply" : "Cleared";
-    $("tgtoken").value = "";
-  } catch(e) { $("tgmsg").textContent = errMsg(e); }
-};
 </script></body></html>
 """
 

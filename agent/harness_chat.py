@@ -318,6 +318,7 @@ CHAT_PAGE = r"""<!doctype html>
   <button id="cancel" class="tbtn" style="display:none" data-i18n="chat.stop"></button>
   <button id="expmd" class="tbtn" style="display:none" data-i18n-title="chat.expmd.title">⇩ MD</button>
   <button id="expjson" class="tbtn" style="display:none" data-i18n-title="chat.expjson.title">⇩ JSON</button>
+  <button id="stopall" class="tbtn" style="display:none" data-i18n="btn.stopall" data-i18n-title="title.stopall"></button>
   <button id="openbrowser" class="tbtn" type="button" data-i18n="browser.open">Web</button>
   <button id="compose" class="ibtn" data-i18n-title="chat.compose"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 20h9"/><path d="M16.5 3.5a2.1 2.1 0 0 1 3 3L7 19l-4 1 1-4Z"/></svg></button></div>
  <div id="keybanner" hidden role="note"><span data-i18n="chat.keyBanner"></span><a href="/welcome#key" data-i18n="chat.keyBannerBtn"></a></div>
