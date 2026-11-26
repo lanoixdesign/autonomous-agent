@@ -1,3 +1,9 @@
+**New in 0.9.18 / Nouveautés de la 0.9.18 — manage skills from the interface / gérer les compétences depuis l'interface**
+
+- **Skills section in Settings**: list loaded skills (name, description, source), create or upload a SKILL.md, confirmation before adding, delete user skills. / **Section Compétences dans les Réglages** : liste des compétences chargées (nom, description, source), créer ou importer un SKILL.md, confirmation avant ajout, supprimer les compétences utilisateur.
+- Validation of the format (valid name + required description) before saving. Repo skills cannot be deleted. / Validation du format (nom valide + description obligatoire) avant enregistrement. Les compétences du dépôt ne peuvent pas être supprimées.
+- Existing list_skills / load_skill tools keep working. / Les outils list_skills / load_skill existants continuent de fonctionner.
+
 **New in 0.9.17 / Nouveautés de la 0.9.17 — friendly mascots / des mascottes amicales**
 
 - **Each assistant is a little logo with eyes**: they blink while they work, look aside while they wait, smile with a check when they are done, and look sad (muted red edge) if something failed. Hover and click still show the task and the history. / **Chaque assistant est un petit logo avec des yeux** : ils clignent des yeux pendant le travail, regardent de côté en attendant, sourient avec une coche une fois terminé, et ont l'air triste (bord rouge doux) en cas d'échec. Le survol et le clic montrent toujours la tâche et l'historique.
