@@ -359,7 +359,13 @@ CHAT_PAGE = r"""<!doctype html>
 <div id="scrim"></div>
 <section id="filesp" hidden role="dialog" aria-labelledby="fptitle"><header><h2 id="fptitle" data-i18n="files.title"></h2><button id="fclose" class="tbtn" data-i18n="files.close"></button></header>
  <p class="fhelp" data-i18n="files.help"></p><button id="fadd" class="tbtn fadd" data-i18n="files.add"></button><input id="fpick" type="file" multiple hidden>
- <p id="fmsg" class="fhelp" aria-live="polite"></p><p id="ffolder" class="fhelp"></p><div id="flist"></div></section>
+ <p id="fmsg" class="fhelp" aria-live="polite"></p><p id="ffolder" class="fhelp"></p>
+ <div id="flist"></div>
+ <div id="feditor" hidden>
+  <header class="row"><span id="fedname"></span><button id="fedsave" class="tbtn">Save</button><button id="feddown" class="tbtn">Download</button><button id="fedclose" class="tbtn">Close</button></header>
+  <textarea id="fedtext" style="flex:1;width:100%;font-family:monospace;padding:8px"></textarea>
+ </div>
+</section>
 <div id="tour" hidden><div id="tourcard" role="dialog" aria-modal="true" aria-labelledby="tourt" data-i18n-aria="tour.label"><div class="tn" id="tourn"></div><h3 id="tourt"></h3><p id="tourd"></p>
  <div class="ta"><button id="tourskip" data-i18n="tour.skip"></button><button id="tourback" data-i18n="tour.back"></button><button id="tournext" class="go"></button></div></div></div>
 <script>
@@ -887,9 +893,34 @@ async function loadFiles(){ const box=$("flist"); let r; try{ r=await api("GET",
   if(!r.available || !r.files.length){ const x=el("div",null,t(r.available?"files.empty":"files.unavailable")); x.id="fempty"; box.append(x); return; }
   r.files.forEach(f=>{ const row=el("div","frow"), fn=el("div","fn"); fn.title=f.path;
     fn.append(el("b",null,f.name), el("small",null,size(f.bytes)+" · "+when(f.mtime)+(f.upload?" · "+t("files.received"):"")));
-    const d=el("button","dlb","⬇ "+t("files.download")); d.type="button"; d.setAttribute("aria-label",t("files.download")+" "+f.name);
-    d.onclick=()=>fetchDownload("/files/download?path="+encodeURIComponent(f.path), f.name); row.append(fn,d); box.append(row); });
+    const open=el("button","tbtn","Open"); open.type="button";
+    open.onclick=()=>openEditor(f.path, f.name);
+    row.append(fn, open, d); box.append(row); });
   if(r.truncated) box.append(el("p","fhelp",t("files.more",{n:r.files.length}))); }
+
+async function openEditor(path, name){
+  try{
+    const r = await api("GET","/files/download?path="+encodeURIComponent(path));
+    const text = await r.text();
+    $("fedname").textContent = name;
+    $("fedtext").value = text;
+    $("feditor").hidden = false;
+    $("flist").hidden = true;
+    $("fedtext").dataset.path = path;
+  }catch(e){ $("fmsg").textContent = errMsg(e); }
+}
+$("fedclose").onclick = () => { $("feditor").hidden = true; $("flist").hidden = false; };
+$("fedsave").onclick = async () => {
+  const path = $("fedtext").dataset.path, content = $("fedtext").value;
+  try{
+    await api("POST","/files",{files:[{name:path.split("/").pop(), content}]});
+    $("fmsg").textContent = "Saved";
+  }catch(e){ $("fmsg").textContent = errMsg(e); }
+};
+$("feddown").onclick = () => {
+  const blob = new Blob([$("fedtext").value], {type:"text/plain"});
+  const a = el("a"); a.href = URL.createObjectURL(blob); a.download = $("fedname").textContent; a.click();
+};
 function openFiles(){ $("filesp").hidden=false; $("filesbtn").setAttribute("aria-expanded","true"); $("fmsg").textContent=""; loadFiles(); $("fclose").focus(); }
 function closeFiles(){ $("filesp").hidden=true; $("filesbtn").setAttribute("aria-expanded","false"); $("filesbtn").focus(); }
 $("filesbtn").onclick=()=>{ if($("filesp").hidden) openFiles(); else closeFiles(); }; $("fclose").onclick=closeFiles;
