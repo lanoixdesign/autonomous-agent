@@ -318,7 +318,7 @@ CHAT_PAGE = r"""<!doctype html>
   <button id="cancel" class="tbtn" style="display:none" data-i18n="chat.stop"></button>
   <button id="expmd" class="tbtn" style="display:none" data-i18n-title="chat.expmd.title">⇩ MD</button>
   <button id="expjson" class="tbtn" style="display:none" data-i18n-title="chat.expjson.title">⇩ JSON</button>
-  <button id="stopall" class="tbtn" style="display:none" data-i18n="btn.stopall" data-i18n-title="title.stopall"></button>
+  <button id="openbrowser" class="tbtn" type="button" data-i18n="browser.open">Web</button>
   <button id="compose" class="ibtn" data-i18n-title="chat.compose"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 20h9"/><path d="M16.5 3.5a2.1 2.1 0 0 1 3 3L7 19l-4 1 1-4Z"/></svg></button></div>
  <div id="keybanner" hidden role="note"><span data-i18n="chat.keyBanner"></span><a href="/welcome#key" data-i18n="chat.keyBannerBtn"></a></div>
  <div id="folderline" hidden><span data-i18n="conv.folderLine"></span><code id="folderpath"></code><button id="foldercopy" type="button" class="tbtn" data-i18n="conv.copy" data-i18n-title="conv.copyTitle"></button><span id="foldermsg" aria-live="polite"></span></div>
@@ -333,6 +333,7 @@ CHAT_PAGE = r"""<!doctype html>
  <div id="composer"><button id="attach" class="ibtn" data-i18n-title="chat.addFile.title" data-i18n-aria="chat.attach"><span aria-hidden="true">📎</span><span class="lbl" data-i18n="chat.addFile"></span></button>
   <input id="files" type="file" multiple hidden>
   <textarea id="input" data-i18n-placeholder="chat.input.placeholder"></textarea>
+  <button id="mic" class="ibtn" type="button" data-i18n-title="voice.mic" title="Voice">🎤</button>
   <button id="send" data-i18n="chat.send"></button></div>
  <div id="drop" data-i18n="chat.drop"></div>
 </main>
@@ -341,7 +342,16 @@ CHAT_PAGE = r"""<!doctype html>
 <div id="delbox" hidden><div id="delcard" role="alertdialog" aria-modal="true" aria-labelledby="delt" aria-describedby="deld"><h3 id="delt" data-i18n="del.title"></h3><p id="deld"></p>
  <label><input type="checkbox" id="delfolder"><span data-i18n="del.folder"></span></label><p id="delkeep" class="fhelp"></p><p id="delerr" role="alert"></p>
  <div class="ta"><button id="delcancel" type="button" data-i18n="del.cancel"></button><button id="delok" type="button" class="danger" data-i18n="del.confirm"></button></div></div></div>
-<div id="toast" role="status" aria-live="polite" hidden></div>
+<div id="browser" hidden role="dialog" aria-modal="true">
+ <header class="row">
+  <button id="brback" type="button">←</button>
+  <button id="brfwd" type="button">→</button>
+  <input id="brurl" type="url" placeholder="https://…" style="flex:1">
+  <button id="brgo" type="button">Go</button>
+  <button id="brclose" type="button" class="tbtn">✕</button>
+ </header>
+ <iframe id="brframe" sandbox="allow-scripts allow-same-origin allow-forms allow-popups" style="width:100%;height:70vh;border:0"></iframe>
+</div>
 <div id="scrim"></div>
 <section id="filesp" hidden role="dialog" aria-labelledby="fptitle"><header><h2 id="fptitle" data-i18n="files.title"></h2><button id="fclose" class="tbtn" data-i18n="files.close"></button></header>
  <p class="fhelp" data-i18n="files.help"></p><button id="fadd" class="tbtn fadd" data-i18n="files.add"></button><input id="fpick" type="file" multiple hidden>
@@ -742,6 +752,39 @@ async function send(){
   $("send").disabled=false;
 }
 $("send").onclick=send;
+
+/* Voice recognition (Web Speech API) */
+let rec = null, speaking = false;
+const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
+if(SR){
+  rec = new SR(); rec.continuous = true; rec.interimResults = true; rec.lang = (LANG==="fr"?"fr-FR":"en-US");
+  rec.onresult = e => {
+    let t = ""; for(let i=e.resultIndex;i<e.results.length;i++) t += e.results[i][0].transcript;
+    $("input").value = t;
+    if(e.results[e.results.length-1].isFinal && t.trim()){ setTimeout(()=>{ if($("input").value.trim()) send(); }, 300); }
+  };
+  rec.onerror = () => { $("mic").style.background=""; speaking=false; };
+  $("mic").onclick = () => {
+    if(speaking){ rec.stop(); speaking=false; $("mic").style.background=""; }
+    else { try{ rec.start(); speaking=true; $("mic").style.background="var(--accent)"; }catch(e){ toast(t("voice.unsupported")); } }
+  };
+} else { $("mic").hidden = true; }
+
+/* Optional continuous: speak the last assistant reply */
+function speak(text){
+  if(!window.speechSynthesis) return;
+  const u = new SpeechSynthesisUtterance(text.slice(0,500));
+  u.lang = LANG==="fr"?"fr-FR":"en-US";
+  speechSynthesis.speak(u);
+}
+
+/* Simple embedded browser */
+$("brgo").onclick = () => { const u = $("brurl").value.trim(); if(u) $("brframe").src = u.startsWith("http")?u:"https://"+u; };
+$("brurl").onkeydown = e => { if(e.key==="Enter") $("brgo").click(); };
+$("brback").onclick = () => $("brframe").contentWindow.history.back();
+$("brfwd").onclick = () => $("brframe").contentWindow.history.forward();
+$("openbrowser").onclick = () => { $("browser").hidden = false; $("brurl").focus(); };
+// Open browser from a button if we add one later; for now expose via console or future nav.
 $("input").addEventListener("keydown",e=>{ if(e.key==="Enter"&&!e.shiftKey){ e.preventDefault(); send(); } });
 $("new").onclick=$("compose").onclick=()=>{ nav(false); pick(null); $("input").focus(); };
 $("cancel").onclick=async()=>{ if(cur) try{ await api("POST","/tasks/"+cur+"/cancel",{}); poll(); }catch(e){} };
