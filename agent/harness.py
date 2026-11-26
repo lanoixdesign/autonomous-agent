@@ -2240,6 +2240,13 @@ def make_handler(h: Harness, token: str | None, local_only: bool, auth: "remote.
                     return self._send(201, h.add_skill(name, content, source))
                 except ValueError as e:
                     return self._send(400, {"error": str(e)})
+            if path == "/telegram/token":
+                token = (data.get("token") or "").strip()
+                if token:
+                    h.control.secrets.set("telegram:token", token)
+                else:
+                    h.control.secrets.delete("telegram:token")
+                return self._send(200, {"ok": True})
             if path == "/browser/visible":
                 from . import browser as br
                 br.set_visible(bool(data.get("visible", True)))

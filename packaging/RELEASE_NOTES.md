@@ -1,3 +1,9 @@
+**New in 0.9.20 / Nouveautés de la 0.9.20 — Telegram bridge / pont Telegram**
+
+- **Telegram bot**: receives messages, forwards them to the local agent, replies (long messages split). /log returns the recent session log. / **Bot Telegram** : reçoit les messages, les transmet à l’agent local, renvoie la réponse (messages longs découpés). /log renvoie le journal récent.
+- **Settings**: field to save the bot token (or use TELEGRAM_BOT_TOKEN). Bridge starts automatically when a token is present. / **Réglages** : champ pour enregistrer le token du bot (ou variable d’environnement). Le pont démarre automatiquement si un token est présent.
+- Playwright sessions are persisted per domain. / Les sessions Playwright sont persistées par domaine.
+
 **New in 0.9.19 / Nouveautés de la 0.9.19 — voice, visible browser and file editor / voix, navigateur visible et éditeur de fichiers**
 
 - **Voice input**: microphone button in the chat (Web Speech API) for speech-to-text, continuous mode. / **Entrée vocale** : bouton micro dans le chat (Web Speech API) pour la dictée, mode continu.

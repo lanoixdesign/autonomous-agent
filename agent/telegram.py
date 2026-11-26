@@ -20,12 +20,17 @@ MAX_TG = 4000          # Telegram message limit (safe margin)
 API = "https://api.telegram.org/bot"
 
 
-def _token() -> str | None:
-    return os.environ.get("TELEGRAM_BOT_TOKEN", "").strip() or None
+def _token(h=None) -> str | None:
+    env = os.environ.get("TELEGRAM_BOT_TOKEN", "").strip()
+    if env:
+        return env
+    if h is not None and getattr(h, "control", None) and getattr(h.control, "secrets", None):
+        return h.control.secrets.get("telegram:token")
+    return None
 
 
-def _call(method: str, **params: Any) -> dict:
-    tok = _token()
+def _call(method: str, h=None, **params: Any) -> dict:
+    tok = _token(h)
     if not tok:
         raise RuntimeError("TELEGRAM_BOT_TOKEN not set")
     url = f"{API}{tok}/{method}"
@@ -38,11 +43,11 @@ def _call(method: str, **params: Any) -> dict:
         raise RuntimeError(f"Telegram {method} failed: {e}")
 
 
-def send(chat_id: int | str, text: str) -> None:
+def send(chat_id: int | str, text: str, h=None) -> None:
     """Send text, splitting if longer than MAX_TG."""
     text = text or "(empty)"
     for i in range(0, len(text), MAX_TG):
-        _call("sendMessage", chat_id=chat_id, text=text[i:i + MAX_TG])
+        _call("sendMessage", h, chat_id=chat_id, text=text[i:i + MAX_TG])
 
 
 class TelegramBridge:
@@ -55,7 +60,7 @@ class TelegramBridge:
         self._sessions: dict[int, str] = {}   # chat_id -> task_id
 
     def start(self) -> None:
-        if not _token() or self._thread is not None:
+        if not _token(self.h) or self._thread is not None:
             return
         self._thread = threading.Thread(target=self._loop, daemon=True, name="telegram")
         self._thread.start()
@@ -66,7 +71,7 @@ class TelegramBridge:
     def _loop(self) -> None:
         while not self._stop:
             try:
-                updates = _call("getUpdates", offset=self._offset, timeout=20).get("result") or []
+                updates = _call("getUpdates", self.h, offset=self._offset, timeout=20).get("result") or []
                 for u in updates:
                     self._offset = u["update_id"] + 1
                     self._handle(u)
@@ -81,10 +86,10 @@ class TelegramBridge:
         if not chat or not text:
             return
         if text == "/log":
-            send(chat, self._log(chat))
+            send(chat, self._log(chat), self.h)
             return
         if text.startswith("/"):
-            send(chat, "Commands: /log (recent actions)")
+            send(chat, "Commands: /log (recent actions)", self.h)
             return
         # Forward to agent
         try:
@@ -98,9 +103,9 @@ class TelegramBridge:
             time.sleep(2)
             task = self.h._tasks.get(tid)
             reply = getattr(task, "result", None) or "..."
-            send(chat, str(reply)[:MAX_TG * 2])
+            send(chat, str(reply)[:MAX_TG * 2], self.h)
         except Exception as e:
-            send(chat, f"Error: {e}")
+            send(chat, f"Error: {e}", self.h)
 
     def _log(self, chat: int) -> str:
         tid = self._sessions.get(chat)

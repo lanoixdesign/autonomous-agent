@@ -222,7 +222,12 @@ SETTINGS_PAGE = r"""<!doctype html>
   <label class="switch"><input type="checkbox" id="idcon"><span data-i18n="set.idc.enabled"></span></label>
   <details><summary data-i18n="set.f.advanced"></summary><div id="idcf" class="grid3"></div></details>
   <div class="row" style="margin-top:10px"><button id="isave" class="blue" data-i18n="set.save"></button></div></section>
- <section id="phone" class="card xp"><h2><span data-i18n="set.sec.phone"></span><button class="tip" data-tip="set.phone.help"></button></h2>
+ <section id="telegram" class="card"><h2>Telegram</h2>
+  <p class="muted">Bot token (from @BotFather). Leave empty to use TELEGRAM_BOT_TOKEN.</p>
+  <div class="row"><input id="tgtoken" type="password" placeholder="123456:ABC..." style="flex:1">
+   <button id="tgsave" class="blue">Save</button></div>
+  <p id="tgmsg" class="muted"></p>
+ </section>
   <p id="phonestate" class="pill"></p>
   <label class="switch"><input type="checkbox" id="remon"><span data-i18n="set.phone.enable"></span></label>
   <details class="adv"><summary data-i18n="ui.advanced"></summary><div class="grid2"><div><label class="f" for="tunnel"><span data-i18n="set.phone.tunnel"></span><button class="tip" data-tip="tip.tunnel"></button></label><select id="tunnel"></select></div>
@@ -631,6 +636,14 @@ onLang=()=>{ pickBtns(); drawProvs(); buildWBulk(); if(step==="2b") jobsStep(); 
   if(!ST.available || !ST.editable){ [1,2,3].forEach(i=>$("s"+i).hidden=true); $("slock").hidden=false; return; }
   try{ const v=await api("GET","/app/settings"); PRESETS=v.presets||{}; PREFIXES=v.key_prefixes||[]; }catch(e){}
   pickBtns(); drawProvs(); buildWBulk(); show(location.hash==="#key"?2:1); })();   // v0.9.9: the chat's key banner opens step 2
+$("tgsave").onclick = async () => {
+  const token = $("tgtoken").value.trim();
+  try {
+    await api("POST", "/telegram/token", {token});
+    $("tgmsg").textContent = token ? "Saved — restart to apply" : "Cleared";
+    $("tgtoken").value = "";
+  } catch(e) { $("tgmsg").textContent = errMsg(e); }
+};
 </script></body></html>
 """
 
