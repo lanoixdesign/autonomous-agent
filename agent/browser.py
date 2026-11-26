@@ -50,6 +50,55 @@ def _try_playwright():
         return None
 
 
+_page = None   # persistent page for interactions
+
+
+def _get_page():
+    global _page
+    br = _try_playwright()
+    if br is None:
+        return None
+    if _page is None or _page.is_closed():
+        _page = br.new_page()
+    return _page
+
+
+def browser_click(selector: str) -> str:
+    page = _get_page()
+    if page is None:
+        raise RuntimeError("browser unavailable")
+    page.click(selector, timeout=10000)
+    log_request(page.url, f"click:{selector}")
+    return f"clicked {selector}"
+
+
+def browser_fill(selector: str, text: str) -> str:
+    page = _get_page()
+    if page is None:
+        raise RuntimeError("browser unavailable")
+    page.fill(selector, text, timeout=10000)
+    log_request(page.url, f"fill:{selector}")
+    return f"filled {selector}"
+
+
+def browser_select(selector: str, value: str) -> str:
+    page = _get_page()
+    if page is None:
+        raise RuntimeError("browser unavailable")
+    page.select_option(selector, value, timeout=10000)
+    log_request(page.url, f"select:{selector}")
+    return f"selected {value} in {selector}"
+
+
+def browser_submit(selector: str = "form") -> str:
+    page = _get_page()
+    if page is None:
+        raise RuntimeError("browser unavailable")
+    page.locator(selector).evaluate("el => el.submit()")
+    page.wait_for_load_state("domcontentloaded", timeout=10000)
+    log_request(page.url, "submit")
+    return f"submitted {selector}"
+    
 def fetch_page(url: str, timeout: float = 20.0) -> tuple[str, str]:
     """Return (content_type, text). Uses Playwright if available and visible, else HTTP."""
     try:
@@ -58,18 +107,15 @@ def fetch_page(url: str, timeout: float = 20.0) -> tuple[str, str]:
         raise ValueError(str(e))
 
     if is_visible():
-        br = _try_playwright()
-        if br is not None:
+        page = _get_page()
+        if page is not None:
             try:
-                page = br.new_page()
                 page.goto(url, timeout=int(timeout * 1000), wait_until="domcontentloaded")
                 text = page.content()
-                page.close()
                 log_request(url, "browser")
                 return "text/html", text
             except Exception as e:
                 log_request(url, f"browser-fail:{type(e).__name__}")
-                # fall through to HTTP
     # HTTP fallback
     import urllib.request
     from . import USER_AGENT

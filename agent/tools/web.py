@@ -56,9 +56,42 @@ def _search(ctx: ToolContext, a: dict) -> str:
     return "no results (search endpoint may block automated requests; use web_fetch on a known URL)"
 
 
+def _click(ctx: ToolContext, a: dict) -> str:
+    try:
+        return agent_browser.browser_click(a["selector"])
+    except Exception as e:
+        raise ToolError(str(e))
+
+def _fill(ctx: ToolContext, a: dict) -> str:
+    try:
+        return agent_browser.browser_fill(a["selector"], a["text"])
+    except Exception as e:
+        raise ToolError(str(e))
+
+def _select(ctx: ToolContext, a: dict) -> str:
+    try:
+        return agent_browser.browser_select(a["selector"], a["value"])
+    except Exception as e:
+        raise ToolError(str(e))
+
+def _submit(ctx: ToolContext, a: dict) -> str:
+    try:
+        return agent_browser.browser_submit(a.get("selector") or "form")
+    except Exception as e:
+        raise ToolError(str(e))
+
+
 TOOLS = [
     Tool("web_fetch", "Fetch a web page or API URL and return its text.", "network",
          params(["url"], url=s("http(s) URL"), max_chars={"type": "integer"}), _fetch, "url", "url"),
     Tool("web_search", "Best-effort web search (DuckDuckGo HTML by default, AGENT_SEARCH_URL to change).", "network",
          params(["query"], query=s("search query"), limit={"type": "integer"}), _search, "url", _search_base),
+    Tool("browser_click", "Click an element in the current browser page (CSS selector).", "network",
+         params(["selector"], selector=s("CSS selector")), _click),
+    Tool("browser_fill", "Fill a form field in the current browser page.", "network",
+         params(["selector", "text"], selector=s("CSS selector"), text=s("text to type")), _fill),
+    Tool("browser_select", "Select an option in a dropdown.", "network",
+         params(["selector", "value"], selector=s("CSS selector"), value=s("option value")), _select),
+    Tool("browser_submit", "Submit a form in the current browser page.", "network",
+         params([], selector=s("CSS selector of the form, default form")), _submit),
 ]
