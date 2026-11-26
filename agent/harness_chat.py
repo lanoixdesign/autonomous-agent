@@ -802,6 +802,18 @@ async function refreshBrowser(){
     $("brframe").hidden = hide;
     $("brlog").hidden = !hide;
     $("brhide").textContent = hide ? "Afficher" : "Masquer";
+    // sessions
+    let box = $("brsessions");
+    if(!box){
+      box = el("div",null,"Sessions : "); box.id="brsessions"; box.style.cssText="padding:6px;font-size:12px";
+      $("brview").before(box);
+    }
+    box.replaceChildren(el("span",null,"Sessions : "));
+    (r.sessions||[]).forEach(s=>{
+      const b=el("button","tbtn",s.domain+" ✕"); b.type="button";
+      b.onclick=async()=>{ await api("POST","/browser/session",{domain:s.domain}); refreshBrowser(); };
+      box.append(b);
+    });
   }catch(e){}
 }
 $("brhide").onclick = async () => {

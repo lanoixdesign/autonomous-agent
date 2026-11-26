@@ -5,11 +5,17 @@ NetGuard is always applied. User can hide the live view (session flag).
 """
 from __future__ import annotations
 
+import json
 import os
 import threading
+from pathlib import Path
 from typing import Any
+from urllib.parse import urlparse
 
 from . import netguard
+
+SESSIONS_DIR = Path(os.environ.get("AGENT_STATE", ".")) / "browser_sessions"
+SESSIONS_DIR.mkdir(parents=True, exist_ok=True)
 
 _browser = None
 _lock = threading.Lock()
@@ -37,7 +43,47 @@ def recent_log() -> list[dict]:
     return list(_log)
 
 
-def _try_playwright():
+def _session_path(url: str) -> Path:
+    host = urlparse(url).netloc or "unknown"
+    safe = "".join(c if c.isalnum() or c in ".-" else "_" for c in host)
+    return SESSIONS_DIR / f"{safe}.json"
+
+
+def save_session(url: str) -> None:
+    page = _get_page()
+    if page is None:
+        return
+    try:
+        path = _session_path(url)
+        page.context.storage_state(path=str(path))
+        log_request(url, "session-saved")
+    except Exception:
+        pass
+
+
+def load_session(url: str):
+    path = _session_path(url)
+    if not path.exists():
+        return None
+    try:
+        return str(path)
+    except Exception:
+        return None
+
+
+def list_sessions() -> list[dict]:
+    out = []
+    for p in SESSIONS_DIR.glob("*.json"):
+        out.append({"domain": p.stem, "file": p.name, "size": p.stat().st_size})
+    return out
+
+
+def delete_session(domain: str) -> bool:
+    path = SESSIONS_DIR / f"{domain}.json"
+    if path.exists():
+        path.unlink()
+        return True
+    return False
     global _browser
     if _browser is not None:
         return _browser
@@ -53,13 +99,14 @@ def _try_playwright():
 _page = None   # persistent page for interactions
 
 
-def _get_page():
+def _get_page(storage: str | None = None):
     global _page
     br = _try_playwright()
     if br is None:
         return None
     if _page is None or _page.is_closed():
-        _page = br.new_page()
+        ctx = br.new_context(storage_state=storage) if storage else br.new_context()
+        _page = ctx.new_page()
     return _page
 
 
@@ -107,11 +154,13 @@ def fetch_page(url: str, timeout: float = 20.0) -> tuple[str, str]:
         raise ValueError(str(e))
 
     if is_visible():
-        page = _get_page()
+        storage = load_session(url)
+        page = _get_page(storage)
         if page is not None:
             try:
                 page.goto(url, timeout=int(timeout * 1000), wait_until="domcontentloaded")
                 text = page.content()
+                save_session(url)
                 log_request(url, "browser")
                 return "text/html", text
             except Exception as e:
