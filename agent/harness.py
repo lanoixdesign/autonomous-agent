@@ -2030,6 +2030,9 @@ def make_handler(h: Harness, token: str | None, local_only: bool, auth: "remote.
                 return self._send(200, {"schedules": h.list_schedules()})
             if path == "/skills":
                 return self._send(200, {"skills": h.list_skills()})
+            if path == "/browser/log":
+                from . import browser as br
+                return self._send(200, {"visible": br.is_visible(), "log": br.recent_log()})
             if path == "/settings":
                 return self._send(200, h.get_settings())
             if path == "/conv/csrf":    # v0.9.5: token for the conversation actions (same-origin pages only)
@@ -2236,6 +2239,10 @@ def make_handler(h: Harness, token: str | None, local_only: bool, auth: "remote.
                     return self._send(201, h.add_skill(name, content, source))
                 except ValueError as e:
                     return self._send(400, {"error": str(e)})
+            if path == "/browser/visible":
+                from . import browser as br
+                br.set_visible(bool(data.get("visible", True)))
+                return self._send(200, {"visible": br.is_visible()})
             m = re.match(r"^/skills/([a-z0-9][a-z0-9_\-]{0,63})/delete$", path)
             if m:
                 if h.delete_skill(m.group(1)):

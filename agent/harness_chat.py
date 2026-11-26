@@ -348,9 +348,13 @@ CHAT_PAGE = r"""<!doctype html>
   <button id="brfwd" type="button">→</button>
   <input id="brurl" type="url" placeholder="https://…" style="flex:1">
   <button id="brgo" type="button">Go</button>
+  <button id="brhide" type="button" class="tbtn">Masquer</button>
   <button id="brclose" type="button" class="tbtn">✕</button>
  </header>
- <iframe id="brframe" sandbox="allow-scripts allow-same-origin allow-forms allow-popups" style="width:100%;height:70vh;border:0"></iframe>
+ <div id="brview">
+  <iframe id="brframe" sandbox="allow-scripts allow-same-origin allow-forms allow-popups" style="width:100%;height:60vh;border:0"></iframe>
+  <pre id="brlog" hidden style="height:60vh;overflow:auto;background:#111;color:#eee;padding:8px;margin:0"></pre>
+ </div>
 </div>
 <div id="scrim"></div>
 <section id="filesp" hidden role="dialog" aria-labelledby="fptitle"><header><h2 id="fptitle" data-i18n="files.title"></h2><button id="fclose" class="tbtn" data-i18n="files.close"></button></header>
@@ -783,7 +787,23 @@ $("brgo").onclick = () => { const u = $("brurl").value.trim(); if(u) $("brframe"
 $("brurl").onkeydown = e => { if(e.key==="Enter") $("brgo").click(); };
 $("brback").onclick = () => $("brframe").contentWindow.history.back();
 $("brfwd").onclick = () => $("brframe").contentWindow.history.forward();
-$("openbrowser").onclick = () => { $("browser").hidden = false; $("brurl").focus(); };
+$("openbrowser").onclick = () => { $("browser").hidden = false; $("brurl").focus(); refreshBrowser(); };
+async function refreshBrowser(){
+  try{
+    const r = await api("GET","/browser/log");
+    $("brlog").textContent = r.log.map(x => x.status + "  " + x.url).join("\n") || "(vide)";
+    const hide = !r.visible;
+    $("brframe").hidden = hide;
+    $("brlog").hidden = !hide;
+    $("brhide").textContent = hide ? "Afficher" : "Masquer";
+  }catch(e){}
+}
+$("brhide").onclick = async () => {
+  const cur = $("brhide").textContent === "Masquer";
+  await api("POST","/browser/visible",{visible: !cur});
+  refreshBrowser();
+};
+setInterval(() => { if(!$("browser").hidden) refreshBrowser(); }, 3000);
 // Open browser from a button if we add one later; for now expose via console or future nav.
 $("input").addEventListener("keydown",e=>{ if(e.key==="Enter"&&!e.shiftKey){ e.preventDefault(); send(); } });
 $("new").onclick=$("compose").onclick=()=>{ nav(false); pick(null); $("input").focus(); };

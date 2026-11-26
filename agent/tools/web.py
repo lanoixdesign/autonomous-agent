@@ -7,8 +7,7 @@ import re
 import urllib.parse
 import urllib.request
 
-from .. import USER_AGENT
-from .. import netguard
+from .. import browser as agent_browser
 from . import Tool, ToolContext, ToolError, params, s
 
 TAG = re.compile(r"<(script|style)[\s\S]*?</\1>|<[^>]+>", re.I)
@@ -24,15 +23,8 @@ def _get(url: str, timeout: int = 20) -> tuple[str, str]:
     if not url.startswith(("http://", "https://")):
         raise ToolError("only http(s) URLs are allowed")
     try:
-        netguard.check_url(url)                         # v0.9.3: no localhost / metadata / private network
-    except netguard.BlockedURL as e:
-        raise ToolError(str(e))
-    req = urllib.request.Request(url, headers={"User-Agent": USER_AGENT, "Accept": "text/html,application/json,text/plain,*/*"})
-    try:
-        with netguard.open_url(req, timeout) as r:
-            ctype = r.headers.get("Content-Type", "")
-            body = r.read(2_000_000).decode(r.headers.get_content_charset() or "utf-8", errors="replace")
-    except Exception as e:  # noqa: BLE001
+        ctype, body = agent_browser.fetch_page(url, timeout)
+    except Exception as e:
         raise ToolError(f"fetch failed: {e}")
     return ctype, body
 
