@@ -89,7 +89,7 @@ FILE_DOWNLOAD_MAX = 200 * 1024 * 1024   # "My files" downloads
 FILES_LIST_MAX = 500
 from . import pwa, qr, remote
 from .redact import MASK as MASK_TEXT, redact
-from . import __version__, devmode, export, i18n, schedule, uploads, mcp
+from . import __version__, devmode, export, i18n, schedule, uploads, mcp, skills as skills_mod
 from .idc import IDC, IDCConfig
 from .keys import role_task
 from . import sandbox as sandbox_mod
@@ -687,6 +687,14 @@ class Harness:
         self.stopping = threading.Event()
         self.rules: dict[str, dict] = {}
         self.schedules: dict[str, dict] = {}
+        state_dir = self.audit_path.parent
+        repo_skills = Path(__file__).resolve().parent.parent / "skills"
+        skill_dirs = []
+        if self.workspace:
+            skill_dirs.append((self.workspace / "skills", "workspace"))
+        skill_dirs.append((state_dir / "skills", "state"))
+        skill_dirs.append((repo_skills, "repo"))
+        self.skills = skills_mod.SkillLibrary(skill_dirs)
         self.settings: dict[str, Any] = {"idc": bool(self.idc_config.enabled), "critic": False, "critic_rounds": 2}
         self.public_url: str | None = None   # remote mode: the URL a phone should open (tunnel, LAN...)
         self.control: Any = None             # userconfig.AppControl: Settings page, keys from the UI, restart / quit
@@ -1311,6 +1319,34 @@ class Harness:
     def list_schedules(self) -> list[dict]:
         with self._lock:
             return [dict(s, when=schedule.describe(s)) for s in self.schedules.values()]
+
+    def list_skills(self) -> list[dict]:
+        self.skills.reload()
+        return self.skills.list_detailed()
+
+    def add_skill(self, name: str, content: str, source: str = "workspace") -> dict:
+        """Validate and save a skill. Returns the skill info or raises ValueError."""
+        meta, body = skills_mod.parse_skill_file(content)
+        if not skills_mod.NAME_RE.match(name) or not meta.get("description"):
+            raise ValueError("Invalid skill: name must match [a-z0-9]... and description is required")
+        if meta.get("name") and meta["name"] != name:
+            raise ValueError("Frontmatter name does not match folder name")
+        target_dir = (self.workspace / "skills" if source == "workspace" and self.workspace else self.audit_path.parent / "skills")
+        skill_dir = target_dir / name
+        skill_dir.mkdir(parents=True, exist_ok=True)
+        (skill_dir / "SKILL.md").write_text(content, encoding="utf-8")
+        self.skills.reload()
+        return {"name": name, "description": meta["description"], "source": source}
+
+    def delete_skill(self, name: str) -> bool:
+        """Delete a user skill (workspace or state). Repo skills cannot be deleted."""
+        for s in self.skills.skills.values():
+            if s.name == name and s.source in ("workspace", "state"):
+                import shutil
+                shutil.rmtree(s.path.parent, ignore_errors=True)
+                self.skills.reload()
+                return True
+        return False
 
     def run_schedule(self, sid: str, now: float | None = None, manual: bool = False) -> Task | None:
         """Start one run of a schedule (a new conversation). Skipped while its previous run is active."""
@@ -1992,6 +2028,8 @@ def make_handler(h: Harness, token: str | None, local_only: bool, auth: "remote.
                 return self._send(200, {"rules": h.list_rules(), "never_remembered": list(NEVER_REMEMBER)})
             if path == "/schedules":
                 return self._send(200, {"schedules": h.list_schedules()})
+            if path == "/skills":
+                return self._send(200, {"skills": h.list_skills()})
             if path == "/settings":
                 return self._send(200, h.get_settings())
             if path == "/conv/csrf":    # v0.9.5: token for the conversation actions (same-origin pages only)
@@ -2190,6 +2228,19 @@ def make_handler(h: Harness, token: str | None, local_only: bool, auth: "remote.
                     return self._send(201, h.add_schedule(data))
                 except ValueError as e:
                     return self._send(400, {"error": str(e)})
+            if path == "/skills":
+                try:
+                    name = data.get("name", "").strip()
+                    content = data.get("content", "")
+                    source = data.get("source", "workspace")
+                    return self._send(201, h.add_skill(name, content, source))
+                except ValueError as e:
+                    return self._send(400, {"error": str(e)})
+            m = re.match(r"^/skills/([a-z0-9][a-z0-9_\-]{0,63})/delete$", path)
+            if m:
+                if h.delete_skill(m.group(1)):
+                    return self._send(200, {"ok": True})
+                return self._send(404, {"error": "skill not found or not deletable"})
             m = SCHEDULE_RE.match(path)
             if m:
                 sid, action = m.group(1), m.group(2)

@@ -233,6 +233,17 @@ SETTINGS_PAGE = r"""<!doctype html>
  <section id="app" class="card"><h2><span data-i18n="set.sec.app"></span><button class="tip" data-tip="set.app.help"></button></h2>
   <p id="appinfo" class="muted"></p>
   <div class="row"><button id="restart2" class="primary" data-i18n="set.restart"></button><button id="quit" class="danger" data-i18n="set.quit"></button><a class="btn" href="/welcome" data-i18n="set.app.wizard"></a></div></section>
+ <section id="skills" class="card"><h2 data-i18n="skills.title"></h2>
+  <p class="muted" data-i18n="skills.help"></p>
+  <div id="skillslist" class="muted"></div>
+  <details><summary data-i18n="skills.add"></summary>
+   <div class="row"><input id="skname" type="text" data-i18n-placeholder="skills.namePh" style="width:160px"></div>
+   <textarea id="skcontent" rows="8" data-i18n-placeholder="skills.contentPh" style="width:100%;font-family:monospace"></textarea>
+   <div class="row"><button id="skadd" data-i18n="skills.save"></button>
+    <label class="btn lite"><span data-i18n="skills.upload"></span><input id="skfile" type="file" accept=".md,text/markdown" hidden></label></div>
+   <p id="skmsg" class="muted"></p>
+  </details>
+ </section>
  <div id="simplebar" class="card row" style="justify-content:space-between"><span class="muted" data-i18n="set.simpleNote"></span><button id="toexpert" data-i18n="set.showExpert"></button></div>
  </fieldset>
 </div>
@@ -583,6 +594,38 @@ $("save2").onclick=async()=>{ const k=prov(), p=PRESETS[k]||{}, key=$("key").val
   catch(e){ return fail(e); }
   $("key").value=""; doneKey=name; doneBulk=null; $("donemsg").textContent=doneText(); show(3); };
 $("demo").onclick=async()=>{ try{ await api("POST","/app/setup",{demo:true,done:true,lang:LANG}); }catch(e){ return fail(e); } doneKey=null; doneBulk=null; $("donemsg").textContent=doneText(); show(3); };
+async function refreshSkills(){
+  try{
+    const r = await api("GET","/skills");
+    const box = $("skillslist"); box.className = r.skills.length ? "" : "muted"; box.replaceChildren();
+    if(!r.skills.length){ box.textContent = t("skills.none"); return; }
+    r.skills.forEach(s => {
+      const d = el("div","row");
+      d.append(el("div",null, s.name + " — " + s.description + " (" + s.source + ")"));
+      if(s.source !== "repo"){
+        const b = el("button","lite", t("skills.delete"));
+        b.onclick = () => { if(confirm(t("skills.confirmDelete"))) api("POST","/skills/"+s.name+"/delete",{}).then(refreshSkills); };
+        d.append(b);
+      }
+      box.append(d);
+    });
+  }catch(e){}
+}
+$("skadd").onclick = async () => {
+  const name = $("skname").value.trim(), content = $("skcontent").value;
+  if(!name || !content) return;
+  if(!confirm(t("skills.confirmAdd"))) return;
+  try{ await api("POST","/skills",{name, content, source:"workspace"}); $("skname").value=$("skcontent").value=""; $("skmsg").textContent=t("skills.saved"); refreshSkills(); }
+  catch(e){ $("skmsg").textContent = e.message; }
+};
+$("skfile").onchange = async e => {
+  const f = e.target.files[0]; if(!f) return;
+  const text = await f.text();
+  const name = f.name.replace(/\.md$/i,"").toLowerCase().replace(/[^a-z0-9_\-]/g,"-");
+  $("skname").value = name; $("skcontent").value = text;
+  $("skmsg").textContent = t("skills.loaded");
+};
+refreshSkills();
 onLang=()=>{ pickBtns(); drawProvs(); buildWBulk(); if(step==="2b") jobsStep(); else show(step); if(step===3) $("donemsg").textContent=doneText(); };
 (async()=>{ try{ await status(); }catch(e){ if(e.status===401){ location.href="/connect"; return; } }
   if(!ST.available || !ST.editable){ [1,2,3].forEach(i=>$("s"+i).hidden=true); $("slock").hidden=false; return; }

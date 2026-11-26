@@ -17,6 +17,7 @@ class Skill:
     name: str
     description: str
     path: Path
+    source: str = "repo"   # "workspace" | "state" | "repo"
 
     def body(self) -> str:
         return parse_skill_file(self.path.read_text(encoding="utf-8"))[1]
@@ -38,18 +39,27 @@ def parse_skill_file(text: str) -> tuple[dict, str]:
 
 
 class SkillLibrary:
-    def __init__(self, dirs: list[str | Path]):
+    def __init__(self, dirs: list[tuple[str | Path, str]]):
+        """dirs: list of (path, source_label)"""
         self.skills: dict[str, Skill] = {}
-        for d in dirs:
-            d = Path(d)
+        self.dirs = [(Path(d), src) for d, src in dirs]
+        self.reload()
+
+    def reload(self) -> None:
+        self.skills.clear()
+        for d, src in self.dirs:
             if not d.is_dir():
                 continue
             for f in sorted(d.glob("*/SKILL.md")):
                 meta, _ = parse_skill_file(f.read_text(encoding="utf-8"))
                 name = meta.get("name") or f.parent.name
                 if not NAME_RE.match(name) or not meta.get("description"):
-                    continue  # invalid skills are skipped, never half-loaded
-                self.skills.setdefault(name, Skill(name, meta["description"], f))  # first dir wins
+                    continue
+                self.skills.setdefault(name, Skill(name, meta["description"], f, src))
+
+    def list_detailed(self) -> list[dict]:
+        return [{"name": s.name, "description": s.description, "source": s.source,
+                 "path": str(s.path)} for s in sorted(self.skills.values(), key=lambda x: x.name)]
 
     def names(self) -> list[str]:
         return sorted(self.skills)

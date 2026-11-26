@@ -95,7 +95,7 @@ def parts(args) -> tuple[Permissions, ToolContext, Path]:
                 break
     perms = Permissions.load(perm_path, yolo=args.yolo)
     mem = Memory(state / "memory")
-    skills = SkillLibrary([ws / "skills", state / "skills", REPO_SKILLS])
+    skills = SkillLibrary([(ws / "skills", "workspace"), (state / "skills", "state"), (REPO_SKILLS, "repo")])
     ctx = ToolContext(workspace=ws, memory=mem, skills=skills, deny_paths=[state], path_deny=list(perms.path_deny))
     if getattr(args, "sandbox", False) or os.environ.get("AGENT_SANDBOX", "").lower() in ("1", "true", "yes", "on"):
         ctx.sandbox = lambda: True
