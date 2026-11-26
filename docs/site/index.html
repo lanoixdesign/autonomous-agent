@@ -23,7 +23,13 @@ header{display:flex;align-items:center;justify-content:space-between;gap:12px}
 .lang{display:flex;border:1px solid var(--line);border-radius:8px;overflow:hidden}
 .lang button{border:0;background:transparent;color:var(--muted);font:600 13px system-ui,sans-serif;padding:6px 10px;cursor:pointer;min-width:44px;min-height:36px}
 .lang button[aria-pressed=true]{background:var(--chip);color:var(--strong)}
+
 .hero{text-align:center;padding:40px 0 24px}
+.mascot{width:96px;height:96px;margin:0 auto 16px}
+.mascot svg{display:block;width:100%;height:100%}
+.mascot .pupil{transform-box:fill-box;transform-origin:center;animation:blink 3.4s infinite}
+@keyframes blink{0%,41%,49%,100%{transform:scaleY(1)}45%{transform:scaleY(.08)}}
+@media (prefers-reduced-motion:reduce){.mascot .pupil{animation:none}}
 h1{font-size:clamp(28px,5vw,40px);line-height:1.15;margin:0 0 12px;color:var(--strong);font-weight:650}
 .lead{font-size:clamp(17px,2.4vw,20px);color:var(--text);max-width:36em;margin:0 auto 28px}
 .dl{display:flex;flex-direction:column;align-items:center;gap:10px}
@@ -50,6 +56,11 @@ summary{cursor:pointer;color:var(--accent);font-weight:500;min-height:32px;displ
 @media (prefers-color-scheme:dark){summary{color:#9DB3DA}}
 details ol{padding-left:20px;margin:8px 0 0} details li{margin:4px 0;background:none;border:0;padding:0}
 kbd,.ui{font:600 14px system-ui,sans-serif;background:var(--chip);border-radius:6px;padding:1px 6px;color:var(--strong)}
+
+.faq{max-width:36em;margin:8px auto 0}
+.faq details{margin:0 0 10px;padding:2px 16px 10px;border:1px solid var(--line);border-radius:14px;background:var(--card)}
+.faq summary{min-height:44px;font-weight:600;color:var(--strong)}
+.faq details p{margin:0 0 8px}
 footer{margin-top:48px;padding-top:20px;border-top:1px solid var(--line);display:flex;gap:18px;flex-wrap:wrap;justify-content:center;font-size:14px;color:var(--muted)}
 [hidden]{display:none!important}
 @media (max-width:560px){.wrap{padding:14px 16px 40px}.hero{padding:24px 0 16px}.big{width:100%;justify-content:center}.btns{width:100%;flex-direction:column}}
@@ -64,6 +75,16 @@ footer{margin-top:48px;padding-top:20px;border-top:1px solid var(--line);display
 
 <main>
 <section class="hero">
+ <div class="mascot" aria-hidden="true">
+  <svg viewBox="0 0 64 64">
+   <defs><linearGradient id="m-bg" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#4B6699"/><stop offset="1" stop-color="#33497A"/></linearGradient></defs>
+   <rect width="64" height="64" rx="14" fill="url(#m-bg)"/>
+   <circle cx="32" cy="32" r="18.2" fill="none" stroke="#F3F5FA" stroke-width="5.5"/>
+   <rect x="19" y="19" width="26" height="26" rx="7" fill="#F3F5FA"/>
+   <circle class="pupil" cx="27" cy="30" r="2.3" fill="#33497A"/>
+   <circle class="pupil" cx="37" cy="30" r="2.3" fill="#33497A"/>
+  </svg>
+ </div>
  <h1 data-t="title">Ton assistant IA, sur ton ordinateur</h1>
  <p class="lead" data-t="lead">Tu écris ce que tu veux en mots simples ; l'assistant fait le travail et te demande toujours avant toute action importante. Gratuit, et tes fichiers restent chez toi.</p>
  <div class="dl" id="dl">
@@ -112,11 +133,18 @@ footer{margin-top:48px;padding-top:20px;border-top:1px solid var(--line);display
   </li>
   <li>
    <div class="ic" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="8" cy="15" r="4"/><path d="m11 12 9-9"/><path d="m17 6 3 3"/><path d="m15 8 2 2"/></svg></div>
-   <h3 data-t="s3t">3. Ajoute une clé gratuite</h3>
-   <p data-t="s3d">L'appli s'ouvre dans ton navigateur avec un assistant de bienvenue. Il t'aide à créer une clé gratuite chez Groq (sans carte bancaire) et à la coller. Tu peux aussi essayer d'abord sans clé.</p>
+   <h3 data-t="s3t">3. Choisis un fournisseur gratuit</h3>
+   <p data-t="s3d">L'appli s'ouvre avec un écran de bienvenue. Tu choisis une clé gratuite chez Groq ou Gemini (sans carte bancaire), ou Ollama sur ton ordinateur. Tu peux aussi essayer d'abord sans clé.</p>
    <p><a href="https://console.groq.com/keys" rel="noopener" data-t="groq">Créer une clé Groq gratuite</a></p>
   </li>
  </ol>
+</section>
+
+<section class="faq" aria-labelledby="faq">
+ <h2 id="faq" data-t="faqTitle">Questions fréquentes</h2>
+ <details><summary data-t="faq1q">C'est gratuit ?</summary><p data-t="faq1a">Oui. L'application est gratuite. Tu peux utiliser Groq ou Gemini avec une clé gratuite, ou Ollama qui tourne entièrement chez toi.</p></details>
+ <details><summary data-t="faq2q">Mes fichiers restent-ils chez moi ?</summary><p data-t="faq2a">Oui. Tes fichiers et tes conversations restent sur ton ordinateur. L'application te demande toujours confirmation avant toute action importante.</p></details>
+ <details><summary data-t="faq3q">Ça marche sans internet ?</summary><p data-t="faq3a">Oui, avec Ollama. Groq et Gemini ont besoin d'internet, mais Ollama fonctionne entièrement hors ligne.</p></details>
 </section>
 </main>
 
@@ -150,13 +178,16 @@ var T={
   m3:"Si le Mac propose seulement « Terminé » : ouvre Réglages Système → Confidentialité et sécurité, descends et clique « Ouvrir quand même », puis confirme.",
   winHelp:"Sur Windows",w1:"Double-clique sur le fichier téléchargé.",
   w2:"Une fenêtre bleue « Windows a protégé votre ordinateur » s'affiche : clique « Informations complémentaires », puis « Exécuter quand même ».",
-  s3t:"3. Ajoute une clé gratuite",s3d:"L'appli s'ouvre dans ton navigateur avec un assistant de bienvenue. Il t'aide à créer une clé gratuite chez Groq (sans carte bancaire) et à la coller. Tu peux aussi essayer d'abord sans clé.",
+  s3t:"3. Choisis un fournisseur gratuit",s3d:"L'appli s'ouvre avec un écran de bienvenue. Tu choisis une clé gratuite chez Groq ou Gemini (sans carte bancaire), ou Ollama sur ton ordinateur. Tu peux aussi essayer d'abord sans clé.",
   groq:"Créer une clé Groq gratuite",help:"Aide pour bien démarrer",ollama:"Ma propre IA avec Ollama",versions:"Toutes les versions",privacy:"Cette page n'utilise ni cookie ni traceur.",
+  faqTitle:"Questions fréquentes",faq1q:"C'est gratuit ?",faq1a:"Oui. L'application est gratuite. Tu peux utiliser Groq ou Gemini avec une clé gratuite, ou Ollama qui tourne entièrement chez toi.",
+  faq2q:"Mes fichiers restent-ils chez moi ?",faq2a:"Oui. Tes fichiers et tes conversations restent sur ton ordinateur. L'application te demande toujours confirmation avant toute action importante.",
+  faq3q:"Ça marche sans internet ?",faq3a:"Oui, avec Ollama. Groq et Gemini ont besoin d'internet, mais Ollama fonctionne entièrement hors ligne.",
   docTitle:"Autonomous Agent — ton assistant IA sur ton ordinateur"},
  en:{title:"Your AI assistant, on your computer",
   lead:"Write what you want in plain words; the assistant does the work and always asks you before anything important. Free, and your files stay with you.",
   dlMac:"Download for Mac",dlWin:"Download for Windows",macArm:"Recent Mac (M1, M2…)",macIntel:"Intel Mac",
-  macWhich:"Not sure? Apple menu → About This Mac: “Chip Apple M…” = recent Mac; “Processor Intel” = Intel Mac.",
+  macWhich:"Not sure? Apple menu → About This Mac: Apple M1, M2… = recent Mac; Intel = Intel Mac.",
   free:"Free · about 10 MB · no sign-up",other:"Other systems:",allFiles:"all files",
   mobile:"The app installs on a computer (Mac or Windows). Open this page on your computer to download it.",
   linux:"No ready-made Linux version yet: pick a file below, or run the app from its source code (see the help).",
@@ -169,8 +200,11 @@ var T={
   m3:"If the Mac only offers “Done”: open System Settings → Privacy & Security, scroll down and click “Open Anyway”, then confirm.",
   winHelp:"On Windows",w1:"Double-click the downloaded file.",
   w2:"A blue “Windows protected your PC” window appears: click “More info”, then “Run anyway”.",
-  s3t:"3. Add a free key",s3d:"The app opens in your browser with a welcome assistant. It helps you create a free Groq key (no card needed) and paste it. You can also try it first without a key.",
+  s3t:"3. Choose a free provider",s3d:"The app opens with a welcome screen. You pick a free Groq or Gemini key (no card needed), or Ollama on your computer. You can also try it first without a key.",
   groq:"Create a free Groq key",help:"Getting started help",ollama:"My own AI with Ollama",versions:"All versions",privacy:"This page uses no cookies and no trackers.",
+  faqTitle:"Frequently asked questions",faq1q:"Is it free?",faq1a:"Yes. The app is free. You can use Groq or Gemini with a free key, or Ollama, which runs entirely on your computer.",
+  faq2q:"Do my files stay with me?",faq2a:"Yes. Your files and conversations stay on your computer. The app always asks for confirmation before any risky action.",
+  faq3q:"Does it work without internet?",faq3a:"Yes, with Ollama. Groq and Gemini need internet, but Ollama works fully offline.",
   docTitle:"Autonomous Agent — your AI assistant on your computer"}};
 var ua=navigator.userAgent||"", touch=(navigator.maxTouchPoints||0)>1;
 var os=/iPhone|iPad|iPod|Android/i.test(ua)||(/Macintosh/.test(ua)&&touch)?"mobile":/Windows/.test(ua)?"win":/Macintosh|Mac OS X/.test(ua)?"mac":/Linux|X11|CrOS/.test(ua)?"linux":"other";
@@ -196,7 +230,7 @@ function apply(l){L=l;var d=T[l];document.documentElement.lang=l;document.title=
 document.querySelectorAll(".lang button").forEach(function(b){b.addEventListener("click",function(){try{localStorage.setItem("lang",b.dataset.lang);}catch(e){}apply(b.dataset.lang);});});
 // Mac: Apple chip or Intel? Chromium tells it; otherwise the graphics name sometimes does; else two clear choices
 function gpu(){try{var c=document.createElement("canvas").getContext("webgl");var x=c&&c.getExtension("WEBGL_debug_renderer_info");
- var r=x?String(c.getParameter(x.UNMASKED_RENDERER_WEBGL)):"";if(/Apple M\d/.test(r))return "arm";if(/Intel|AMD|Radeon|NVIDIA/i.test(r))return "intel";}catch(e){}return null;}
+ var r=x?String(c.getParameter(x.UNMASKED_RENDERER_WEBGL)):"";if(/Apple\s*(M\d|GPU)/i.test(r))return "arm";if(/Intel|AMD|Radeon|NVIDIA/i.test(r))return "intel";}catch(e){}return null;}
 apply(pick());
 if(os==="mac"){ arch=gpu(); if(arch) draw();
  if(navigator.userAgentData&&navigator.userAgentData.getHighEntropyValues){navigator.userAgentData.getHighEntropyValues(["architecture"]).then(function(v){
