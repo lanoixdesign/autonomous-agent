@@ -1,0 +1,11 @@
+{
+  "id": "pomodoro-timer",
+  "name": "Pomodoro Focus Timer",
+  "description": "Timer Pomodoro interactif avec pauses travail/repos, notifications et thème adaptatif.",
+  "icon": "⏱️",
+  "placement": "dock",
+  "height": 280,
+  "enabled": true,
+  "createdAt": "2026-11-27T19:47:08.745Z",
+  "updatedAt": "2026-11-27T19:47:08.745Z"
+}

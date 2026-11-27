@@ -8,6 +8,13 @@
 
 Every release with its files and notes: [GitHub Releases](https://github.com/lanoixdesign/autonomous-agent/releases). Latest notes: [packaging/RELEASE_NOTES.md](../packaging/RELEASE_NOTES.md).
 
+#### UI Bricks, todo.md and GitHub Community Hub (new in 0.9.22)
+
+🧩 **Self-extending UI with Bricks & Skills**: The agent can code interactive widgets (`brick_create`) mounted live in the chat dock, or register reusable skills (`skill_create`).
+📋 **Backlog with todo.md**: Missing capabilities or requests the assistant doesn't yet know how to perform are recorded in `todo.md` (`todo_add`), and can be automatically handed off to builder sub-agents.
+🌐 **Daily GitHub Community Sync**: Daily checks of shared skills and UI bricks, allowing 1-click integration into the user's interface.
+🚀 **GitHub Release & Sharing**: Local bricks and skills can be published to GitHub with explicit user confirmation (`github_publish`).
+
 #### Friendly mascots (new in 0.9.17)
 
 😊 Each assistant in the grid is now a little character in the shape of the app's logo (a ring around a rounded
@@ -127,6 +134,13 @@ Same features, quieter screens. Neutral backgrounds (off-white by day, soft dark
 ## Français
 
 Chaque version avec ses fichiers et ses notes : [GitHub Releases](https://github.com/lanoixdesign/autonomous-agent/releases). Dernières notes : [packaging/RELEASE_NOTES.md](../packaging/RELEASE_NOTES.md).
+
+#### Briques d'interface, todo.md et Hub Communautaire GitHub (nouveau en 0.9.22)
+
+🧩 **Interface auto-extensible (Briques & Skills)** : L'agent programme des composants UI interactifs (`brick_create`) directement affichés dans le dock du chat, et enregistre des compétences réutilisables (`skill_create`).
+📋 **Gestion des besoins manquants (todo.md)** : Toute demande utilisateur non maîtrisée est consignée dans `todo.md` (`todo_add`) et peut être prise en charge par un sous-agent constructeur.
+🌐 **Synchronisation quotidienne GitHub** : Récupération quotidienne des compétences et briques partagées avec intégration en un clic.
+🚀 **Publication et partage GitHub** : Partage de briques et compétences sur GitHub avec autorisation explicite de l'utilisateur (`github_publish`).
 
 #### Des mascottes amicales (nouveau en 0.9.17)
 

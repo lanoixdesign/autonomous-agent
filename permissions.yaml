@@ -17,6 +17,20 @@ defaults:
 tools:
   memory_write: allow
   memory_forget: ask
+  todo_read: allow
+  todo_add: allow
+  todo_update: allow
+  brick_list: allow
+  brick_create: allow
+  skill_create: allow
+  browser_navigate: allow
+  browser_read: allow
+  browser_click: allow
+  browser_type: allow
+  browser_select: allow
+  browser_scroll: allow
+  browser_key: allow
+  github_publish: ask
   # shell: deny
   # github_write: deny
 

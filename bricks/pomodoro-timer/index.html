@@ -1,0 +1,59 @@
+<!doctype html>
+<html lang="fr">
+<head>
+<meta charset="utf-8">
+<style>
+:root{--bg:#f8f9fa;--text:#212529;--card:#ffffff;--accent:#3b82f6;--border:#dee2e6}
+@media(prefers-color-scheme:dark){:root{--bg:#121212;--text:#e0e0e0;--card:#1e1e1e;--accent:#60a5fa;--border:#333}}
+body{margin:0;padding:16px;background:var(--bg);color:var(--text);font-family:system-ui,-apple-system,sans-serif;display:flex;flex-direction:column;align-items:center;justify-content:center;height:100vh;box-sizing:border-box}
+.card{background:var(--card);border:1px solid var(--border);border-radius:12px;padding:20px;width:100%;max-width:320px;text-align:center;box-shadow:0 4px 12px rgba(0,0,0,0.05)}
+h2{margin:0 0 8px 0;font-size:18px}
+.timer{font-size:42px;font-weight:700;margin:16px 0;color:var(--accent);font-variant-numeric:tabular-nums}
+.btn{background:var(--accent);color:#fff;border:none;padding:8px 16px;border-radius:6px;font-weight:600;cursor:pointer;margin:4px}
+.btn:hover{opacity:0.9}
+</style>
+</head>
+<body>
+<div class="card">
+  <h2>⏱️ Pomodoro Timer</h2>
+  <div class="timer" id="time">25:00</div>
+  <button class="btn" id="startBtn">Démarrer</button>
+  <button class="btn" id="resetBtn" style="background:#6c757d">Réinitialiser</button>
+</div>
+<script>
+let seconds = 1500;
+let timerId = null;
+const timeEl = document.getElementById('time');
+const startBtn = document.getElementById('startBtn');
+function update(){
+  const m = Math.floor(seconds/60).toString().padStart(2,'0');
+  const s = (seconds%60).toString().padStart(2,'0');
+  timeEl.textContent = m + ':' + s;
+}
+startBtn.addEventListener('click', () => {
+  if(timerId){
+    clearInterval(timerId);
+    timerId = null;
+    startBtn.textContent = 'Démarrer';
+  } else {
+    startBtn.textContent = 'Pause';
+    timerId = setInterval(() => {
+      if(seconds > 0) { seconds--; update(); }
+      else { clearInterval(timerId); alert('Temps écoulé !'); }
+    }, 1000);
+  }
+});
+document.getElementById('resetBtn').addEventListener('click', () => {
+  if(timerId) { clearInterval(timerId); timerId = null; }
+  seconds = 1500;
+  startBtn.textContent = 'Démarrer';
+  update();
+});
+window.addEventListener('message', e => {
+  if(e.data?.type === 'brick:init'){
+    if(e.data.theme) document.documentElement.setAttribute('data-theme', e.data.theme);
+  }
+});
+</script>
+</body>
+</html>
